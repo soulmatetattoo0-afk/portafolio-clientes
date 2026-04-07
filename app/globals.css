@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #080808;
+  --card: #161616;
+  --gold: #C9A84C;
+  --gold-light: #D4B86A;
+  --gold-dark: #A8873A;
+  --text: #DADADA;
+  --text-muted: #888888;
+  --border: #2A2A2A;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family: var(--font-jost), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-cormorant), Georgia, serif;
+}
+
+::selection {
+  background-color: var(--gold);
+  color: #080808;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gold-dark);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
+}
+
+@layer components {
+  .btn-gold {
+    @apply bg-[#C9A84C] text-[#080808] font-jost font-semibold px-8 py-3 transition-all duration-300 hover:bg-[#D4B86A] hover:shadow-lg hover:shadow-[#C9A84C]/20 active:scale-95;
+  }
+
+  .btn-outline-gold {
+    @apply border border-[#C9A84C] text-[#C9A84C] font-jost font-semibold px-8 py-3 transition-all duration-300 hover:bg-[#C9A84C] hover:text-[#080808] active:scale-95;
+  }
+
+  .card-dark {
+    @apply bg-[#161616] border border-[#2A2A2A] rounded-none;
+  }
+
+  .input-dark {
+    @apply bg-[#161616] border border-[#2A2A2A] text-[#DADADA] px-4 py-3 w-full outline-none focus:border-[#C9A84C] transition-colors duration-200 placeholder:text-[#888888] font-jost;
+  }
+
+  .gold-text {
+    @apply text-[#C9A84C];
+  }
+
+  .section-title {
+    @apply font-cormorant text-4xl md:text-5xl text-[#DADADA] font-light tracking-wide;
+  }
+
+  .gold-divider {
+    @apply w-16 h-px bg-[#C9A84C] my-4;
+  }
+}
