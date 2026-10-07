@@ -3,9 +3,11 @@
 import { useActionState } from "react";
 
 import { requestAccess, type LeadState } from "./actions/leads";
+import { useSubmit } from "@/components/useSubmit";
 
 export function AccessForm({ labels }: { labels: { email: string; instagram: string; city: string; submit: string; done: string; optional: string } }) {
   const [state, action, pending] = useActionState<LeadState, FormData>(requestAccess, { ok: false, error: null });
+  const onSubmit = useSubmit(action);
   if (state.ok) {
     return (
       <p className="font-serif text-[1.4rem] leading-snug" role="status">
@@ -14,7 +16,7 @@ export function AccessForm({ labels }: { labels: { email: string; instagram: str
     );
   }
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
       <div className="grid gap-1.5 sm:col-span-2">
         <label htmlFor="lead-email" className="t-label">
           {labels.email}

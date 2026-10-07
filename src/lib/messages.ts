@@ -3,7 +3,7 @@ import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 
 import type { Email } from "./email";
 import { env } from "./env";
-import { cmLabel, dateLong, money, moneyRange, sessionTime } from "./format";
+import { cmLabel, dateLong, money, moneyRange, placeLine, sessionTime } from "./format";
 import { colorLabel, styleLabel } from "./catalog";
 
 export const placementLabel = (slug: string, locale: Locale) => PLACEMENT_BY_SLUG.get(slug)?.label[locale] ?? slug;
@@ -119,7 +119,7 @@ export interface BookingInfo {
 function whenWhere(b: BookingInfo, locale: Locale): [string, string][] {
   const t = dict(locale).booked;
   const { day, time } = sessionTime(b.startsAt, b.timezone, locale);
-  const where = [b.studioName, b.address, b.city].filter(Boolean).join(", ");
+  const where = placeLine(b.studioName, b.address, b.city);
   return [[t.when, `${day}, ${time}`], ...(where ? ([[t.where, where]] as [string, string][]) : []), [t.deposit, money(b.deposit, b.currency, locale)]];
 }
 

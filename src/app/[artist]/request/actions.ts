@@ -9,6 +9,7 @@ import { STYLE_BY_SLUG } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { briefReceivedToClient, newBriefToArtist } from "@/lib/messages";
+import { allow } from "@/lib/ratelimit";
 import { MAX_IMAGE_BYTES } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, MAX_REFERENCES, readDraftToken, type UploadTarget } from "@/lib/uploads";
 import { briefRef } from "@/lib/util";
@@ -30,6 +31,7 @@ export async function prepareUploads(artistSlug: string, files: unknown): Promis
   const parsed = UploadReq.safeParse(files);
   const t = dict(await getLocale());
   if (!parsed.success) return { error: t.brief.errors.upload };
+  if (!(await allow("uploads", 30, 3600))) return { error: t.common.error };
   const db = await getDb();
   const artist = await db.one(`select id from artists where slug = $1 and accepting`, [artistSlug]);
   if (!artist) return { error: t.brief.errors.generic };
@@ -82,6 +84,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   const t = dict(locale);
   const parsed = Brief.safeParse(input);
   if (!parsed.success) return { ok: false, error: t.brief.errors.generic };
+  if (!(await allow("brief", 6, 3600))) return { ok: false, error: t.common.error };
   const b = parsed.data;
   const db = await getDb();
 

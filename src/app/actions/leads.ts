@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dict } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { getDb } from "@/lib/db";
+import { allow } from "@/lib/ratelimit";
 
 export interface LeadState {
   ok: boolean;
@@ -30,6 +31,7 @@ export async function requestAccess(_prev: LeadState, form: FormData): Promise<L
     city: form.get("city") || undefined,
   });
   if (!parsed.success) return { ok: false, error: dict(locale).brief.contact.emailInvalid };
+  if (!(await allow("lead", 5, 3600))) return { ok: false, error: dict(locale).common.error };
   const db = await getDb();
   await db.query(
     `insert into artist_leads (email, instagram, city, locale) values ($1, $2, $3, $4)

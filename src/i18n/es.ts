@@ -286,6 +286,7 @@ const es: Dict = {
       city: "Ciudad base",
       timezone: "Zona horaria",
       create: "Crear mi página",
+      notInvited: "Durante la etapa fundadora las páginas se abren por invitación. Pide acceso en la portada y te escribimos.",
     },
     requests: {
       title: "Solicitudes",
@@ -460,6 +461,11 @@ const es: Dict = {
       planName: "Plan actual",
       plans: { founding: "Artista fundador", artist: "Artista", pro: "Pro", studio: "Estudio" },
     },
+  },
+  templates: {
+    quote: "Hola {name}, gracias por confiarme esta idea. Te dejo mi cotización y algunas fechas para la primera sesión. Elige la que te acomode y el depósito la asegura.",
+    ask: "Hola {name}, gracias por tu brief. Antes de cotizar, ¿me cuentas un poco más sobre ",
+    decline: "Hola {name}, gracias por pensar en mí para esta pieza. No es la indicada para mi trabajo y prefiero que logres el mejor resultado con alguien especializado en ese estilo.",
   },
   email: {
     footer: "Enviado por {artist} a través de Brief.",

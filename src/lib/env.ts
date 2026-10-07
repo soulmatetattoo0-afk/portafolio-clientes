@@ -23,7 +23,11 @@ export const env = {
   resendApiKey: read("RESEND_API_KEY"),
   emailFrom: read("EMAIL_FROM") ?? "Brief <bookings@example.com>",
   cronSecret: read("CRON_SECRET"),
-  anthropicApiKey: read("ANTHROPIC_API_KEY"),
+  /** Comma-separated emails allowed to create an artist page. Empty = open signup. */
+  allowedSignups: (read("ALLOWED_SIGNUPS") ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };
 
 export const live = {

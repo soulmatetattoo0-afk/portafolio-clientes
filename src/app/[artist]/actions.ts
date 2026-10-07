@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { getDb } from "@/lib/db";
+import { allow } from "@/lib/ratelimit";
 
 export interface WaitlistState {
   ok: boolean;
@@ -22,6 +23,7 @@ export async function joinWaitlist(_prev: WaitlistState, form: FormData): Promis
   const t = dict(locale);
   const parsed = Input.safeParse({ artistId: form.get("artistId"), stopId: form.get("stopId"), email: form.get("email") });
   if (!parsed.success) return { ok: false, message: t.brief.contact.emailInvalid };
+  if (!(await allow("waitlist", 10, 3600))) return { ok: false, message: t.common.error };
   const db = await getDb();
   const stop = await db.one<{ studio_id: string; city: string }>(`select studio_id, city from tour_stops where id = $1 and artist_id = $2`, [
     parsed.data.stopId,

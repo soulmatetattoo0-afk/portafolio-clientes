@@ -3,10 +3,12 @@
 import { useActionState, useId, useState } from "react";
 
 import { joinWaitlist, type WaitlistState } from "./actions";
+import { useSubmit } from "@/components/useSubmit";
 
 export function Waitlist(props: { artistId: string; stopId: string; city: string; labels: { notify: string; title: string; email: string; join: string } }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<WaitlistState, FormData>(joinWaitlist, { ok: false, message: null });
+  const onSubmit = useSubmit(action);
   const id = useId();
   if (state.ok) return <p className="text-sm text-verdigris" role="status">{state.message}</p>;
   if (!open) {
@@ -17,7 +19,7 @@ export function Waitlist(props: { artistId: string; stopId: string; city: string
     );
   }
   return (
-    <form action={action} className="grid w-full gap-2 sm:max-w-md">
+    <form onSubmit={onSubmit} className="grid w-full gap-2 sm:max-w-md">
       <input type="hidden" name="artistId" value={props.artistId} />
       <input type="hidden" name="stopId" value={props.stopId} />
       <label htmlFor={id} className="t-label">

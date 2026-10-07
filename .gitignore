@@ -45,3 +45,4 @@ next-env.d.ts
 *.pyc
 .env.local
 /.data/
+!.env.example

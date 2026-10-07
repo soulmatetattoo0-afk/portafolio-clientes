@@ -51,3 +51,50 @@ export function relativeTime(date: Date | string, locale: Locale = "en") {
 }
 
 export const cmLabel = (w: number | null, h: number | null) => (w && h ? `${Number(w)} × ${Number(h)} cm` : "");
+
+/** Minutes a time zone is ahead of UTC at a given instant. */
+function tzOffset(ts: number, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(ts);
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+  return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - ts) / 60000;
+}
+
+/** "2026-11-14" + "13:00" on the wall clock of `timezone` → the UTC instant. */
+export function zonedToUtc(date: string, time: string, timezone: string): Date {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh, mm);
+  let utc = guess - tzOffset(guess, timezone) * 60000;
+  const second = guess - tzOffset(utc, timezone) * 60000;
+  if (second !== utc) utc = second;
+  return new Date(utc);
+}
+
+/** UTC instant → { date: "YYYY-MM-DD", time: "HH:MM" } on the wall clock of `timezone`. */
+export function utcToZoned(instant: Date | string, timezone: string) {
+  const d = typeof instant === "string" ? new Date(instant) : instant;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+}
+
+/** "Studio, street, city" without repeating the city when the address already has it. */
+export function placeLine(studio: string | null | undefined, address: string | null | undefined, city: string | null | undefined) {
+  const showCity = city && !(address ?? "").toLowerCase().includes(city.toLowerCase());
+  return [studio, address, showCity ? city : null].filter(Boolean).join(", ");
+}
+
+/** Current time for server-rendered pages (each request renders once, so this is stable per render). */
+export const requestTime = () => Date.now();

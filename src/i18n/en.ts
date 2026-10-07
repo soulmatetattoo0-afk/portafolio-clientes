@@ -284,6 +284,7 @@ const en = {
       city: "Home city",
       timezone: "Time zone",
       create: "Create my page",
+      notInvited: "Pages are opening by invitation during the founding phase. Request access on the homepage and we'll write to you.",
     },
     requests: {
       title: "Requests",
@@ -458,6 +459,11 @@ const en = {
       planName: "Current plan",
       plans: { founding: "Founding artist", artist: "Artist", pro: "Pro", studio: "Studio" },
     },
+  },
+  templates: {
+    quote: "Hi {name}, thanks for trusting me with this idea. Here's my quote, and a few dates for the first session. Pick the one that suits you and the deposit holds it.",
+    ask: "Hi {name}, thanks for your brief. Before I quote, could you tell me a bit more about ",
+    decline: "Hi {name}, thank you for thinking of me for this piece. It isn't the right fit for my work, and I'd rather you get the best result with an artist who specialises in it.",
   },
   email: {
     footer: "Sent by {artist} through Brief.",

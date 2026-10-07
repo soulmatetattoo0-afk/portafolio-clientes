@@ -411,23 +411,19 @@ export class MannequinEngine {
   /** Restore a saved design position (figure space, as returned by getPlacement). */
   placeAt(point: [number, number, number], normal: [number, number, number]) {
     if (!this.body) return;
-    this.root.updateMatrixWorld(true);
-    this.design.point = this.root.localToWorld(new Vector3(...point));
-    this.design.normal = new Vector3(...normal).applyQuaternion(this.root.quaternion).normalize();
+    this.design.point = new Vector3(...point);
+    this.design.normal = new Vector3(...normal).normalize();
     this.rebuildDecal();
   }
 
   getPlacement(): DesignPlacement {
-    this.root.updateMatrixWorld(true);
-    const inv = this.root.quaternion.clone().invert();
-    const round = (v: Vector3, k: number) => v.toArray().map((n) => Math.round(n * k) / k) as [number, number, number];
-    const toFigure = (v: Vector3 | null) => (v ? round(this.root.worldToLocal(v.clone()), 10000) : null);
+    const round = (v: Vector3 | null, k: number) => (v ? (v.toArray().map((n) => Math.round(n * k) / k) as [number, number, number]) : null);
     return {
       body: this.bodyType,
       heightCm: this.heightCm,
       placement: this.placement,
-      point: toFigure(this.design.point),
-      normal: this.design.normal ? round(this.design.normal.clone().applyQuaternion(inv), 1000) : null,
+      point: round(this.design.point, 10000),
+      normal: round(this.design.normal, 1000),
       widthCm: this.design.widthCm,
       heightCmDesign: this.design.heightCm,
       rotationDeg: this.design.rotationDeg,
@@ -585,9 +581,11 @@ export class MannequinEngine {
 
   private placeFromHit(hit: Intersection) {
     if (!hit.face) return;
-    const n = hit.face.normal.clone().transformDirection(this.body!.matrixWorld);
-    this.design.point = hit.point.clone();
-    this.design.normal = n;
+    // Design state lives in figure space (the body's own metres), so it survives
+    // the intro turn, camera moves and rescaling of the root.
+    this.root.updateMatrixWorld(true);
+    this.design.point = this.root.worldToLocal(hit.point.clone());
+    this.design.normal = hit.face.normal.clone().normalize();
     this.rebuildDecal();
     this.opts.onPlace?.(this.getPlacement());
   }
@@ -596,7 +594,7 @@ export class MannequinEngine {
 
   private removeDecal() {
     if (this.decal) {
-      this.scene.remove(this.decal);
+      this.root.remove(this.decal);
       this.decal.geometry.dispose();
       (this.decal.material as MeshMatcapMaterial).dispose();
       this.decal = null;
@@ -609,8 +607,10 @@ export class MannequinEngine {
     this.removeDecal();
     const p = this.design.point;
     const n = this.design.normal;
-    const w = this.design.widthCm / 100;
-    const h = this.design.heightCm / 100;
+    // Real centimetres in figure units: the root's scale turns them back into true size.
+    const s = this.root.scale.x;
+    const w = this.design.widthCm / 100 / s;
+    const h = this.design.heightCm / 100 / s;
     const zoneSlug = this.placement ?? "";
     const limb = ZONE_BY_SLUG.get(zoneSlug)?.limb ?? false;
     const depth = limb ? Math.min(0.07, Math.max(w, h) * 0.6 + 0.02) : Math.min(0.16, Math.max(w, h) * 0.7 + 0.03);
@@ -628,6 +628,7 @@ export class MannequinEngine {
 
     // Only feed DecalGeometry the triangles near the design: ~100x faster on phones.
     const local = this.nearbyMesh(p, Math.hypot(w, h, depth) * 0.75);
+    local.matrixWorld.identity();
     const geometry = new DecalGeometry(local, p, orientation, new Vector3(w, h, depth));
     local.geometry.dispose();
     const mat = new MeshMatcapMaterial({
@@ -641,7 +642,7 @@ export class MannequinEngine {
     mat.color = new Color("#ffffff");
     this.decal = new Mesh(geometry, mat);
     this.decal.renderOrder = 2;
-    this.scene.add(this.decal);
+    this.root.add(this.decal);
     this.dirty = true;
   }
 
@@ -650,9 +651,7 @@ export class MannequinEngine {
     const geom = body.geometry as BufferGeometry;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const bvh = (geom as any).boundsTree as MeshBVH;
-    const inv = new Matrix4().copy(body.matrixWorld).invert();
-    const s = this.root.scale.x;
-    const sphere = new Sphere(center.clone().applyMatrix4(inv), radius / s);
+    const sphere = new Sphere(center.clone(), radius);
     const pos = geom.getAttribute("position");
     const nor = geom.getAttribute("normal");
     const index = geom.getIndex()!;
@@ -682,9 +681,7 @@ export class MannequinEngine {
     const g = new BufferGeometry();
     g.setAttribute("position", new BufferAttribute(positions, 3));
     g.setAttribute("normal", new BufferAttribute(normals, 3));
-    const m = new Mesh(g);
-    m.matrixWorld.copy(body.matrixWorld);
-    return m;
+    return new Mesh(g);
   }
 
   /* ---------------------------------------------------------------- render */
