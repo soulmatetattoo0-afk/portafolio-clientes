@@ -85,6 +85,13 @@ export async function seedDemo(db: Db) {
   }
 
   await db.query(`insert into waitlist (studio_id, artist_id, tour_stop_id, city, email, name) values ($1, $2, $3, 'Milan', 'giulia@example.com', 'Giulia'), ($1, $2, $3, 'Milan', 'marco@example.com', 'Marco')`, [s, a, milan]);
+  // Cities the public is asking for, no stop planned yet.
+  const asks: [string, number][] = [["Miami", 14], ["Los Angeles", 9], ["Mexico City", 7], ["Madrid", 5], ["Santiago", 4], ["Toronto", 2]];
+  for (const [city, n] of asks) {
+    for (let i = 0; i < n; i++) {
+      await db.query(`insert into waitlist (studio_id, artist_id, tour_stop_id, city, email) values ($1, $2, null, $3, $4)`, [s, a, city, `${city.toLowerCase().replace(/\s+/g, "")}${i}@example.com`]);
+    }
+  }
 
   const client = async (name: string, email: string, locale: string, instagram: string | null) =>
     (await db.one<{ id: string }>(`insert into clients (studio_id, name, email, locale, instagram) values ($1, $2, $3, $4, $5) returning id`, [s, name, email, locale, instagram]))!.id;

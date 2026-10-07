@@ -122,6 +122,37 @@ export async function listPortfolio(artistId: string, opts: { publishedOnly?: bo
   return Promise.all(rows.map(async ({ image_path, ...r }) => ({ ...r, url: image_path ? await fileUrl("public", image_path) : null })));
 }
 
+/** Where the public asks the artist to come: city requests not yet tied to a stop, biggest first. */
+export async function listCityDemand(artistId: string, limit = 12): Promise<{ city: string; n: number }[]> {
+  const db = await getDb();
+  const rows = await db.query<{ city: string; n: number }>(
+    `select min(city) as city, count(*)::int as n from waitlist
+      where artist_id = $1 and tour_stop_id is null and notified_at is null
+      group by lower(city) order by n desc, min(city) limit $2`,
+    [artistId, limit],
+  );
+  return rows.map((r) => ({ city: r.city, n: Number(r.n) }));
+}
+
+export interface ArtistCard {
+  slug: string;
+  display_name: string;
+  headline: string | null;
+  home_city: string | null;
+  styles: string[];
+  accent: string | null;
+  portrait_url: string | null;
+}
+
+/** Public artist directory for Explore. */
+export async function listArtists(): Promise<ArtistCard[]> {
+  const db = await getDb();
+  const rows = await db.query<Omit<ArtistCard, "portrait_url"> & { portrait_path: string | null }>(
+    `select a.slug, a.display_name, a.headline, a.home_city, a.styles, a.accent, a.portrait_path from artists a order by a.created_at`,
+  );
+  return Promise.all(rows.map(async ({ portrait_path, ...a }) => ({ ...a, portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null })));
+}
+
 export async function listFlash(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<FlashItem[]> {
   const db = await getDb();
   const rows = await db.query<Omit<FlashItem, "url"> & { image_path: string | null }>(

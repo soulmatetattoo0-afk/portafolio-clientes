@@ -37,3 +37,30 @@ export async function joinWaitlist(_prev: WaitlistState, form: FormData): Promis
   );
   return { ok: true, message: fill(t.artist.waitlistDone, { city: stop.city }) };
 }
+
+const CityInput = z.object({
+  artistId: z.string().uuid(),
+  city: z.string().trim().min(2).max(80),
+  email: z.string().trim().toLowerCase().email().max(200),
+});
+
+/** A fan asks the artist to come to their city. Stored as a waitlist entry with no stop yet. */
+export async function requestCity(_prev: WaitlistState, form: FormData): Promise<WaitlistState> {
+  const locale = await getLocale();
+  const t = dict(locale);
+  const parsed = CityInput.safeParse({ artistId: form.get("artistId"), city: form.get("city"), email: form.get("email") });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.path[0] === "city" ? t.artist.panel.spots.cityRequired : t.brief.contact.emailInvalid };
+  if (!(await allow("waitlist", 10, 3600))) return { ok: false, message: t.common.error };
+  const db = await getDb();
+  const artist = await db.one<{ studio_id: string }>(`select studio_id from artists where id = $1`, [parsed.data.artistId]);
+  if (!artist) return { ok: false, message: t.common.error };
+  const city = parsed.data.city.replace(/\s+/g, " ");
+  // If the artist already lists that city, join that stop's waitlist instead.
+  const stop = await db.one<{ id: string; city: string }>(`select id, city from tour_stops where artist_id = $1 and lower(city) = lower($2) and status <> 'done' order by starts_on nulls first limit 1`, [parsed.data.artistId, city]);
+  await db.query(
+    `insert into waitlist (studio_id, artist_id, tour_stop_id, city, email, locale) values ($1, $2, $3, $4, $5, $6)
+     on conflict (artist_id, lower(email), lower(city)) do update set tour_stop_id = coalesce(excluded.tour_stop_id, waitlist.tour_stop_id), notified_at = null`,
+    [artist.studio_id, parsed.data.artistId, stop?.id ?? null, stop?.city ?? city, parsed.data.email, locale],
+  );
+  return { ok: true, message: fill(t.artist.panel.spots.requested, { city: stop?.city ?? city }) };
+}

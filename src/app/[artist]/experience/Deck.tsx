@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LangToggle } from "@/components/LangToggle";
@@ -105,7 +106,13 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
       <div className="p-grain" aria-hidden />
       <header className="relative z-10 flex items-center justify-between gap-3 px-5 pt-[max(env(safe-area-inset-top),0.9rem)]">
         <span className="p-stamp text-bone">{artist.display_name.toUpperCase()}</span>
-        <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
+        <div className="flex items-center gap-1">
+          <Link href={`/explore?from=${artist.slug}`} className="btn btn-ghost btn-sm gap-1.5 text-bone" aria-label={t.explore.title}>
+            <span aria-hidden className="text-[1.1rem] leading-none">⌕</span>
+            <span className="p-stamp">{t.explore.title}</span>
+          </Link>
+          <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
+        </div>
       </header>
 
       <div

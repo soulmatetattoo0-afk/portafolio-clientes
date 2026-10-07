@@ -27,7 +27,7 @@ interface Labels {
   optional: string;
 }
 
-export function CityForm({ stop, labels, timezones, onDone }: { stop?: TourStop; labels: Labels; timezones: string[]; onDone?: () => void }) {
+export function CityForm({ stop, labels, timezones, onDone, initialCity }: { stop?: TourStop; labels: Labels; timezones: string[]; onDone?: () => void; initialCity?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(async (prev, form) => {
     const r = await saveStop(prev, form);
     if (r.ok) onDone?.();
@@ -40,7 +40,7 @@ export function CityForm({ stop, labels, timezones, onDone }: { stop?: TourStop;
     <form onSubmit={submit} className="grid gap-4 rounded-[var(--radius-md)] border border-line bg-niche p-4 sm:p-5">
       {stop && <input type="hidden" name="id" value={stop.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input id={`${id}-city`} name="city" label={labels.city} defaultValue={stop?.city} required invalid={bad("city")} />
+        <Input id={`${id}-city`} name="city" label={labels.city} defaultValue={stop?.city ?? initialCity} required invalid={bad("city")} />
         <Input id={`${id}-country`} name="country" label={labels.country} defaultValue={stop?.country} />
         <Input id={`${id}-studio`} name="studio_name" label={labels.studio} defaultValue={stop?.studio_name ?? ""} optional={labels.optional} />
         <Input id={`${id}-address`} name="address" label={labels.address} defaultValue={stop?.address ?? ""} optional={labels.optional} />
@@ -151,13 +151,17 @@ export function CityRow({ stop, labels, timezones, waitlistLabel, dates }: { sto
   );
 }
 
-export function AddCity({ labels, timezones }: { labels: Labels; timezones: string[] }) {
-  const [open, setOpen] = useState(false);
+export function AddCity({ labels, timezones, initialCity }: { labels: Labels; timezones: string[]; initialCity?: string }) {
+  const [open, setOpen] = useState(Boolean(initialCity));
   if (!open)
     return (
-      <button type="button" className="btn btn-primary w-fit" onClick={() => setOpen(true)}>
+      <button id="add-city" type="button" className="btn btn-primary w-fit" onClick={() => setOpen(true)}>
         {labels.add}
       </button>
     );
-  return <CityForm labels={labels} timezones={timezones} onDone={() => setOpen(false)} />;
+  return (
+    <div id="add-city" className="scroll-mt-6">
+      <CityForm labels={labels} timezones={timezones} onDone={() => setOpen(false)} initialCity={initialCity} />
+    </div>
+  );
 }

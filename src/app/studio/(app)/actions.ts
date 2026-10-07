@@ -413,11 +413,13 @@ export async function saveStop(_prev: FormState, form: FormData): Promise<FormSt
       [s.id, member.studioId, ...values],
     );
   } else {
-    await db.query(
+    const created = await db.one<{ id: string }>(
       `insert into tour_stops (studio_id, artist_id, city, country, studio_name, address, timezone, starts_on, ends_on, status, is_home)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
       [member.studioId, member.artistId, ...values],
     );
+    // People who asked for this city move onto the new stop's waitlist, so "Email the waitlist" reaches them.
+    await db.query(`update waitlist set tour_stop_id = $3 where artist_id = $1 and tour_stop_id is null and lower(city) = lower($2)`, [member.artistId, s.city, created!.id]);
   }
   revalidatePath("/studio/cities");
   return { ok: true, message: t.common.saved };

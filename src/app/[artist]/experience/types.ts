@@ -9,6 +9,8 @@ export interface ExperienceData {
   stops: TourStop[];
   portfolio: PortfolioItem[];
   flash: FlashItem[];
+  /** Cities the public is asking the artist to visit, biggest first. */
+  demand: { city: string; n: number }[];
   locale: Locale;
   t: Dict;
   demo: boolean;

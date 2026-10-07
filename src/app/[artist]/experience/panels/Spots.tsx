@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 
+import { CityRequest } from "../../CityRequest";
 import { Waitlist } from "../../Waitlist";
 import { PanelHead } from "../Panel";
 import type { ExperienceData } from "../types";
@@ -53,15 +54,27 @@ export function Spots({ data }: { data: ExperienceData }) {
           })}
         </ol>
       )}
-      <div className="mx-5 mt-10 rounded-[18px] border border-dashed border-line-strong p-5">
-        <p className="p-display text-[1.6rem]">✈ {p.yourCity}</p>
-        <p className="mt-2 text-[0.92rem] text-bone/80">{p.anywhere}</p>
-        {artist.accepting && (
-          <Link href={`/${artist.slug}/request`} className="btn btn-primary mt-4">
-            {a.cta}
-          </Link>
+      {/* Ask me to come: the public names its city; the artist sees where the demand is. */}
+      <section className="mx-5 mt-10 rounded-[18px] border border-dashed border-line-strong p-5" aria-labelledby="your-city">
+        <h3 id="your-city" className="p-display text-[2rem]">
+          ✈ {p.yourCity}
+        </h3>
+        <p className="mt-2 mb-4 text-[0.92rem] text-bone/80">{p.requestLead}</p>
+        <CityRequest artistId={artist.id} labels={{ city: p.requestCity, email: p.requestEmail, send: p.requestSend }} />
+        {data.demand.length > 0 && (
+          <div className="mt-6 border-t border-line pt-4">
+            <p className="p-gothic text-[1.15rem] text-accent">{p.demandTitle}</p>
+            <ol className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+              {data.demand.map((d) => (
+                <li key={d.city} className="flex items-baseline justify-between gap-2 text-[0.95rem]">
+                  <span className="truncate">{d.city}</span>
+                  <span className="t-num shrink-0 text-bone-dim">{fill(d.n === 1 ? p.demandOne : p.demandMany, { n: d.n })}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
