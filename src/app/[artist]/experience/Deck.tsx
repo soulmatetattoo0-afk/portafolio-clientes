@@ -35,7 +35,7 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
     if (opening !== null) return;
     // Remember which card the finger landed on: with the pointer captured by the stage, the click never reaches the card.
     const hit = (e.target as HTMLElement).closest<HTMLElement>("[data-card]");
-    drag.current = { x0: e.clientX, a0: angle, moved: false, lastX: e.clientX, lastT: performance.now(), v: 0, hit: hit ? Number(hit.dataset.card) : -1 };
+    drag.current = { x0: e.clientX, a0: angle, moved: false, lastX: e.clientX, lastT: e.timeStamp, v: 0, hit: hit ? Number(hit.dataset.card) : -1 };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(true);
   };
@@ -44,7 +44,7 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
     const d = drag.current;
     const dx = e.clientX - d.x0;
     if (Math.abs(dx) > 6) d.moved = true;
-    const now = performance.now();
+    const now = e.timeStamp;
     d.v = (e.clientX - d.lastX) / Math.max(1, now - d.lastT);
     d.lastX = e.clientX;
     d.lastT = now;

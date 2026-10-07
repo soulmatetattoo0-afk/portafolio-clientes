@@ -78,29 +78,56 @@ const GOLD = new Color("#c9a35f");
 const vertexPatch = /* glsl */ `
 attribute float _zone;
 varying float vZone;
+varying vec3 vObj;
 `;
 const fragmentPatch = /* glsl */ `
 uniform float uZoneState[${MAX_ZONES}];
 uniform vec3 uGold;
 uniform float uTime;
 varying float vZone;
+varying vec3 vObj;
+
+// Procedural wood: long grain running up the body, wavered by a little noise,
+// with slow tonal drift so no two limbs read the same.
+float wHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float wNoise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(wHash(i), wHash(i + vec3(1,0,0)), f.x), mix(wHash(i + vec3(0,1,0)), wHash(i + vec3(1,1,0)), f.x), f.y);
+  float b = mix(mix(wHash(i + vec3(0,0,1)), wHash(i + vec3(1,0,1)), f.x), mix(wHash(i + vec3(0,1,1)), wHash(i + vec3(1,1,1)), f.x), f.y);
+  return mix(a, b, f.z);
+}
+vec3 wood(vec3 p) {
+  // Ash-like figure: tight lines that flow, fade out in patches and gather again, over a pale ground.
+  float flow = wNoise(p * 2.6) * 2.8 + wNoise(p * 8.0) * 0.9 + wNoise(p * 27.0) * 0.25;
+  float a = sin(p.x * 420.0 + p.z * 110.0 + flow * 6.0 + p.y * 9.0);
+  float b = sin(p.x * 150.0 - p.z * 40.0 + flow * 2.5 + 1.7);
+  float fade = smoothstep(0.25, 0.85, wNoise(p * 4.5 + 3.1));
+  float line = smoothstep(0.62, 1.0, a) * (0.25 + 0.75 * fade);
+  float band = smoothstep(-0.7, 1.0, b);
+  float figure = band * 0.45 + wNoise(p * 1.8) * 0.35;
+  float fine = (wNoise(vec3(p.x * 900.0, p.y * 70.0, p.z * 900.0)) - 0.5) * 0.07;
+  vec3 pale = vec3(0.94, 0.84, 0.63);
+  vec3 mid = vec3(0.85, 0.70, 0.46);
+  vec3 dark = vec3(0.55, 0.38, 0.20);
+  vec3 c = mix(pale, mid, figure) + fine;
+  c = mix(c, dark, line * 0.5 + band * fade * 0.08);
+  return c;
+}
 `;
 
 function makeMatcap(): CanvasTexture {
-  // Patinated bronze lit from above, with a warm gilt rim: the statue look.
+  // Neutral studio light for lacquered wood: soft key from above left, cool rim, tight varnish highlight.
+  // The wood colour itself comes from the fragment shader, so this map is close to greyscale.
   const size = 256;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d")!;
   const img = ctx.createImageData(size, size);
-  const key = new Vector3(-0.45, 0.65, 0.62).normalize();
-  const fill = new Vector3(0.6, -0.1, 0.8).normalize();
-  const rim = new Vector3(0.7, 0.35, -0.6).normalize();
-  const base = new Color("#3a332c");
-  const lit = new Color("#a89580");
-  const gilt = new Color("#d9b678");
+  const key = new Vector3(-0.45, 0.7, 0.58).normalize();
+  const fill = new Vector3(0.6, -0.15, 0.78).normalize();
+  const rim = new Vector3(0.75, 0.3, -0.6).normalize();
+  const half = new Vector3().copy(key).add(new Vector3(0, 0, 1)).normalize();
   const n = new Vector3();
-  const c = new Color();
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const nx = (x / (size - 1)) * 2 - 1;
@@ -113,17 +140,17 @@ function makeMatcap(): CanvasTexture {
       }
       n.set(nx, ny, Math.sqrt(1 - r2));
       const diffuse = Math.max(n.dot(key), 0);
-      const soft = Math.max(n.dot(fill), 0) * 0.25;
-      const fresnel = Math.pow(1 - n.z, 2.6);
-      const spec = Math.pow(Math.max(n.dot(new Vector3().copy(key).add(new Vector3(0, 0, 1)).normalize()), 0), 28) * 0.35;
-      const rimAmt = Math.max(n.dot(rim) * 0.5 + 0.5, 0) * fresnel;
-      c.copy(base).lerp(lit, Math.min(diffuse * 0.85 + soft, 1));
-      c.r += spec + gilt.r * rimAmt * 0.9;
-      c.g += spec + gilt.g * rimAmt * 0.9;
-      c.b += spec + gilt.b * rimAmt * 0.9;
-      img.data[i] = Math.min(255, c.r * 255);
-      img.data[i + 1] = Math.min(255, c.g * 255);
-      img.data[i + 2] = Math.min(255, c.b * 255);
+      const soft = Math.max(n.dot(fill), 0) * 0.22;
+      const fresnel = Math.pow(1 - n.z, 2.8);
+      const spec = Math.pow(Math.max(n.dot(half), 0), 42) * 0.55;
+      const rimAmt = Math.max(n.dot(rim) * 0.5 + 0.5, 0) * fresnel * 0.6;
+      const shade = 0.22 + diffuse * 0.85 + soft;
+      const r = shade + spec + rimAmt * 0.9;
+      const g = shade + spec + rimAmt * 0.95;
+      const b = shade + spec + rimAmt * 1.1;
+      img.data[i] = Math.min(255, r * 255);
+      img.data[i + 1] = Math.min(255, g * 255);
+      img.data[i + 2] = Math.min(255, b * 255);
       img.data[i + 3] = 255;
     }
   }
@@ -228,7 +255,7 @@ export class MannequinEngine {
       shader.uniforms.uGold = { value: GOLD };
       shader.uniforms.uTime = { value: 0 };
       this.material.userData.shader = shader;
-      shader.vertexShader = vertexPatch + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vZone = _zone;");
+      shader.vertexShader = vertexPatch + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vZone = _zone;\n  vObj = position;");
       shader.fragmentShader =
         fragmentPatch +
         shader.fragmentShader.replace(
@@ -242,6 +269,8 @@ export class MannequinEngine {
   float sel = step(1.5, st) * step(st, 2.5);
   float dim = step(2.5, st);
   float pulse = 0.82 + 0.18 * sin(uTime * 2.2);
+  // Lacquered wood: the matcap carries the light, the grain carries the colour.
+  gl_FragColor.rgb = wood(vObj) * gl_FragColor.rgb * 1.15;
   vec3 lum = vec3(dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)));
   gl_FragColor.rgb = mix(gl_FragColor.rgb, uGold * (0.75 + lum * 1.5), hover * 0.4 + sel * 0.78 * pulse);
   gl_FragColor.rgb *= 1.0 - dim * 0.35;`,

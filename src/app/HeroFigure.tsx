@@ -12,8 +12,7 @@ export function HeroFigure({ locale, caption }: { locale: Locale; caption: strin
   const label = zone ? PLACEMENT_BY_SLUG.get(zone)?.label[locale] : null;
   return (
     <figure className="relative">
-      <div className="relative h-[min(72vh,640px)] min-h-[420px] overflow-hidden rounded-[var(--radius-lg)] border border-line [background:radial-gradient(ellipse_48%_38%_at_50%_30%,color-mix(in_oklab,var(--color-gilt)_16%,transparent),transparent_72%),radial-gradient(ellipse_70%_28%_at_50%_100%,rgb(0_0_0/0.55),transparent_70%),var(--color-niche)]">
-        <Halo />
+      <div className="relative h-[min(72vh,640px)] min-h-[420px] overflow-hidden rounded-[var(--radius-lg)] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20]">
         <Mannequin className="absolute inset-0" body="f" heightCm={167} mode="zone" placement={zone} onZoneTap={setZone} label={caption} />
         <p aria-live="polite" className="pointer-events-none absolute inset-x-0 bottom-4 text-center font-serif text-[1.35rem] italic">
           {label}

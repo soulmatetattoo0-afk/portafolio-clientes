@@ -27,7 +27,7 @@ export function PlacementPreview(props: {
   );
   const saved = useMemo(() => (props.point && props.normal ? { point: props.point, normal: props.normal } : null), [props.point, props.normal]);
   return (
-    <div className="relative h-[380px] overflow-hidden rounded-[var(--radius-lg)] border border-line [background:radial-gradient(ellipse_50%_40%_at_50%_32%,color-mix(in_oklab,var(--color-gilt)_12%,transparent),transparent_72%),var(--color-niche)] sm:h-[440px]">
+    <div className="relative h-[380px] overflow-hidden rounded-[var(--radius-lg)] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] sm:h-[440px]">
       <Halo />
       <Mannequin
         ref={viewer}

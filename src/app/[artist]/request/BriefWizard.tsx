@@ -445,7 +445,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
       <div className="mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 pt-4 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 lg:pt-8">
         {/* The figure: sticky on phones while placing, always beside the form on desktop. */}
         <div className={`${figureStep && !noWebgl ? "block" : "hidden"} sticky top-0 z-10 -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
-          <div className="relative h-[46dvh] min-h-[300px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_50%_40%_at_50%_30%,rgb(255_255_255/0.07),transparent_72%),var(--color-ink-2)] lg:sticky lg:top-6 lg:h-[min(80dvh,760px)]">
+          <div className="relative h-[46dvh] min-h-[300px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 lg:h-[min(80dvh,760px)]">
             <div className="p-grain" aria-hidden />
             {!noWebgl && (
               <Mannequin

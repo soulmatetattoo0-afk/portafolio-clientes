@@ -44,7 +44,7 @@ export function Book({ data, onGo }: { data: ExperienceData; onGo: (id: PanelId)
 
       {!noWebgl && (
         <figure className="mx-5 mt-10">
-          <div className="relative h-[52dvh] min-h-[320px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_50%_40%_at_50%_30%,rgb(255_255_255/0.07),transparent_72%),var(--color-ink-2)]">
+          <div className="relative h-[52dvh] min-h-[320px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20]">
             <Mannequin className="absolute inset-0" body="f" heightCm={167} mode="zone" placement={zone} onZoneTap={setZone} onUnsupported={() => setNoWebgl(true)} label={p.figure} />
             <p aria-live="polite" className="p-quote pointer-events-none absolute inset-x-0 bottom-4 text-center text-[1.4rem] text-bone">
               {label}
