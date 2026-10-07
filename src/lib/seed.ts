@@ -65,18 +65,18 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
   const london = await stop("London", "United Kingdom", "Saint Ink", "41 Hackney Rd, London", "Europe/London", dateOnly(120), dateOnly(131), "booking");
   const milan = await stop("Milan", "Italy", "Officina Nera", "Via Tortona 12, Milano", "Europe/Rome", dateOnly(136), dateOnly(142), "announced");
 
-  const portfolio: [string, string, string, string, boolean][] = [
-    ["Grandmother & pocket watch", "realism", "black_grey", "forearm_inner_L", true],
-    ["Marble Medusa", "realism", "black_grey", "upper_arm_R", true],
-    ["Clockwork moth", "surrealism", "black_grey", "back_upper", false],
-    ["Drowned cathedral", "surrealism", "color", "thigh_L", true],
-    ["Lion & laurel", "realism", "black_grey", "chest_full", false],
-    ["Hands of the sculptor", "illustrative", "black_grey", "calf_R", true],
+  const portfolio: [string, string, string, string, boolean, string | null][] = [
+    ["Grandmother & pocket watch", "realism", "black_grey", "forearm_inner_L", true, "A portrait from a 1962 photograph, the watch she wore to work for forty years. Two sessions, inner forearm, so it faces him when he reads."],
+    ["Marble Medusa", "realism", "black_grey", "upper_arm_R", true, "Bernini by way of Brooklyn. The stone had to look cold and the snakes had to look alive, so the greys are split in two palettes. One long session, healed in three weeks."],
+    ["Clockwork moth", "surrealism", "black_grey", "back_upper", false, null],
+    ["Drowned cathedral", "surrealism", "color", "thigh_L", true, "A cathedral under water, light coming down through the nave. The first piece in colour for a client who had only worn black and grey. Three sessions over a winter."],
+    ["Lion & laurel", "realism", "black_grey", "chest_full", false, null],
+    ["Hands of the sculptor", "illustrative", "black_grey", "calf_R", true, null],
   ];
-  for (const [i, [title, style, color, placement, healed]] of portfolio.entries()) {
+  for (const [i, [title, style, color, placement, healed, story]] of portfolio.entries()) {
     await db.query(
-      `insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, placement, is_healed, sort) values ($1, $2, null, $3, $4, $5, $6, $7, $8)`,
-      [s, a, title, style, color, placement, healed, i],
+      `insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, placement, is_healed, sort, featured, story) values ($1, $2, null, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [s, a, title, style, color, placement, healed, i, story !== null, story],
     );
   }
 

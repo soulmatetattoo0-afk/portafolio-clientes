@@ -70,6 +70,10 @@ export interface PortfolioItem {
   placement: string | null;
   is_healed: boolean;
   published: boolean;
+  /** Opens a page of its own in the artist's magazine. */
+  featured: boolean;
+  /** The words beside the piece in the magazine. */
+  story: string | null;
   url: string | null;
 }
 
@@ -117,7 +121,7 @@ export async function listStops(artistId: string, opts: { publicOnly?: boolean }
 export async function listPortfolio(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<PortfolioItem[]> {
   const db = await getDb();
   const rows = await db.query<Omit<PortfolioItem, "url"> & { image_path: string | null }>(
-    `select id, title, style, color_mode, placement, is_healed, published, image_path from portfolio_items
+    `select id, title, style, color_mode, placement, is_healed, published, featured, story, image_path from portfolio_items
       where artist_id = $1 ${opts.publishedOnly ? "and published" : ""} order by sort, created_at desc`,
     [artistId],
   );

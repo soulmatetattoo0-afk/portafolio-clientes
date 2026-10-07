@@ -274,19 +274,23 @@ export async function addPortfolioItems(uploadToken: string, keys: string[]) {
 }
 
 const PortfolioPatch = z.object({
+  title: z.string().trim().max(120),
   style: z.string().refine((s) => s === "" || STYLE_BY_SLUG.has(s)),
   color_mode: z.enum(["", "black_grey", "color"]),
   is_healed: z.boolean(),
   published: z.boolean(),
+  featured: z.boolean(),
+  story: z.string().trim().max(1200),
 });
 
 export async function updatePortfolioItem(id: string, patch: z.input<typeof PortfolioPatch>) {
   const member = await requireMember();
   const p = PortfolioPatch.parse(patch);
   const db = await getDb();
-  await db.query(`update portfolio_items set style = $3, color_mode = $4, is_healed = $5, published = $6 where id = $1 and studio_id = $2`, [
-    id, member.studioId, p.style || null, p.color_mode || null, p.is_healed, p.published,
-  ]);
+  await db.query(
+    `update portfolio_items set title = $3, style = $4, color_mode = $5, is_healed = $6, published = $7, featured = $8, story = $9 where id = $1 and studio_id = $2`,
+    [id, member.studioId, p.title || null, p.style || null, p.color_mode || null, p.is_healed, p.published, p.featured, p.story || null],
+  );
   revalidatePath("/studio/portfolio");
 }
 

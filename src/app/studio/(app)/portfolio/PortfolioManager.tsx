@@ -17,6 +17,11 @@ interface Labels {
   color: string;
   healed: string;
   published: string;
+  pieceTitle: string;
+  featured: string;
+  featuredHint: string;
+  story: string;
+  storyHint: string;
   delete: string;
   deleteConfirm: string;
   cancel: string;
@@ -93,7 +98,18 @@ export function PortfolioManager({ items, locale, labels, storage }: { items: Po
 function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; labels: Labels }) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
-  const [v, setV] = useState({ style: item.style ?? "", color_mode: (item.color_mode ?? "") as "" | "black_grey" | "color", is_healed: item.is_healed, published: item.published });
+  const [v, setV] = useState({
+    title: item.title ?? "",
+    style: item.style ?? "",
+    color_mode: (item.color_mode ?? "") as "" | "black_grey" | "color",
+    is_healed: item.is_healed,
+    published: item.published,
+    featured: item.featured,
+    story: item.story ?? "",
+  });
+  // Text fields save when the artist leaves them, not on every keystroke.
+  const edit = (next: typeof v) => setV(next);
+  const commit = () => start(() => updatePortfolioItem(item.id, v));
   const save = (next: typeof v) => {
     setV(next);
     start(() => updatePortfolioItem(item.id, next));
@@ -109,6 +125,10 @@ function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; l
         )}
       </div>
       <div className="grid gap-3 p-4">
+        <label className="grid gap-1">
+          <span className="t-label">{labels.pieceTitle}</span>
+          <input className="input" value={v.title} maxLength={120} onChange={(e) => edit({ ...v, title: e.target.value })} onBlur={commit} />
+        </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1">
             <span className="t-label">{labels.style}</span>
@@ -138,6 +158,19 @@ function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; l
           <input type="checkbox" className="h-4 w-4" checked={v.published} onChange={(e) => save({ ...v, published: e.target.checked })} />
           {labels.published}
         </label>
+        <div className="grid gap-2 rounded-[var(--radius-sm)] border border-line p-3">
+          <label className="flex items-center gap-2.5">
+            <input type="checkbox" className="h-4 w-4" checked={v.featured} onChange={(e) => save({ ...v, featured: e.target.checked })} />
+            {labels.featured}
+          </label>
+          <p className="text-[0.82rem] text-ash-dim">{labels.featuredHint}</p>
+          {v.featured && (
+            <label className="grid gap-1">
+              <span className="t-label">{labels.story}</span>
+              <textarea className="input min-h-24" value={v.story} maxLength={1200} placeholder={labels.storyHint} onChange={(e) => edit({ ...v, story: e.target.value })} onBlur={commit} />
+            </label>
+          )}
+        </div>
         {confirming ? (
           <div className="grid gap-2 rounded-[var(--radius-sm)] border border-oxblood/40 p-3">
             <p className="text-[0.9rem]">{labels.deleteConfirm}</p>
