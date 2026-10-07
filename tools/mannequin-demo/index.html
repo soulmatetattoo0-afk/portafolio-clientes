@@ -1,0 +1,208 @@
+<title>Maniquí de colocación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: statue stage on the left (top on phones), the two-step placement panel beside it. */
+  :root {
+    color-scheme: dark;
+    --soot: #120f0c;        /* page ground: lamp-black, warm like candle soot */
+    --niche: #1b1712;       /* raised panels, the alcove the statue stands in */
+    --line: #2f2922;        /* hairlines and quiet borders */
+    --vellum: #ece3d2;      /* primary text, aged paper */
+    --ash: #9c917f;         /* secondary text */
+    --gilt: #c9a35f;        /* aged gold accent */
+    --gilt-bright: #e3c487; /* gold on hover and focus */
+    --display: "Cinzel", "Trajan Pro", Georgia, serif;
+    --serif: "Cormorant Garamond", "Garamond", Georgia, serif;
+    --ui: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  html, body { height: 100%; background: var(--soot); color: var(--vellum); }
+  body { font-family: var(--ui); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 18px 40px;
+  }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .mark { font-family: var(--display); font-size: 13px; letter-spacing: 0.32em; color: var(--gilt); margin: 0 0 10px; }
+  h1 { font-family: var(--serif); font-weight: 500; font-size: clamp(30px, 6.4vw, 46px); line-height: 1.04; margin: 0; text-wrap: balance; }
+  .lead { color: var(--ash); margin: 10px 0 0; max-width: 46ch; font-size: 15px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--gilt-bright); outline-offset: 2px; }
+  .ghost { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; color: var(--ash); white-space: nowrap; }
+  .ghost:hover { color: var(--vellum); border-color: var(--ash); }
+
+  .stage-wrap {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 2;
+    border-radius: 6px;
+    background:
+      radial-gradient(ellipse 46% 40% at 50% 34%, rgba(201,163,95,0.13), transparent 70%),
+      radial-gradient(ellipse 70% 30% at 50% 100%, rgba(0,0,0,0.55), transparent 70%),
+      var(--niche);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    height: min(52vh, 560px);
+    min-height: 320px;
+    box-shadow: 0 18px 28px -18px rgba(0,0,0,0.9);
+  }
+  .halo { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: start center; padding-top: 4%; }
+  .halo svg { width: min(58%, 300px); opacity: 0.22; }
+  #stage { position: absolute; inset: 0; opacity: 0; transition: opacity 900ms ease; }
+  #stage.ready { opacity: 1; }
+  .views { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 6px; }
+  .views .ghost { background: rgba(18,15,12,0.7); backdrop-filter: blur(4px); padding: 6px 12px; font-size: 13px; }
+  #status { position: absolute; inset: auto 12px 12px auto; color: var(--ash); font-size: 12px; }
+
+  .panel { display: grid; gap: 18px; align-content: start; min-width: 0; }
+  .figure { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: center; }
+  .label { color: var(--ash); font-size: 13px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg button { background: none; border: 0; border-radius: 999px; padding: 6px 14px; color: var(--ash); }
+  .seg button[aria-pressed="true"] { background: var(--vellum); color: var(--soot); }
+  .range { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .range output { font-variant-numeric: tabular-nums; min-width: 7ch; text-align: right; }
+  input[type="range"] { width: 100%; accent-color: var(--gilt); }
+
+  .steps { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  .steps li { counter-increment: step; }
+  .steps span { display: inline-block; padding: 0 0 10px; color: var(--ash); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .steps span::before { content: counter(step) ". "; color: var(--gilt); }
+  .steps span[aria-current="true"] { color: var(--vellum); border-color: var(--gilt); }
+
+  .chosen { font-family: var(--serif); font-size: 26px; line-height: 1.15; margin: 0; }
+  .chosen.muted { font-family: var(--ui); font-size: 15px; color: var(--ash); }
+  details { border-bottom: 1px solid var(--line); }
+  summary { list-style: none; padding: 12px 0; display: flex; justify-content: space-between; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--gilt); }
+  details[open] summary::after { content: "\2013"; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 14px; }
+  .chip { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px; color: var(--vellum); font-size: 14px; }
+  .chip:hover { border-color: var(--ash); }
+  .chip[aria-pressed="true"] { border-color: var(--gilt); color: var(--gilt-bright); background: rgba(201,163,95,0.08); }
+  .primary {
+    width: 100%; border: 0; border-radius: 4px; padding: 14px 18px;
+    background: var(--gilt); color: var(--soot); font-weight: 600; letter-spacing: 0.01em;
+  }
+  .primary:hover { background: var(--gilt-bright); }
+  .primary:disabled { background: var(--line); color: var(--ash); cursor: not-allowed; }
+  .size-out { font-family: var(--ui); font-size: 26px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .band { color: var(--ash); margin: 4px 0 0; }
+  .note { color: var(--ash); font-size: 13px; margin: 0; }
+  .full { font-family: var(--serif); font-size: 21px; margin: 0; color: var(--vellum); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+
+  @media (min-width: 900px) {
+    .shell { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); column-gap: 40px; padding-block: 36px 56px; }
+    header { grid-column: 1 / -1; }
+    .stage-wrap { position: sticky; top: 24px; height: min(82vh, 780px); }
+  }
+  @media (prefers-reduced-motion: reduce) { #stage { transition: none; } }
+</style>
+
+<div class="shell" data-assets=".">
+  <header>
+    <div>
+      <p class="mark">Brief</p>
+      <h1 id="title">¿Dónde va tu tatuaje?</h1>
+      <p class="lead" id="lead">Gira la figura y toca la zona. Después ajusta el tamaño en centímetros reales.</p>
+    </div>
+    <button class="ghost" id="lang" type="button">English</button>
+  </header>
+
+  <div class="stage-wrap">
+    <div class="halo" aria-hidden="true">
+      <svg viewBox="0 0 200 200" fill="none" stroke="#c9a35f" stroke-width="0.8">
+        <circle cx="100" cy="100" r="62"/><circle cx="100" cy="100" r="70" stroke-dasharray="1 5"/>
+        <g id="rays"></g>
+      </svg>
+    </div>
+    <div id="stage"></div>
+    <div class="views">
+      <button class="ghost" id="viewFront" type="button">Frente</button>
+      <button class="ghost" id="viewBack" type="button">Espalda</button>
+    </div>
+    <span id="status" role="status"></span>
+  </div>
+
+  <section class="panel" aria-labelledby="title">
+    <div class="figure">
+      <span class="label" id="bodyLabel">Figura</span>
+      <div class="seg" role="group" aria-labelledby="bodyLabel">
+        <button type="button" id="bf" aria-pressed="true">Femenina</button>
+        <button type="button" id="bm" aria-pressed="false">Masculina</button>
+      </div>
+      <label class="label" id="heightLabel" for="height">Tu estatura</label>
+      <div class="range">
+        <input id="height" type="range" min="145" max="205" step="1" value="167">
+        <output id="heightOut" for="height">167 cm</output>
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li><span id="stepZone" aria-current="true">Zona</span></li>
+      <li><span id="stepSize" aria-current="false">Tamaño</span></li>
+    </ol>
+
+    <p class="chosen muted" id="chosen" aria-live="polite"></p>
+
+    <div id="zonePanel">
+      <div id="groups"></div>
+      <p></p>
+      <button class="primary" id="next" type="button" disabled>Elegir tamaño</button>
+    </div>
+
+    <div id="sizePanel" hidden>
+      <p class="full" id="full" hidden></p>
+      <div id="sizeControls" class="panel">
+        <div>
+          <label class="label" id="sizeLabel" for="size">Tamaño del diseño</label>
+          <div class="range">
+            <input id="size" type="range" min="3" max="24" step="1" value="12">
+            <output class="size-out" id="sizeOut" for="size"></output>
+          </div>
+          <p class="band" id="band"></p>
+        </div>
+        <div class="row">
+          <span class="label" id="shapeLabel">Formato</span>
+          <div class="seg" role="group" aria-labelledby="shapeLabel">
+            <button type="button" id="shape-vertical" aria-pressed="true">Vertical</button>
+            <button type="button" id="shape-square" aria-pressed="false">Cuadrado</button>
+            <button type="button" id="shape-horizontal" aria-pressed="false">Horizontal</button>
+          </div>
+        </div>
+        <div>
+          <label class="label" id="rotLabel" for="rot">Rotación</label>
+          <div class="range">
+            <input id="rot" type="range" min="-90" max="90" step="5" value="0">
+            <output id="rotOut" for="rot">0°</output>
+          </div>
+        </div>
+        <p class="note" id="hint"></p>
+      </div>
+      <p class="note" id="approx"></p>
+      <button class="ghost" id="back" type="button">Cambiar zona</button>
+    </div>
+  </section>
+</div>
+<script>
+  // Twenty-four thin rays around the halo, drawn once.
+  (function () {
+    var g = document.getElementById("rays"), s = "";
+    for (var i = 0; i < 24; i++) {
+      var a = (i / 24) * Math.PI * 2, r1 = 76, r2 = i % 2 ? 84 : 94;
+      s += '<line x1="' + (100 + Math.cos(a) * r1).toFixed(1) + '" y1="' + (100 + Math.sin(a) * r1).toFixed(1) +
+        '" x2="' + (100 + Math.cos(a) * r2).toFixed(1) + '" y2="' + (100 + Math.sin(a) * r2).toFixed(1) + '"/>';
+    }
+    g.innerHTML = s;
+  })();
+</script>
+<script type="importmap">__IMPORTMAP__</script>
+<script type="module" src="demo.js"></script>

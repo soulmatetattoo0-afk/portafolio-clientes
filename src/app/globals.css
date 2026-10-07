@@ -1,0 +1,321 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Noir ground like candle soot, aged gilt as the single accent,
+ * vellum for text. Cinzel is reserved for names (inscriptions); Cormorant
+ * Garamond carries headings; Instrument Sans does the work in forms and data.
+ * Gold is spent on one thing per screen: the primary action or the selection.
+ */
+@theme {
+  --color-soot: #120f0c;
+  --color-niche: #1b1712;
+  --color-niche-2: #231e17;
+  --color-line: #2f2922;
+  --color-line-strong: #4a4136;
+  --color-vellum: #ece3d2;
+  --color-ash: #a09582;
+  --color-ash-dim: #786e5f;
+  --color-gilt: #c9a35f;
+  --color-gilt-bright: #e3c487;
+  --color-gilt-deep: #8c6d37;
+  --color-verdigris: #8fb39a;
+  --color-ember: #dc9a62;
+  --color-oxblood: #d9705f;
+
+  --font-display: var(--font-cinzel), "Trajan Pro", Georgia, serif;
+  --font-serif: var(--font-cormorant), Garamond, Georgia, serif;
+  --font-sans: var(--font-instrument), "Helvetica Neue", Arial, sans-serif;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html {
+    background: var(--color-soot);
+    color: var(--color-vellum);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    min-height: 100dvh;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-gilt) 45%, transparent);
+    color: var(--color-vellum);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gilt-bright);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  input[type="range"] {
+    accent-color: var(--color-gilt);
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-gilt);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Type scale (Bringhurst-ish 1.25 on 15px). */
+  .t-inscription {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    line-height: 1.05;
+  }
+  .t-display {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+  }
+  .t-title {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: clamp(1.75rem, 3.6vw, 2.35rem);
+    line-height: 1.08;
+  }
+  .t-heading {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.45rem;
+    line-height: 1.15;
+  }
+  .t-lead {
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    color: var(--color-ash);
+  }
+  .t-label {
+    font-size: 0.8125rem;
+    color: var(--color-ash);
+    font-weight: 500;
+  }
+  .t-meta {
+    font-size: 0.8125rem;
+    color: var(--color-ash-dim);
+  }
+  .t-num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Surfaces: the page is soot; a niche is the one raised object on a screen. */
+  .niche {
+    background: var(--color-niche);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+  }
+  .hairline {
+    border-color: var(--color-line);
+  }
+
+  /* Controls */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0 1.1rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 0.9375rem;
+    letter-spacing: 0.005em;
+    white-space: nowrap;
+    transition:
+      background-color 160ms var(--ease-out-quart),
+      border-color 160ms var(--ease-out-quart),
+      color 160ms var(--ease-out-quart);
+    cursor: pointer;
+  }
+  .btn[aria-disabled="true"],
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .btn-primary {
+    background: var(--color-gilt);
+    color: var(--color-soot);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-gilt-bright);
+  }
+  .btn-secondary {
+    border: 1px solid var(--color-line-strong);
+    color: var(--color-vellum);
+    background: transparent;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--color-ash);
+    background: var(--color-niche-2);
+  }
+  .btn-ghost {
+    color: var(--color-ash);
+    background: transparent;
+    padding: 0 0.6rem;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--color-vellum);
+  }
+  .btn-danger {
+    border: 1px solid color-mix(in oklab, var(--color-oxblood) 55%, transparent);
+    color: var(--color-oxblood);
+    background: transparent;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--color-oxblood) 12%, transparent);
+  }
+  .btn-sm {
+    min-height: 36px;
+    padding: 0 0.8rem;
+    font-size: 0.875rem;
+  }
+
+  .input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.6rem 0.8rem;
+    background: var(--color-soot);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-vellum);
+    font-size: 1rem;
+    transition: border-color 140ms;
+  }
+  .input::placeholder {
+    color: var(--color-ash-dim);
+  }
+  .input:hover {
+    border-color: var(--color-ash-dim);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-gilt);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-gilt) 22%, transparent);
+  }
+  .input[aria-invalid="true"] {
+    border-color: var(--color-oxblood);
+  }
+  textarea.input {
+    min-height: 120px;
+    line-height: 1.55;
+    resize: vertical;
+  }
+  select.input {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--color-ash) 50%), linear-gradient(135deg, var(--color-ash) 50%, transparent 50%);
+    background-position:
+      calc(100% - 18px) 55%,
+      calc(100% - 13px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 2.2rem;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 38px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-vellum);
+    font-size: 0.9rem;
+    background: transparent;
+    cursor: pointer;
+    transition:
+      border-color 140ms,
+      background-color 140ms,
+      color 140ms;
+  }
+  .chip:hover {
+    border-color: var(--color-ash);
+  }
+  .chip[aria-pressed="true"],
+  .chip[aria-checked="true"],
+  .chip[data-active="true"] {
+    border-color: var(--color-gilt);
+    color: var(--color-gilt-bright);
+    background: color-mix(in oklab, var(--color-gilt) 9%, transparent);
+  }
+
+  .seg {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 999px;
+  }
+  .seg > button {
+    min-height: 34px;
+    padding: 0 0.95rem;
+    border-radius: 999px;
+    color: var(--color-ash);
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .seg > button[aria-pressed="true"] {
+    background: var(--color-vellum);
+    color: var(--color-soot);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .link {
+    color: var(--color-vellum);
+    text-decoration: underline;
+    text-decoration-color: var(--color-gilt-deep);
+    text-underline-offset: 3px;
+  }
+  .link:hover {
+    text-decoration-color: var(--color-gilt-bright);
+  }
+}
