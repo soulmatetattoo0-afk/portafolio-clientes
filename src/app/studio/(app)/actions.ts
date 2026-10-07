@@ -298,6 +298,79 @@ export async function deletePortfolioItem(id: string) {
   revalidatePath("/studio/portfolio");
 }
 
+/** The cover photo: one upload, replaces the previous one. */
+export async function setPortrait(uploadToken: string, key: string) {
+  const member = await requireMember();
+  const draftId = readDraftToken(uploadToken);
+  if (!draftId || !(await inspectUpload(draftId, key))) return;
+  const { moveDraftToPublic } = await import("@/lib/storage-move");
+  const publicKey = await moveDraftToPublic(key, `portrait/${member.artistId}`);
+  const db = await getDb();
+  const old = await db.one<{ portrait_path: string | null }>(`update artists set portrait_path = $3 where id = $1 and studio_id = $2 returning (select portrait_path from artists where id = $1) as portrait_path`, [
+    member.artistId, member.studioId, publicKey,
+  ]);
+  if (old?.portrait_path && old.portrait_path !== publicKey && !old.portrait_path.startsWith("demo/")) await removeFile("public", old.portrait_path).catch(() => undefined);
+  revalidatePath("/", "layout");
+}
+
+export async function removePortrait() {
+  const member = await requireMember();
+  const db = await getDb();
+  const row = await db.one<{ portrait_path: string | null }>(`update artists set portrait_path = null where id = $1 and studio_id = $2 returning portrait_path`, [member.artistId, member.studioId]);
+  if (row?.portrait_path && !row.portrait_path.startsWith("demo/")) await removeFile("public", row.portrait_path).catch(() => undefined);
+  revalidatePath("/", "layout");
+}
+
+/* ------------------------------------------------------------------ flash designs */
+
+export async function addFlashItems(uploadToken: string, keys: string[]) {
+  const member = await requireMember();
+  const draftId = readDraftToken(uploadToken);
+  if (!draftId) return;
+  const db = await getDb();
+  const max = await db.one<{ n: number }>(`select coalesce(max(sort), 0)::int as n from flash_designs where artist_id = $1`, [member.artistId]);
+  const currency = (await db.one<{ currency: string }>(`select currency from artists where id = $1`, [member.artistId]))?.currency ?? "usd";
+  let sort = max?.n ?? 0;
+  for (const key of keys.slice(0, 20)) {
+    if (!(await inspectUpload(draftId, key))) continue;
+    const { moveDraftToPublic } = await import("@/lib/storage-move");
+    const publicKey = await moveDraftToPublic(key, `flash/${member.artistId}`);
+    await db.query(`insert into flash_designs (studio_id, artist_id, image_path, currency, sort) values ($1, $2, $3, $4, $5)`, [member.studioId, member.artistId, publicKey, currency, ++sort]);
+  }
+  revalidatePath("/studio/flash");
+}
+
+const FlashPatch = z.object({
+  title: z.string().trim().max(80),
+  description: z.string().trim().max(500),
+  size_label: z.string().trim().max(40),
+  price: z.union([z.literal(""), z.coerce.number().min(0).max(100000)]),
+  status: z.enum(["available", "reserved", "taken"]),
+  repeatable: z.boolean(),
+  published: z.boolean(),
+});
+
+export async function updateFlashItem(id: string, patch: z.input<typeof FlashPatch>) {
+  const member = await requireMember();
+  const p = FlashPatch.parse(patch);
+  const db = await getDb();
+  await db.query(
+    `update flash_designs set title = $3, description = $4, size_label = $5, price_cents = $6, status = $7, repeatable = $8, published = $9 where id = $1 and studio_id = $2`,
+    [id, member.studioId, p.title, p.description || null, p.size_label || null, p.price === "" ? null : Math.round(p.price * 100), p.status, p.repeatable, p.published],
+  );
+  revalidatePath("/studio/flash");
+  revalidatePath("/", "layout");
+}
+
+export async function deleteFlashItem(id: string) {
+  const member = await requireMember();
+  const db = await getDb();
+  const row = await db.one<{ image_path: string | null }>(`delete from flash_designs where id = $1 and studio_id = $2 returning image_path`, [id, member.studioId]);
+  if (row?.image_path) await removeFile("public", row.image_path).catch(() => undefined);
+  revalidatePath("/studio/flash");
+  revalidatePath("/", "layout");
+}
+
 /* ------------------------------------------------------------------ cities */
 
 const Stop = z.object({
@@ -399,6 +472,10 @@ const Profile = z.object({
   styles: z.array(z.string().refine((s) => STYLE_BY_SLUG.has(s))).max(10),
   accepting: z.boolean(),
   min_price: z.union([z.literal(""), z.coerce.number().min(0).max(100000)]),
+  cover_word: z.string().trim().max(24),
+  cover_quote: z.string().trim().max(160),
+  since_year: z.union([z.literal(""), z.coerce.number().int().min(1950).max(2100)]),
+  accent: z.union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)]),
 });
 
 export async function saveProfile(_prev: FormState, form: FormData): Promise<FormState> {
@@ -413,14 +490,22 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
     styles: form.getAll("styles").map(String),
     accepting: form.get("accepting") === "on",
     min_price: form.get("min_price") ?? "",
+    cover_word: form.get("cover_word") ?? "",
+    cover_quote: form.get("cover_quote") ?? "",
+    since_year: form.get("since_year") ?? "",
+    accent: form.get("accent") ?? "",
   });
   if (!parsed.success) return { ok: false, message: t.common.error, field: String(parsed.error.issues[0]?.path[0] ?? "") };
   const p = parsed.data;
   const db = await getDb();
   await db.query(
-    `update artists set display_name = $3, headline = $4, bio = $5, instagram = $6, home_city = $7, styles = $8, accepting = $9, min_price_cents = $10
+    `update artists set display_name = $3, headline = $4, bio = $5, instagram = $6, home_city = $7, styles = $8, accepting = $9, min_price_cents = $10,
+            cover_word = $11, cover_quote = $12, since_year = $13, accent = $14
       where id = $1 and studio_id = $2`,
-    [member.artistId, member.studioId, p.display_name, p.headline || null, p.bio || null, p.instagram || null, p.home_city || null, p.styles, p.accepting, p.min_price === "" ? null : Math.round(p.min_price * 100)],
+    [
+      member.artistId, member.studioId, p.display_name, p.headline || null, p.bio || null, p.instagram || null, p.home_city || null, p.styles, p.accepting,
+      p.min_price === "" ? null : Math.round(p.min_price * 100), p.cover_word || null, p.cover_quote || null, p.since_year === "" ? null : p.since_year, p.accent || null,
+    ],
   );
   revalidatePath("/", "layout");
   return { ok: true, message: t.common.saved };

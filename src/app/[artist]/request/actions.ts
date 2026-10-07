@@ -57,6 +57,7 @@ const Brief = z
     coverup: z.boolean(),
     firstTattoo: z.boolean(),
     stopId: z.string().uuid().nullable(),
+    flashId: z.string().uuid().nullable().default(null),
     timing: z.enum(["asap", "flexible", "specific"]),
     dates: z.string().trim().max(500),
     budgetMin: z.number().int().min(0).max(10_000_000),
@@ -102,6 +103,8 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
     const stop = await db.one(`select id from tour_stops where id = $1 and artist_id = $2`, [b.stopId, artist.id]);
     if (!stop) return { ok: false, error: t.brief.errors.generic };
   }
+  // A flash design only counts when it belongs to this artist and is still on offer.
+  const flashId = b.flashId ? ((await db.one(`select id from flash_designs where id = $1 and artist_id = $2 and published`, [b.flashId, artist.id])) ? b.flashId : null) : null;
 
   // Only accept files uploaded under this brief's own signed draft.
   const draftId = b.uploadToken ? readDraftToken(b.uploadToken) : null;
@@ -137,8 +140,8 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
     const brief = await tx.one<{ id: string }>(
       `insert into briefs (studio_id, artist_id, client_id, ref, style, color_mode, placement, full_coverage, body, body_height_cm,
           size_w_cm, size_h_cm, placement_detail, description, avoid, is_coverup, is_first_tattoo,
-          budget_min_cents, budget_max_cents, currency, timing, preferred_dates, tour_stop_id, attribution)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          budget_min_cents, budget_max_cents, currency, timing, preferred_dates, tour_stop_id, attribution, flash_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        returning id`,
       [
         artist.studio_id, artist.id, client!.id, ref, b.style, b.color, b.placement, full, b.body, b.height,
@@ -146,7 +149,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
         JSON.stringify(full || !b.point ? {} : { point: b.point, normal: b.normal, rotation_deg: b.rotationDeg }),
         b.description, b.avoid || null, b.coverup, b.firstTattoo,
         b.budgetMin, b.budgetMax, artist.currency, b.timing, b.timing === "specific" ? b.dates || null : null, b.stopId,
-        JSON.stringify(b.attribution),
+        JSON.stringify(b.attribution), flashId,
       ],
     );
     for (const f of files) {

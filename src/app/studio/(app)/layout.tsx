@@ -36,6 +36,7 @@ export default async function StudioLayout({ children }: LayoutProps<"/studio">)
               { href: "/studio", label: n.requests, badge: counts.new },
               { href: "/studio/bookings", label: n.bookings },
               { href: "/studio/portfolio", label: n.portfolio },
+              { href: "/studio/flash", label: n.flash },
               { href: "/studio/cities", label: n.cities },
               { href: "/studio/settings", label: n.settings },
             ]}

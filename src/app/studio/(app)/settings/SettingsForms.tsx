@@ -46,7 +46,10 @@ function Text(props: { name: string; label: string; defaultValue?: string | null
   );
 }
 
-export function ProfileForm({ artist, labels, locale }: { artist: Artist; labels: L; locale: Locale }) {
+/* A short palette of accents that read well on ink. */
+const ACCENTS = ["#d8552f", "#e0b23a", "#c9a35f", "#8fb39a", "#6fa8dc", "#b57edc", "#e85d75", "#e9e2d4"];
+
+export function ProfileForm({ artist, labels, locale, cover }: { artist: Artist; labels: L; locale: Locale; cover?: React.ReactNode }) {
   const [state, action, pending] = useActionState(saveProfile, { ok: false, message: null });
   const submit = useSubmit(action);
   return (
@@ -76,6 +79,41 @@ export function ProfileForm({ artist, labels, locale }: { artist: Artist; labels
         <input type="checkbox" name="accepting" className="h-4 w-4" defaultChecked={artist.accepting} />
         {labels.accepting}
       </label>
+
+      <fieldset id="cover" className="grid scroll-mt-8 gap-5 border-t border-line pt-8">
+        <legend className="t-heading float-left mb-1 w-full">{labels.coverTitle}</legend>
+        <p className="-mt-3 max-w-[60ch] text-ash">{labels.coverLead}</p>
+        {cover}
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Text name="cover_word" label={labels.coverWord} hint={labels.coverWordHint} defaultValue={artist.cover_word} max={24} optional={labels.optional} />
+          <Text name="since_year" type="number" label={labels.since} defaultValue={artist.since_year ? String(artist.since_year) : ""} optional={labels.optional} />
+        </div>
+        <Text name="cover_quote" label={labels.quote} hint={labels.quoteHint} defaultValue={artist.cover_quote} max={160} optional={labels.optional} />
+        <div className="grid content-start gap-1.5">
+          <label htmlFor="set-accent" className="t-label">
+            {labels.accent}
+          </label>
+          <div className="flex items-center gap-3">
+            <input id="set-accent" name="accent" type="color" defaultValue={artist.accent ?? "#d8552f"} className="h-11 w-16 cursor-pointer rounded-[var(--radius-sm)] border border-line-strong bg-soot p-1" />
+            <div className="flex flex-wrap gap-1.5" aria-hidden>
+              {ACCENTS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="h-7 w-7 rounded-full border border-line-strong"
+                  style={{ background: c }}
+                  onClick={() => {
+                    const el = document.getElementById("set-accent") as HTMLInputElement | null;
+                    if (el) el.value = c;
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <p className="text-[0.85rem] text-ash-dim">{labels.accentHint}</p>
+        </div>
+      </fieldset>
+
       <Status state={state} />
       <button type="submit" className="btn btn-primary w-fit" disabled={pending}>
         {labels.save}

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Halo } from "@/app/HeroFigure";
 import { LangToggle } from "@/components/LangToggle";
 import { Mannequin, type MannequinHandle } from "@/components/Mannequin";
 import { fill, type Dict, type Locale } from "@/i18n";
@@ -45,6 +44,7 @@ interface Draft {
   instagram: string;
   adult: boolean;
   attribution: Record<string, string>;
+  flashId: string | null;
 }
 
 const EMPTY: Draft = {
@@ -73,12 +73,15 @@ const EMPTY: Draft = {
   instagram: "",
   adult: false,
   attribution: {},
+  flashId: null,
 };
 
 interface Props {
   t: Dict;
   locale: Locale;
-  artist: { slug: string; name: string; styles: string[]; minPriceCents: number | null; currency: string };
+  artist: { slug: string; name: string; styles: string[]; minPriceCents: number | null; currency: string; accent: string | null };
+  /** A flash design the client picked on the artist's page; the brief starts from it. */
+  flash: { id: string; title: string; description: string | null; sizeLabel: string | null; url: string | null } | null;
   stops: { id: string; city: string; studio: string | null; startsOn: string | null; endsOn: string | null; home: boolean }[];
   storage: { url: string; anonKey: string } | null;
 }
@@ -116,7 +119,7 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
-export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
+export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props) {
   const b = t.brief;
   const router = useRouter();
   const draftKey = `brief-draft:${artist.slug}`;
@@ -161,10 +164,16 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
     setD((prev) => {
       const next = { ...prev, ...(saved ?? {}) };
       next.attribution = { ...(saved?.attribution ?? {}), ...attribution };
+      // A chosen flash design seeds the idea and travels with the brief.
+      if (flash && next.flashId !== flash.id) {
+        next.flashId = flash.id;
+        const line = fill(b.flash.prefix, { title: flash.title });
+        next.description = next.description.trim() ? `${line}\n\n${next.description}` : `${line}\n`;
+      }
       return next;
     });
     if (saved && (saved.step ?? 0) > 0) setRestored(true);
-  }, [draftKey]);
+  }, [draftKey, flash, b.flash.prefix]);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -364,6 +373,7 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
         instagram: d.instagram,
         adult: true,
         attribution: d.attribution,
+        flashId: d.flashId,
         uploadToken,
         uploads,
       });
@@ -401,31 +411,42 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
   const total = STEPS.length;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="poster flex min-h-dvh flex-col" style={{ ["--accent" as string]: artist.accent ?? "#d8552f" }}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2 sm:px-6">
-        <Link href={`/${artist.slug}`} className="t-inscription truncate py-2 text-[0.8rem] tracking-[0.24em] text-gilt">
+        <Link href={`/${artist.slug}#deck`} className="p-stamp flex items-center gap-2 py-2 text-bone">
+          <span aria-hidden className="text-[1.2rem] leading-none">←</span>
           {artist.name.toUpperCase()}
         </Link>
         <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
       </header>
 
       <nav aria-label={fill(b.title, { artist: artist.name })} className="mx-auto w-full max-w-6xl px-4 sm:px-6">
-        <p className="t-meta flex justify-between">
+        <p className="p-stamp flex justify-between text-bone-dim">
           <span>{fill(b.stepOf, { n: d.step + 1, total })}</span>
-          <span className="text-ash">{stepNames[step]}</span>
+          <span>{stepNames[step]}</span>
         </p>
         <ol className="mt-2 grid grid-cols-7 gap-1" aria-hidden>
           {STEPS.map((s, i) => (
-            <li key={s} className={`h-[3px] rounded-full ${i <= d.step ? "bg-gilt" : "bg-line"}`} />
+            <li key={s} className={`h-[3px] rounded-full ${i <= d.step ? "bg-accent" : "bg-line"}`} />
           ))}
         </ol>
       </nav>
 
+      {flash && d.flashId === flash.id && (
+        <p className="mx-auto mt-3 flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6" role="status">
+          {flash.url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={flash.url} alt="" className="h-10 w-10 rounded-[8px] object-cover" />
+          )}
+          <span className="p-stamp text-accent">{fill(b.flash.banner, { title: flash.title })}</span>
+        </p>
+      )}
+
       <div className="mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 pt-4 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 lg:pt-8">
         {/* The figure: sticky on phones while placing, always beside the form on desktop. */}
         <div className={`${figureStep && !noWebgl ? "block" : "hidden"} sticky top-0 z-10 -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
-          <div className="relative h-[46dvh] min-h-[300px] overflow-hidden rounded-[var(--radius-lg)] border border-line [background:radial-gradient(ellipse_48%_38%_at_50%_30%,color-mix(in_oklab,var(--color-gilt)_14%,transparent),transparent_72%),radial-gradient(ellipse_70%_28%_at_50%_100%,rgb(0_0_0/0.55),transparent_70%),var(--color-niche)] lg:sticky lg:top-6 lg:h-[min(80dvh,760px)]">
-            <Halo />
+          <div className="relative h-[46dvh] min-h-[300px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_50%_40%_at_50%_30%,rgb(255_255_255/0.07),transparent_72%),var(--color-ink-2)] lg:sticky lg:top-6 lg:h-[min(80dvh,760px)]">
+            <div className="p-grain" aria-hidden />
             {!noWebgl && (
               <Mannequin
                 ref={viewer}
@@ -451,7 +472,7 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
               </button>
             </div>
             {placement && (
-              <p className="pointer-events-none absolute top-3 right-3 left-3 text-right font-serif text-[1.15rem] italic lg:text-[1.35rem]" aria-hidden>
+              <p className="p-quote pointer-events-none absolute top-3 right-3 left-3 text-right text-[1.25rem] lg:text-[1.45rem]" aria-hidden>
                 {placement.label[locale]}
                 {!placement.fullCoverage && d.step >= 2 ? <span className="t-num ml-2 font-sans text-[0.85rem] text-ash not-italic">{w} × {h} cm</span> : null}
               </p>
@@ -544,7 +565,7 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
               </div>
               <div>
                 <p className="t-label">{b.placement.chosen}</p>
-                <p className={`mt-1 ${placement ? "font-serif text-[1.65rem] leading-tight" : "text-ash"}`} aria-live="polite">
+                <p className={`mt-1 ${placement ? "p-display text-[1.9rem]" : "text-ash"}`} aria-live="polite">
                   {placement ? placement.label[locale] : b.placement.none}
                 </p>
                 <FieldError id={`${uid}-placement-err`} message={show("placement")} />
@@ -881,16 +902,16 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
               {t.common.back}
             </button>
           ) : (
-            <Link href={`/${artist.slug}`} className="btn btn-ghost">
+            <Link href={`/${artist.slug}#deck`} className="btn btn-ghost">
               {t.common.cancel}
             </Link>
           )}
           {step === "review" ? (
-            <button type="button" className="btn btn-primary min-w-48" onClick={send} disabled={sending} aria-busy={sending}>
+            <button type="button" className="btn btn-accent min-w-48" onClick={send} disabled={sending} aria-busy={sending}>
               {sending ? b.review.sending : fill(b.review.send, { artist: artist.name })}
             </button>
           ) : (
-            <button type="button" className="btn btn-primary min-w-40" onClick={next}>
+            <button type="button" className="btn btn-accent min-w-40" onClick={next}>
               {t.common.continue}
             </button>
           )}
@@ -903,10 +924,10 @@ export function BriefWizard({ t, locale, artist, stops, storage }: Props) {
 function StepHead({ id, title, lead }: { id: string; title: string; lead: string }) {
   return (
     <div>
-      <h1 id={id} className="t-title">
+      <h1 id={id} className="p-display text-[clamp(2.2rem,9vw,3.4rem)]">
         {title}
       </h1>
-      <p className="mt-2 max-w-[52ch] text-ash">{lead}</p>
+      <p className="mt-3 max-w-[52ch] text-bone/80">{lead}</p>
     </div>
   );
 }

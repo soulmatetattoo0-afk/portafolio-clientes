@@ -24,6 +24,13 @@ export interface Artist {
   deposit_policy: DepositPolicy;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
+  /** Poster cover: the giant word behind the photo, a short quote, the year they started. */
+  cover_word: string | null;
+  cover_quote: string | null;
+  since_year: number | null;
+  /** Per-artist accent colour (#rrggbb) for the public experience. */
+  accent: string | null;
+  portrait_url: string | null;
 }
 
 export interface TourStop {
@@ -40,6 +47,19 @@ export interface TourStop {
   waitlist_count?: number;
 }
 
+export interface FlashItem {
+  id: string;
+  title: string;
+  description: string | null;
+  size_label: string | null;
+  price_cents: number | null;
+  currency: string;
+  status: "available" | "reserved" | "taken";
+  repeatable: boolean;
+  published: boolean;
+  url: string | null;
+}
+
 export interface PortfolioItem {
   id: string;
   title: string | null;
@@ -52,7 +72,16 @@ export interface PortfolioItem {
 }
 
 const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bio, a.instagram, a.home_city, a.styles, a.accepting,
-  a.min_price_cents, a.currency, a.deposit_policy, a.stripe_account_id, a.stripe_charges_enabled`;
+  a.min_price_cents, a.currency, a.deposit_policy, a.stripe_account_id, a.stripe_charges_enabled,
+  a.cover_word, a.cover_quote, a.since_year, a.accent, a.portrait_path`;
+
+type ArtistRow = Omit<Artist, "portrait_url"> & { portrait_path: string | null };
+
+async function withPortrait(row: ArtistRow | null): Promise<Artist | null> {
+  if (!row) return null;
+  const { portrait_path, ...a } = row;
+  return { ...a, portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null };
+}
 
 const isoDate = (d: unknown) => (d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
@@ -62,12 +91,12 @@ function normStop(r: TourStop): TourStop {
 
 export async function getArtistBySlug(slug: string): Promise<Artist | null> {
   const db = await getDb();
-  return db.one<Artist>(`select ${ARTIST_COLS} from artists a where a.slug = $1`, [slug.toLowerCase()]);
+  return withPortrait(await db.one<ArtistRow>(`select ${ARTIST_COLS} from artists a where a.slug = $1`, [slug.toLowerCase()]));
 }
 
 export async function getArtistById(id: string): Promise<Artist | null> {
   const db = await getDb();
-  return db.one<Artist>(`select ${ARTIST_COLS} from artists a where a.id = $1`, [id]);
+  return withPortrait(await db.one<ArtistRow>(`select ${ARTIST_COLS} from artists a where a.id = $1`, [id]));
 }
 
 export async function listStops(artistId: string, opts: { publicOnly?: boolean } = {}): Promise<TourStop[]> {
@@ -87,6 +116,16 @@ export async function listPortfolio(artistId: string, opts: { publishedOnly?: bo
   const db = await getDb();
   const rows = await db.query<Omit<PortfolioItem, "url"> & { image_path: string | null }>(
     `select id, title, style, color_mode, placement, is_healed, published, image_path from portfolio_items
+      where artist_id = $1 ${opts.publishedOnly ? "and published" : ""} order by sort, created_at desc`,
+    [artistId],
+  );
+  return Promise.all(rows.map(async ({ image_path, ...r }) => ({ ...r, url: image_path ? await fileUrl("public", image_path) : null })));
+}
+
+export async function listFlash(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<FlashItem[]> {
+  const db = await getDb();
+  const rows = await db.query<Omit<FlashItem, "url"> & { image_path: string | null }>(
+    `select id, title, description, size_label, price_cents, currency, status, repeatable, published, image_path from flash_designs
       where artist_id = $1 ${opts.publishedOnly ? "and published" : ""} order by sort, created_at desc`,
     [artistId],
   );
@@ -166,6 +205,7 @@ export interface BriefDetail extends BriefListItem {
   client_phone: string | null;
   client_instagram: string | null;
   client_locale: "en" | "es";
+  flash_title: string | null;
   files: { id: string; kind: "reference" | "skin" | "placement"; url: string }[];
   events: { id: string; kind: string; actor: string; body: string | null; data: Record<string, unknown>; created_at: Date }[];
   quote: { id: string; token: string; status: string; deposit_cents: number; currency: string; created_at: Date } | null;
@@ -177,8 +217,9 @@ export async function getBrief(studioId: string, briefId: string): Promise<Brief
     `select b.id, b.ref, b.status, b.artist_id, c.name as client_name, b.placement, b.full_coverage, b.size_w_cm::float as size_w_cm, b.size_h_cm::float as size_h_cm,
             b.style, b.color_mode, b.budget_min_cents, b.budget_max_cents, b.currency, t.city, b.created_at, b.seen_at,
             b.body, b.body_height_cm, b.placement_detail, b.description, b.avoid, b.is_coverup, b.is_first_tattoo, b.timing, b.preferred_dates,
-            b.tour_stop_id, b.attribution, c.id as client_id, c.email as client_email, c.phone as client_phone, c.instagram as client_instagram, c.locale as client_locale
-       from briefs b join clients c on c.id = b.client_id left join tour_stops t on t.id = b.tour_stop_id
+            b.tour_stop_id, b.attribution, c.id as client_id, c.email as client_email, c.phone as client_phone, c.instagram as client_instagram, c.locale as client_locale,
+            f.title as flash_title
+       from briefs b join clients c on c.id = b.client_id left join tour_stops t on t.id = b.tour_stop_id left join flash_designs f on f.id = b.flash_id
       where b.studio_id = $1 and b.id = $2`,
     [studioId, briefId],
   );

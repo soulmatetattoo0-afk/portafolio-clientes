@@ -10,6 +10,7 @@ import { getArtistById } from "@/lib/queries";
 
 import { refreshStripeStatus, startStripeConnect } from "../actions";
 import { CopyButton } from "../CopyButton";
+import { CoverPhoto } from "./CoverPhoto";
 import { ProfileForm, RulesForm } from "./SettingsForms";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/studio/settings">) {
@@ -23,6 +24,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/studio/
   const s = t.studio.settings;
   const sections = [
     ["profile", s.sections.profile],
+    ["cover", s.cover.title],
     ["booking", s.sections.booking],
     ["payments", s.sections.payments],
     ["plan", s.sections.plan],
@@ -73,7 +75,23 @@ export default async function SettingsPage({ searchParams }: PageProps<"/studio/
               accepting: s.accepting,
               save: t.common.save,
               optional: t.common.optional,
+              coverTitle: s.cover.title,
+              coverLead: s.cover.lead,
+              coverWord: s.cover.word,
+              coverWordHint: s.cover.wordHint,
+              quote: s.cover.quote,
+              quoteHint: s.cover.quoteHint,
+              since: s.cover.since,
+              accent: s.cover.accent,
+              accentHint: s.cover.accentHint,
             }}
+            cover={
+              <CoverPhoto
+                url={artist.portrait_url}
+                storage={live.storage ? { url: env.supabaseUrl!, anonKey: env.supabaseAnonKey! } : null}
+                labels={{ upload: s.cover.upload, replace: s.cover.replace, remove: s.cover.remove, hint: s.cover.photoHint, error: t.brief.errors.upload }}
+              />
+            }
           />
         </section>
 

@@ -55,6 +55,7 @@ export function BriefView({ brief, t, locale }: { brief: BriefDetail; t: Dict; l
           {placement?.label[locale]}
           {brief.full_coverage ? `, ${s.fullCoverage.toLowerCase()}` : brief.size_w_cm ? `, ${cmLabel(brief.size_w_cm, brief.size_h_cm)}` : ""}
         </p>
+        {brief.flash_title && <p className="text-[0.95rem] text-gilt">{fill(t.artist.panel.flash.startedFrom, { title: brief.flash_title })}</p>}
         {brief.quote && brief.status === "quoted" && (
           <p className="text-[0.92rem] text-ash">
             {fill(s.quoteSent, { time: relativeTime(brief.quote.created_at, locale), amount: money(brief.quote.deposit_cents, brief.quote.currency, locale) })}{" "}

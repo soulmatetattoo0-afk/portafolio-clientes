@@ -25,6 +25,14 @@
   --font-display: var(--font-cinzel), "Trajan Pro", Georgia, serif;
   --font-serif: var(--font-cormorant), Garamond, Georgia, serif;
   --font-sans: var(--font-instrument), "Helvetica Neue", Arial, sans-serif;
+  --font-poster: var(--font-anton), Impact, "Arial Narrow Bold", sans-serif;
+
+  /* Poster palette for the public artist experience: ink, bone, one accent per artist. */
+  --color-ink: #0a0a0a;
+  --color-ink-2: #141312;
+  --color-bone: #e9e2d4;
+  --color-bone-dim: #a8a194;
+  --color-accent: var(--accent, #d8552f);
 
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -317,5 +325,239 @@
   }
   .link:hover {
     text-decoration-color: var(--color-gilt-bright);
+  }
+}
+
+/* ------------------------------------------------------------------ poster */
+/*
+ * The public artist experience. Scoped under .poster so the studio keeps its
+ * quieter gilt system. One accent per artist arrives as --accent on the root.
+ */
+@layer components {
+  .poster {
+    background: var(--color-ink);
+    color: var(--color-bone);
+    --color-soot: var(--color-ink);
+    --color-niche: var(--color-ink-2);
+    --color-vellum: var(--color-bone);
+    --color-ash: var(--color-bone-dim);
+    --color-gilt: var(--color-accent);
+    --color-gilt-bright: color-mix(in oklab, var(--color-accent) 80%, white);
+    --color-gilt-deep: color-mix(in oklab, var(--color-accent) 70%, black);
+    --color-line: #262321;
+    --color-line-strong: #3a3633;
+  }
+  .poster ::selection {
+    background: color-mix(in oklab, var(--color-accent) 55%, transparent);
+  }
+  .poster .btn-primary {
+    background: var(--color-bone);
+    color: var(--color-ink);
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.8rem;
+  }
+  .poster .btn-primary:hover:not(:disabled) {
+    background: white;
+  }
+  .poster .btn-accent {
+    background: var(--color-accent);
+    color: var(--color-ink);
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.8rem;
+  }
+  .poster .btn-secondary {
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.78rem;
+    border-color: var(--color-line-strong);
+  }
+  .poster .chip,
+  .poster .input {
+    border-radius: 999px;
+  }
+  .poster textarea.input {
+    border-radius: 14px;
+  }
+  .poster .chip[aria-pressed="true"],
+  .poster .chip[aria-checked="true"],
+  .poster .chip[data-active="true"] {
+    border-color: var(--color-bone);
+    color: var(--color-ink);
+    background: var(--color-bone);
+  }
+  .poster .seg > button[aria-pressed="true"] {
+    background: var(--color-bone);
+    color: var(--color-ink);
+  }
+
+  /* Type: the giant condensed face, the stamp label, the magazine column. */
+  .p-display {
+    font-family: var(--font-poster);
+    font-weight: 400;
+    text-transform: uppercase;
+    line-height: 0.86;
+    letter-spacing: -0.01em;
+  }
+  .p-stamp {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.68rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+  }
+  .p-quote {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  .p-col {
+    font-family: var(--font-serif);
+    font-size: 1.22rem;
+    line-height: 1.5;
+  }
+
+  /* Film grain over everything; the halftone sits behind panel titles. */
+  .p-grain {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    opacity: 0.11;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: 180px 180px;
+  }
+  .p-halftone {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at center, var(--color-bone) 0.55px, transparent 0.9px);
+    background-size: 5px 5px;
+    opacity: 0.14;
+    mask-image: linear-gradient(to bottom, black, transparent 70%);
+  }
+  .p-rule {
+    border-top: 2px solid var(--color-bone);
+  }
+
+  /* Motion */
+  @keyframes p-rise {
+    from {
+      opacity: 0;
+      transform: translateY(26px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes p-word {
+    from {
+      opacity: 0;
+      transform: scale(1.12);
+      letter-spacing: 0.08em;
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      letter-spacing: -0.01em;
+    }
+  }
+  @keyframes p-photo {
+    from {
+      opacity: 0;
+      transform: scale(1.06) translateY(12px);
+      filter: grayscale(1) contrast(1.2);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: grayscale(0.85) contrast(1.08);
+    }
+  }
+  @keyframes p-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes p-marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .p-rise {
+    animation: p-rise 900ms var(--ease-out-quart) both;
+  }
+  .p-word {
+    animation: p-word 1100ms var(--ease-out-quart) both;
+  }
+  .p-photo {
+    animation: p-photo 1400ms var(--ease-out-quart) both;
+    filter: grayscale(0.85) contrast(1.08);
+  }
+  .p-pulse {
+    animation: p-pulse 1.8s ease-in-out infinite;
+  }
+  .p-marquee {
+    animation: p-marquee 28s linear infinite;
+  }
+
+  /* The deck: a horizontal snap rail; cards are transformed by scroll position in JS. */
+  .p-rail {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .p-rail::-webkit-scrollbar {
+    display: none;
+  }
+  .p-card {
+    scroll-snap-align: center;
+    flex: 0 0 auto;
+    will-change: transform;
+    transition: transform 160ms var(--ease-out-quart);
+  }
+  .p-rail.is-dragging .p-card {
+    transition: none;
+  }
+
+  /* Panels drop in from the card. */
+  @keyframes p-immerse {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(28px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .p-immerse {
+    animation: p-immerse 520ms var(--ease-out-quart) both;
+  }
+  .p-sheet {
+    animation: p-rise 420ms var(--ease-out-quart) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .p-marquee,
+    .p-pulse {
+      animation: none;
+    }
   }
 }

@@ -3,8 +3,12 @@
  * guest spots, and one request in every stage of the pipeline. Only runs when
  * the embedded database is created for the first time.
  */
+import fs from "node:fs";
+import path from "node:path";
+
 import { DEMO_USER_ID } from "./env";
 import type { Db } from "./db";
+import { putFile } from "./storage";
 
 const day = 24 * 3600 * 1000;
 
@@ -20,14 +24,22 @@ const dateOnly = (daysFromNow: number) => new Date(Date.now() + daysFromNow * da
 export async function seedDemo(db: Db) {
   const studio = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('iris-calderon', 'Iris Calderón Tattoo', 'solo', 'founding', 'active') returning id`);
   const s = studio!.id;
+  // The demo cover is a render of the same statue clients place their tattoo on.
+  const coverSrc = path.join(process.cwd(), "public", "demo", "iris-cover.jpg");
+  let portrait: string | null = null;
+  if (fs.existsSync(coverSrc)) {
+    portrait = "demo/iris-cover.jpg";
+    await putFile("public", portrait, fs.readFileSync(coverSrc), "image/jpeg").catch(() => (portrait = null));
+  }
   const artist = await db.one<{ id: string }>(
-    `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency)
+    `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, portrait_path)
      values ($1, 'iris', 'Iris Calderón',
        'Black & grey realism and surreal portraits',
        'I tattoo in New York and travel to Europe twice a year. Most of my work is large-scale realism: portraits, sculpture, nature and dreamlike compositions built around the body.',
-       'iris.calderon.ink', 'New York', '{realism,surrealism,illustrative}', 30000, 'usd')
+       'iris.calderon.ink', 'New York', '{realism,surrealism,illustrative}', 30000, 'usd',
+       'REALISM', 'Skin remembers what the eye forgets.', 2016, '#d8552f', $2)
      returning id`,
-    [s],
+    [s, portrait],
   );
   const a = artist!.id;
   await db.query(`insert into members (studio_id, user_id, email, role, locale, artist_id) values ($1, $2, 'demo@brief.local', 'owner', 'es', $3)`, [s, DEMO_USER_ID, a]);
@@ -54,6 +66,21 @@ export async function seedDemo(db: Db) {
     await db.query(
       `insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, placement, is_healed, sort) values ($1, $2, null, $3, $4, $5, $6, $7, $8)`,
       [s, a, title, style, color, placement, healed, i],
+    );
+  }
+
+  const flash: [string, string, string, number, string, boolean][] = [
+    ["Medusa, marble", "Bust in profile, hair of serpents carved like stone. One session.", "14 × 20 cm", 90000, "available", false],
+    ["Moth & pocket watch", "A clockwork moth resting on an open watch, fine shading.", "10 × 14 cm", 60000, "available", true],
+    ["Saint hands", "Praying hands bound with a rosary, soft black and grey.", "12 × 16 cm", 70000, "reserved", false],
+    ["Drowned cathedral", "Gothic arches sinking into still water, light from above.", "20 × 30 cm", 160000, "available", false],
+    ["Crow with laurel", "Standing crow, laurel in the beak, high contrast.", "11 × 12 cm", 55000, "taken", false],
+    ["Eye of the sculptor", "A single carved eye with a falling tear of marble dust.", "8 × 8 cm", 40000, "available", true],
+  ];
+  for (const [i, [title, description, size, price, status, repeatable]] of flash.entries()) {
+    await db.query(
+      `insert into flash_designs (studio_id, artist_id, image_path, title, description, size_label, price_cents, currency, status, repeatable, sort) values ($1, $2, null, $3, $4, $5, $6, 'usd', $7, $8, $9)`,
+      [s, a, title, description, size, price, status, repeatable, i],
     );
   }
 

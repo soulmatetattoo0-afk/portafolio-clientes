@@ -51,7 +51,7 @@ Delete `.data/` to start from a fresh seed.
 ### Folder map
 
 ```
-src/app/                 routes: landing, [artist], [artist]/request, q/[token], login, studio, api
+src/app/                 routes: landing, [artist] (cover → deck → panels in [artist]/experience), [artist]/request, q/[token], login, studio, api
 src/app/studio/(app)/    artist studio: requests, bookings, portfolio, cities, settings
 src/lib/                 db, auth, storage, payments, email, booking, queries, formats
 src/i18n/                English and Spanish copy (es.ts must match en.ts's shape)

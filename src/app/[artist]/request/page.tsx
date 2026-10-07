@@ -5,7 +5,7 @@ import { DemoBanner } from "@/components/Chrome";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { env, live } from "@/lib/env";
-import { getArtistBySlug, listStops } from "@/lib/queries";
+import { getArtistBySlug, listFlash, listStops } from "@/lib/queries";
 
 import { BriefWizard } from "./BriefWizard";
 
@@ -15,19 +15,21 @@ export async function generateMetadata({ params }: PageProps<"/[artist]/request"
   return artist ? { title: fill(t.brief.title, { artist: artist.display_name }), robots: { index: false } } : {};
 }
 
-export default async function RequestPage({ params }: PageProps<"/[artist]/request">) {
-  const { artist: slug } = await params;
+export default async function RequestPage({ params, searchParams }: PageProps<"/[artist]/request">) {
+  const [{ artist: slug }, sp] = await Promise.all([params, searchParams]);
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
-  if (!artist.accepting) redirect(`/${artist.slug}#cities`);
-  const [{ t, locale }, stops] = await Promise.all([getDict(), listStops(artist.id, { publicOnly: true })]);
+  if (!artist.accepting) redirect(`/${artist.slug}#spots`);
+  const [{ t, locale }, stops, flashAll] = await Promise.all([getDict(), listStops(artist.id, { publicOnly: true }), typeof sp.flash === "string" ? listFlash(artist.id, { publishedOnly: true }) : []]);
+  const picked = flashAll.find((f) => f.id === sp.flash && f.status === "available") ?? null;
   return (
     <>
       <DemoBanner />
       <BriefWizard
         t={t}
         locale={locale}
-        artist={{ slug: artist.slug, name: artist.display_name, styles: artist.styles, minPriceCents: artist.min_price_cents, currency: artist.currency }}
+        artist={{ slug: artist.slug, name: artist.display_name, styles: artist.styles, minPriceCents: artist.min_price_cents, currency: artist.currency, accent: artist.accent }}
+        flash={picked ? { id: picked.id, title: picked.title, description: picked.description, sizeLabel: picked.size_label, url: picked.url } : null}
         stops={stops
           .filter((s) => s.status === "booking" || s.status === "announced")
           .map((s) => ({ id: s.id, city: s.city, studio: s.studio_name, startsOn: s.starts_on, endsOn: s.ends_on, home: s.is_home }))}
