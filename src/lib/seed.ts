@@ -3,12 +3,9 @@
  * guest spots, and one request in every stage of the pipeline. Only runs when
  * the embedded database is created for the first time.
  */
-import fs from "node:fs";
-import path from "node:path";
 
 import { DEMO_USER_ID } from "./env";
 import type { Db } from "./db";
-import { putFile } from "./storage";
 
 const day = 24 * 3600 * 1000;
 
@@ -24,14 +21,10 @@ const dateOnly = (daysFromNow: number) => new Date(Date.now() + daysFromNow * da
 export async function seedDemo(db: Db) {
   const studio = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('soulmate-tattoo', 'Soulmate Tattoo', 'solo', 'founding', 'active') returning id`);
   const s = studio!.id;
-  const upload = async (file: string, mime: string) => {
-    const src = path.join(process.cwd(), "public", "demo", file);
-    if (!fs.existsSync(src)) return null;
-    const key = `demo/${file}`;
-    return putFile("public", key, fs.readFileSync(src), mime).then(() => key).catch(() => null);
-  };
+  // Demo images stay in public/demo and are served statically; the key only has to point there.
+  const demoImage = (file: string) => `demo/${file}`;
   // Camo Contreras, Soulmate Tattoo: the first artist on the platform. His cover is his own poster.
-  const camoCover = await upload("camo-cover.webp", "image/webp");
+  const camoCover = demoImage("camo-cover.webp");
   const artist = await db.one<{ id: string }>(
     `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, cover_poster, portrait_path)
      values ($1, 'camo', 'Camo Contreras',
@@ -49,7 +42,7 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
 
   // A second artist so Explore has a neighbour: a studio of her own, no member. Her cover is a render of the statue.
   const iris = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('iris-calderon', 'Iris Calderón Tattoo', 'solo', 'founding', 'active') returning id`);
-  const irisCover = await upload("iris-cover.jpg", "image/jpeg");
+  const irisCover = demoImage("iris-cover.jpg");
   const irisArtist = await db.one<{ id: string }>(
     `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, portrait_path)
      values ($1, 'iris', 'Iris Calderón', 'Black & grey realism and surreal portraits',

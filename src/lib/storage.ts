@@ -42,6 +42,8 @@ export async function fileUrl(bucket: Bucket, key: string, expiresIn = 3600): Pr
     return data.signedUrl;
   }
   const encoded = key.split("/").map(encodeURIComponent).join("/");
+  // Demo assets ship in public/, so the static host serves them on any instance (serverless /tmp is per instance).
+  if (bucket === "public" && key.startsWith("demo/")) return `/${encoded}`;
   if (bucket === "public") return `/api/files/public/${encoded}`;
   const exp = Math.floor(Date.now() / 1000) + expiresIn;
   return `/api/files/private/${encoded}?exp=${exp}&sig=${sign(`private/${key}:${exp}`)}`;
