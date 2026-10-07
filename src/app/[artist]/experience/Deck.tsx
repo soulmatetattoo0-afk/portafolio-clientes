@@ -7,7 +7,8 @@ import { LangToggle } from "@/components/LangToggle";
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 
-import { GalleryFrame, Portrait, ReserveSign, Sketchbook, WorldTable, type ObjectHandle } from "./objects";
+import { GalleryFrame, Portrait, ReserveSign, Sketchbook, WorldObject, type ObjectHandle } from "./objects";
+import { pinsOf } from "./pins";
 import { PANELS, type ExperienceData, type PanelId } from "./types";
 
 const N = PANELS.length;
@@ -126,7 +127,7 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
       case "book":
         return <ReserveSign ref={set} label={a.deck.sign.toUpperCase()} />;
       case "spots":
-        return <WorldTable ref={set} />;
+        return <WorldObject ref={set} pins={pinsOf(data)} />;
     }
   };
 

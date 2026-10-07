@@ -28,6 +28,7 @@
   --font-poster: var(--font-shoulders), Impact, "Arial Narrow Bold", sans-serif;
   --font-gothic: var(--font-pirata), "Old English Text MT", serif;
   --font-quote: var(--font-instrument-serif), "Times New Roman", serif;
+  --font-script: var(--font-script), "Brush Script MT", cursive;
 
   /* Poster palette for the public artist experience: ink, bone, one accent per artist. */
   --color-ink: #0a0a0a;
@@ -418,6 +419,10 @@
     letter-spacing: 0.26em;
     text-transform: uppercase;
   }
+  .p-script {
+    font-family: var(--font-script);
+    font-weight: 400;
+  }
   .p-quote {
     font-family: var(--font-quote);
     font-style: italic;
@@ -554,23 +559,23 @@
   @keyframes p-bulb {
     0%,
     100% {
-      opacity: 0.55;
-      transform: translate(-50%, -50%) scale(0.92);
+      opacity: 0.6;
+      transform: scale(0.92);
     }
     50% {
       opacity: 1;
-      transform: translate(-50%, -50%) scale(1.06);
+      transform: scale(1.06);
     }
   }
   @keyframes p-beam {
     0%,
     100% {
       opacity: 0.55;
-      transform: translate(-50%, -50%) scale(0.9);
+      transform: scale(0.9);
     }
     50% {
       opacity: 0.95;
-      transform: translate(-50%, -50%) scale(1.15);
+      transform: scale(1.15);
     }
   }
   @keyframes p-twinkle {
@@ -632,6 +637,75 @@
     animation: p-kenburns 4s ease-out both;
   }
 
+  @keyframes p-ping {
+    0% {
+      transform: scale(0.4);
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+  @keyframes p-twinkle-dot {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes p-dash {
+    to {
+      stroke-dashoffset: -26;
+    }
+  }
+  @keyframes p-ink {
+    from {
+      opacity: 0;
+      filter: blur(5px);
+      letter-spacing: 0.08em;
+    }
+    to {
+      opacity: 1;
+      filter: none;
+      letter-spacing: 0;
+    }
+  }
+  @keyframes p-flicker {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    7% {
+      opacity: 0.86;
+    }
+    11% {
+      opacity: 1;
+    }
+    53% {
+      opacity: 0.93;
+    }
+    61% {
+      opacity: 1;
+    }
+  }
+  .p-ping {
+    animation: p-ping 2.4s ease-out infinite;
+  }
+  .p-twinkle-dot {
+    animation: p-twinkle-dot 2.6s ease-in-out infinite;
+  }
+  .p-dash {
+    animation: p-dash 1.6s linear infinite;
+  }
+  .p-ink {
+    animation: p-ink 1.3s var(--ease-out-quart) both;
+  }
+  .p-flicker {
+    animation: p-flicker 4s linear infinite;
+  }
   /* The deck: five cards on a ring. JS sets each card's transform from its distance to the front. */
   .p-ring {
     perspective: 1200px;
@@ -730,7 +804,12 @@
     .p-beam,
     .p-twinkle,
     .p-hover,
-    .p-kenburns {
+    .p-kenburns,
+    .p-ping,
+    .p-twinkle-dot,
+    .p-dash,
+    .p-ink,
+    .p-flicker {
       animation: none;
     }
   }

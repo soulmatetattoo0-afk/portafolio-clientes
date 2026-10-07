@@ -1,7 +1,15 @@
 "use client";
 
 import gsap from "gsap";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+
+import { WorldMap, type Pin } from "./WorldMap";
 
 /**
  * The five objects that stand on the ring, one per category. Each one idles
@@ -15,13 +23,21 @@ export interface ObjectHandle {
   reset(): void;
 }
 
-const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** Undo an entrance: only what the timelines touch, never the inline layout. */
+const CLEAR = { clearProps: "transform,opacity,filter,fill" };
+
+const reduced = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Where the opening sits inside /deck/frame.webp (736 × 1104). */
 const OPENING = { left: "23.1%", top: "19.4%", width: "55%", height: "61.7%" };
 
 /* 02 · The gallery: a gilded frame with the artist's own work hanging in it. */
-export const GalleryFrame = forwardRef<ObjectHandle, { photos: string[]; count: number }>(function GalleryFrame({ photos, count }, ref) {
+export const GalleryFrame = forwardRef<
+  ObjectHandle,
+  { photos: string[]; count: number }
+>(function GalleryFrame({ photos, count }, ref) {
   const root = useRef<HTMLDivElement>(null);
   const opening = useRef<HTMLDivElement>(null);
   const [i, setI] = useState(0);
@@ -33,7 +49,7 @@ export const GalleryFrame = forwardRef<ObjectHandle, { photos: string[]; count: 
   }, [photos.length]);
 
   useImperativeHandle(ref, () => ({
-    reset: () => gsap.set([root.current, opening.current], { clearProps: "all" }),
+    reset: () => gsap.set([root.current, opening.current], CLEAR),
     select: () =>
       new Promise((resolve) => {
         const el = root.current!;
@@ -43,202 +59,582 @@ export const GalleryFrame = forwardRef<ObjectHandle, { photos: string[]; count: 
           .timeline({ onComplete: () => resolve(hole.getBoundingClientRect()) })
           .to(el, { scale: 1.05, y: -6, duration: 0.2, ease: "power2.out" })
           .to(el, { scale: 2.6, duration: 0.62, ease: "power3.in" })
-          .to(hole, { filter: "brightness(1.9) contrast(0.9)", duration: 0.4, ease: "power2.in" }, "<0.22");
+          .to(
+            hole,
+            {
+              filter: "brightness(1.9) contrast(0.9)",
+              duration: 0.4,
+              ease: "power2.in",
+            },
+            "<0.22",
+          );
       }),
   }));
 
   return (
-    <div ref={root} className="p-float relative aspect-[736/1104] w-full origin-center will-change-transform">
-      <div ref={opening} className="absolute overflow-hidden bg-[radial-gradient(ellipse_at_center,#123b2d,#071a13_75%)]" style={OPENING}>
-        {photos.map((src, k) => (
-          // eslint-disable-next-line @next/next/no-img-element
+    <div
+      ref={root}
+      className="relative aspect-[736/1104] w-full origin-center will-change-transform"
+    >
+      <div className="p-float absolute inset-0">
+        <div
+          ref={opening}
+          className="absolute overflow-hidden bg-[radial-gradient(ellipse_at_center,#123b2d,#071a13_75%)]"
+          style={OPENING}
+        >
+          {photos.map((src, k) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={src}
+              src={src}
+              alt=""
+              draggable={false}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[1100ms] ease-out ${k === i ? "p-kenburns opacity-100" : "opacity-0"}`}
+            />
+          ))}
+          {!photos.length && (
+            <span
+              aria-hidden
+              className="p-gothic absolute inset-0 grid place-items-center text-[5rem] text-bone/20"
+            >
+              {String(count).padStart(2, "0")}
+            </span>
+          )}
+          <div
+            aria-hidden
+            className="absolute inset-0 shadow-[inset_0_0_36px_rgb(0_0_0/0.75)]"
+          />
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/deck/frame.webp"
+          alt=""
+          draggable={false}
+          className="absolute inset-0 h-full w-full select-none"
+        />
+        <div
+          aria-hidden
+          className="p-sheen absolute inset-0"
+          style={{
+            maskImage: "url(/deck/frame.webp)",
+            WebkitMaskImage: "url(/deck/frame.webp)",
+            maskSize: "100% 100%",
+            WebkitMaskSize: "100% 100%",
+          }}
+        />
+      </div>
+    </div>
+  );
+});
+
+/* 03 · Designs: the sketchbook floats open under a lit bulb; the light lands on the pages. */
+export const Sketchbook = forwardRef<ObjectHandle, object>(
+  function Sketchbook(_, ref) {
+    const root = useRef<HTMLDivElement>(null);
+    const book = useRef<HTMLDivElement>(null);
+    const glow = useRef<HTMLDivElement>(null);
+    const cone = useRef<HTMLDivElement>(null);
+    const bulb = useRef<HTMLDivElement>(null);
+
+    useImperativeHandle(ref, () => ({
+      reset: () =>
+        gsap.set(
+          [
+            root.current,
+            book.current,
+            glow.current,
+            cone.current,
+            bulb.current,
+          ],
+          CLEAR,
+        ),
+      select: () =>
+        new Promise((resolve) => {
+          const el = root.current!;
+          if (reduced()) return resolve(el.getBoundingClientRect());
+          gsap
+            .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
+            .to(bulb.current, {
+              scale: 1.12,
+              filter: "brightness(1.6)",
+              duration: 0.3,
+              ease: "power2.out",
+            })
+            .to(
+              glow.current,
+              { scale: 1.8, opacity: 1, duration: 0.34, ease: "power2.out" },
+              "<",
+            )
+            .to(
+              cone.current,
+              { opacity: 1, scaleX: 1.25, duration: 0.34, ease: "power2.out" },
+              "<",
+            )
+            .to(
+              book.current,
+              {
+                y: -16,
+                rotateX: 14,
+                scale: 1.07,
+                duration: 0.42,
+                ease: "power2.out",
+                transformPerspective: 700,
+              },
+              "<0.05",
+            )
+            .to(
+              glow.current,
+              { scale: 7, opacity: 0.95, duration: 0.5, ease: "power3.in" },
+              ">-0.05",
+            )
+            .to(el, { scale: 2.2, duration: 0.5, ease: "power3.in" }, "<");
+        }),
+    }));
+
+    const bookMask = {
+      WebkitMaskImage: "url(/deck/sketchbook.webp)",
+      maskImage: "url(/deck/sketchbook.webp)",
+      WebkitMaskSize: "contain",
+      maskSize: "contain",
+      WebkitMaskPosition: "center bottom",
+      maskPosition: "center bottom",
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+    } as const;
+
+    return (
+      <div
+        ref={root}
+        className="relative aspect-[545/660] w-full origin-center will-change-transform"
+      >
+        {/* the pool of light behind the bulb */}
+        <div
+          ref={glow}
+          aria-hidden
+          className="absolute aspect-square w-[56%] -translate-x-1/2 -translate-y-1/2"
+          style={{ left: "50%", top: "13%" }}
+        >
+          <div
+            className="p-bulb absolute inset-0 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle, rgb(255 226 150 / 0.9), rgb(255 196 90 / 0.4) 30%, rgb(255 170 60 / 0.1) 55%, transparent 70%)",
+              filter: "blur(8px)",
+            }}
+          />
+        </div>
+        {/* the cone of light falling onto the pages */}
+        <div
+          ref={cone}
+          aria-hidden
+          className="absolute left-1/2 top-[16%] h-[46%] w-[70%] -translate-x-1/2 origin-top"
+          style={{ opacity: 0.85 }}
+        >
+          <div
+            className="p-flicker absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(to bottom, rgb(255 214 130 / 0.55), rgb(255 200 110 / 0.2) 55%, transparent 100%)",
+              clipPath: "polygon(44% 0, 56% 0, 100% 100%, 0 100%)",
+              mixBlendMode: "screen",
+              filter: "blur(7px)",
+            }}
+          />
+        </div>
+        {/* the bulb: glass, filament, brass cap */}
+        <div
+          ref={bulb}
+          className="absolute left-1/2 top-0 w-[23%] -translate-x-1/2 origin-center"
+        >
+          <svg
+            viewBox="0 0 100 150"
+            aria-hidden
+            className="p-flicker block w-full overflow-visible"
+            style={{ filter: "drop-shadow(0 0 14px rgb(255 206 110 / 0.9))" }}
+          >
+            <defs>
+              <radialGradient id="p-glass" cx="50%" cy="42%" r="55%">
+                <stop offset="0" stopColor="#fff8e1" stopOpacity="1" />
+                <stop offset="0.45" stopColor="#ffe6a6" stopOpacity="0.92" />
+                <stop offset="1" stopColor="#f0b85a" stopOpacity="0.55" />
+              </radialGradient>
+              <radialGradient id="p-core" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stopColor="#fff2c2" />
+                <stop offset="1" stopColor="#ffb340" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+            <g
+              stroke="#ffd98a"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              opacity="0.8"
+              className="p-pulse"
+            >
+              <path d="M50 -6 V-18 M14 10 L6 2 M86 10 L94 2 M4 48 H-8 M96 48 H108" />
+            </g>
+            <path
+              d="M50 6C25 6 13 26 13 46c0 15 9 25 17 35 4 5 6 10 6 17h28c0-7 2-12 6-17 8-10 17-20 17-35C87 26 75 6 50 6Z"
+              fill="url(#p-glass)"
+              stroke="#fff1c8"
+              strokeWidth="1.5"
+            />
+            <circle cx="50" cy="60" r="20" fill="url(#p-core)" />
+            <path
+              d="M40 98V80c0-8 5-12 10-7 5-5 10-1 10 7v18"
+              fill="none"
+              stroke="#ff9d2e"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              style={{ filter: "drop-shadow(0 0 4px #ffb347)" }}
+            />
+            <path d="M40 98 v6 M60 98 v6" stroke="#8a6a2a" strokeWidth="2.4" />
+            <rect x="35" y="104" width="30" height="8" rx="2" fill="#c9a24f" />
+            <rect x="36" y="112" width="28" height="6" fill="#8a6a2a" />
+            <rect x="35" y="118" width="30" height="6" fill="#c9a24f" />
+            <rect x="36" y="124" width="28" height="6" fill="#8a6a2a" />
+            <rect x="35" y="130" width="30" height="6" rx="1" fill="#c9a24f" />
+            <rect x="43" y="136" width="14" height="8" rx="3" fill="#5c4418" />
+          </svg>
+        </div>
+        {/* the book, with the light bouncing on its pages */}
+        <div ref={book} className="absolute inset-x-0 bottom-0 h-[80%]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            key={src}
-            src={src}
+            src="/deck/sketchbook.webp"
             alt=""
             draggable={false}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[1100ms] ease-out ${k === i ? "p-kenburns opacity-100" : "opacity-0"}`}
+            className="p-float absolute inset-0 h-full w-full object-contain object-bottom select-none"
           />
-        ))}
-        {!photos.length && (
-          <span aria-hidden className="p-gothic absolute inset-0 grid place-items-center text-[5rem] text-bone/20">
-            {String(count).padStart(2, "0")}
-          </span>
-        )}
-        <div aria-hidden className="absolute inset-0 shadow-[inset_0_0_36px_rgb(0_0_0/0.75)]" />
+          <div
+            aria-hidden
+            className="p-float absolute inset-0"
+            style={{
+              ...bookMask,
+              background:
+                "radial-gradient(ellipse 48% 36% at 50% 14%, rgb(255 206 120), rgb(255 232 190) 45%, rgb(255 255 255 / 0) 75%)",
+              mixBlendMode: "multiply",
+            }}
+          />
+          <div
+            aria-hidden
+            className="p-float absolute inset-0"
+            style={{
+              ...bookMask,
+              background:
+                "radial-gradient(ellipse 40% 30% at 50% 10%, rgb(255 236 180 / 0.55), transparent 70%)",
+              mixBlendMode: "screen",
+            }}
+          />
+          {/* the word on the right page */}
+          <div className="p-float absolute inset-0">
+            <span
+              className="p-script p-ink absolute block text-[#241812]"
+              style={{
+                left: "55%",
+                top: "42%",
+                width: "32%",
+                fontSize: "clamp(1.5rem, 8.5vw, 2.5rem)",
+                lineHeight: 1,
+                transform: "rotate(-9deg) skewY(-5deg)",
+                textAlign: "center",
+                textShadow: "0 0.5px 0 rgb(36 24 18 / 0.6)",
+                animationDelay: "500ms",
+              }}
+            >
+              create
+            </span>
+            <svg
+              aria-hidden
+              viewBox="0 0 120 20"
+              className="p-ink absolute"
+              style={{
+                left: "57%",
+                top: "56%",
+                width: "26%",
+                transform: "rotate(-9deg) skewY(-5deg)",
+                animationDelay: "900ms",
+              }}
+            >
+              <path
+                d="M4 12c20-8 40 6 60-2s36-8 52 0"
+                fill="none"
+                stroke="#241812"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                opacity="0.8"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/deck/frame.webp" alt="" draggable={false} className="absolute inset-0 h-full w-full select-none" />
-      <div aria-hidden className="p-sheen absolute inset-0" style={{ maskImage: "url(/deck/frame.webp)", WebkitMaskImage: "url(/deck/frame.webp)", maskSize: "100% 100%", WebkitMaskSize: "100% 100%" }} />
-    </div>
-  );
-});
+    );
+  },
+);
 
-/* 03 · Designs: the sketchbook floats open, the idea lit above it. */
-export const Sketchbook = forwardRef<ObjectHandle, object>(function Sketchbook(_, ref) {
-  const root = useRef<HTMLDivElement>(null);
-  const book = useRef<HTMLImageElement>(null);
-  const glow = useRef<HTMLDivElement>(null);
+/* 04 · Request: a finger about to press the sign. The button has depth and really goes down. */
+export const ReserveSign = forwardRef<ObjectHandle, { label: string }>(
+  function ReserveSign({ label }, ref) {
+    const root = useRef<HTMLDivElement>(null);
+    const hand = useRef<SVGGElement>(null);
+    const top = useRef<SVGGElement>(null);
+    const plate = useRef<SVGRectElement>(null);
+    const text = useRef<SVGTextElement>(null);
+    const ripple = useRef<SVGCircleElement>(null);
 
-  useImperativeHandle(ref, () => ({
-    reset: () => gsap.set([root.current, book.current, glow.current], { clearProps: "all" }),
-    select: () =>
-      new Promise((resolve) => {
-        const el = root.current!;
-        if (reduced()) return resolve(el.getBoundingClientRect());
-        gsap
-          .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-          .to(glow.current, { scale: 2.4, opacity: 1, duration: 0.42, ease: "power2.out" })
-          .to(book.current, { y: -18, rotateX: 14, scale: 1.08, duration: 0.42, ease: "power2.out", transformPerspective: 700 }, "<")
-          .to(glow.current, { scale: 7, opacity: 0.95, duration: 0.5, ease: "power3.in" }, ">-0.05")
-          .to(el, { scale: 2.2, duration: 0.5, ease: "power3.in" }, "<");
-      }),
-  }));
+    useImperativeHandle(ref, () => ({
+      reset: () =>
+        gsap.set(
+          [
+            root.current,
+            hand.current,
+            top.current,
+            plate.current,
+            text.current,
+            ripple.current,
+          ],
+          CLEAR,
+        ),
+      select: () =>
+        new Promise((resolve) => {
+          const el = root.current!;
+          if (reduced()) return resolve(el.getBoundingClientRect());
+          gsap
+            .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
+            // the finger comes up to the button
+            .to(hand.current, { y: -14, duration: 0.22, ease: "power2.in" })
+            // the press: button and finger go down together, the face takes the artist's colour
+            .to(top.current, { y: 8, duration: 0.09, ease: "power1.out" })
+            .to(
+              hand.current,
+              { y: -7, duration: 0.09, ease: "power1.out" },
+              "<",
+            )
+            .to(plate.current, { fill: "var(--accent)", duration: 0.09 }, "<")
+            .to(text.current, { fill: "#0a0a0a", duration: 0.09 }, "<")
+            .fromTo(
+              ripple.current,
+              { attr: { r: 14 }, opacity: 0.9 },
+              {
+                attr: { r: 160 },
+                opacity: 0,
+                duration: 0.6,
+                ease: "power2.out",
+              },
+              "<",
+            )
+            // release
+            .to(
+              top.current,
+              { y: 0, duration: 0.16, ease: "back.out(2)" },
+              ">-0.42",
+            )
+            .to(
+              hand.current,
+              { y: -14, duration: 0.16, ease: "power1.out" },
+              "<",
+            )
+            .to(el, { scale: 2.1, duration: 0.45, ease: "power3.in" }, "<0.08");
+        }),
+    }));
 
-  return (
-    <div ref={root} className="relative aspect-[545/600] w-full origin-center will-change-transform">
+    return (
       <div
-        ref={glow}
-        aria-hidden
-        className="p-bulb absolute aspect-square w-[44%] -translate-x-1/2 -translate-y-1/2 rounded-full"
-        style={{ left: "50%", top: "17%", background: "radial-gradient(circle, rgb(255 222 140 / 0.95), rgb(255 190 80 / 0.4) 36%, transparent 68%)", filter: "blur(5px)" }}
-      />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img ref={book} src="/deck/sketchbook.webp" alt="" draggable={false} className="p-float absolute inset-0 h-full w-full object-contain select-none" />
-    </div>
-  );
-});
+        ref={root}
+        className="relative aspect-square w-full origin-center will-change-transform"
+      >
+        <svg
+          viewBox="0 0 200 200"
+          className="h-full w-full overflow-visible text-bone"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <circle
+            ref={ripple}
+            cx="100"
+            cy="54"
+            r="14"
+            stroke="var(--accent)"
+            strokeWidth="3"
+            opacity="0"
+          />
+          {/* the side of the button, what shows when it is up */}
+          <rect
+            x="12"
+            y="28"
+            width="176"
+            height="68"
+            rx="12"
+            fill="#2a1a14"
+            stroke="currentColor"
+          />
+          <g ref={top}>
+            <rect
+              ref={plate}
+              x="12"
+              y="20"
+              width="176"
+              height="68"
+              rx="12"
+              fill="#101010"
+              stroke="currentColor"
+            />
+            <text
+              ref={text}
+              x="100"
+              y="66"
+              textAnchor="middle"
+              fill="currentColor"
+              stroke="none"
+              className="p-display"
+              style={{
+                fontSize: label.length > 8 ? 30 : 36,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {label}
+            </text>
+          </g>
+          <g ref={hand} fill="#0a0a0a">
+            <g className="p-hover" style={{ transformOrigin: "110px 150px" }}>
+              {/* index finger up, three fingers folded to the right, thumb tucked on the left */}
+              <path d="M80 107a11 11 0 0 1 22 0v29a9.7 9.7 0 0 1 19.4 0a9.7 9.7 0 0 1 19.4 0a9.7 9.7 0 0 1 19.4 0v26a24 24 0 0 1-24 24H98a22 22 0 0 1-22-22v-12c-10-2-16-8-14-16 2-6 8-8 16-4Z" />
+              <path d="M121.4 136v12M140.8 136v12" />
+              <path d="M78 140c-5 2-8 6-8 11" strokeWidth="4" />
+            </g>
+          </g>
+        </svg>
+      </div>
+    );
+  },
+);
 
-/* 04 · Request: a finger about to press the sign. */
-export const ReserveSign = forwardRef<ObjectHandle, { label: string }>(function ReserveSign({ label }, ref) {
-  const root = useRef<HTMLDivElement>(null);
-  const hand = useRef<SVGGElement>(null);
-  const plate = useRef<SVGRectElement>(null);
-  const text = useRef<SVGTextElement>(null);
-  const ripple = useRef<SVGCircleElement>(null);
+/* 05 · Guest spots: the world floating in gold, the cities lighting up. */
+export const WorldObject = forwardRef<ObjectHandle, { pins: Pin[] }>(
+  function WorldObject({ pins }, ref) {
+    const root = useRef<HTMLDivElement>(null);
+    const flare = useRef<HTMLDivElement>(null);
+    const tilt = useRef<HTMLDivElement>(null);
 
-  useImperativeHandle(ref, () => ({
-    reset: () => gsap.set([root.current, hand.current, plate.current, text.current, ripple.current], { clearProps: "all" }),
-    select: () =>
-      new Promise((resolve) => {
-        const el = root.current!;
-        if (reduced()) return resolve(el.getBoundingClientRect());
-        gsap
-          .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-          .to(hand.current, { y: -14, duration: 0.22, ease: "power2.in" })
-          .to(plate.current, { scale: 0.94, fill: "var(--accent)", transformOrigin: "50% 50%", duration: 0.12, ease: "power1.out" }, "<0.14")
-          .to(text.current, { fill: "#0a0a0a", duration: 0.12 }, "<")
-          .fromTo(ripple.current, { attr: { r: 12 }, opacity: 0.9 }, { attr: { r: 150 }, opacity: 0, duration: 0.6, ease: "power2.out" }, "<")
-          .to(hand.current, { y: -8, duration: 0.18, ease: "power1.out" }, "<0.1")
-          .to(el, { scale: 2.1, duration: 0.45, ease: "power3.in" }, "<0.1");
-      }),
-  }));
+    useImperativeHandle(ref, () => ({
+      reset: () =>
+        gsap.set([root.current, flare.current, tilt.current], {
+          clearProps: "all",
+        }),
+      select: () =>
+        new Promise((resolve) => {
+          const el = root.current!;
+          if (reduced()) return resolve(el.getBoundingClientRect());
+          gsap
+            .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
+            .to(tilt.current, { rotateX: 0, duration: 0.4, ease: "power2.out" })
+            .to(
+              flare.current,
+              { scale: 1.6, opacity: 1, duration: 0.4, ease: "power2.out" },
+              "<",
+            )
+            .to(
+              flare.current,
+              { scale: 7, duration: 0.5, ease: "power3.in" },
+              ">-0.08",
+            )
+            .to(el, { scale: 2.6, duration: 0.5, ease: "power3.in" }, "<");
+        }),
+    }));
 
-  return (
-    <div ref={root} className="relative aspect-square w-full origin-center will-change-transform">
-      <svg viewBox="0 0 200 200" className="h-full w-full overflow-visible text-bone" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle ref={ripple} cx="100" cy="54" r="12" stroke="var(--accent)" strokeWidth="3" opacity="0" />
-        <rect ref={plate} x="12" y="20" width="176" height="68" rx="12" fill="rgb(10 10 10 / 0.6)" />
-        <text ref={text} x="100" y="66" textAnchor="middle" fill="currentColor" stroke="none" className="p-display" style={{ fontSize: label.length > 8 ? 30 : 36, letterSpacing: "0.02em" }}>
-          {label}
-        </text>
-        <g ref={hand} className="p-hover" style={{ transformOrigin: "100px 140px" }} fill="#0a0a0a">
-          {/* the fist: three folded fingers on top, the palm below */}
-          <path d="M86 132 a11 11 0 0 1 22 0 a11 11 0 0 1 22 0 a11 11 0 0 1 22 0 v24 a28 28 0 0 1 -28 28 h-52 a22 22 0 0 1 -22 -22 v-20 z" />
-          <path d="M108 132 v14 M130 132 v14" />
-          {/* the index finger, pointing up at the sign */}
-          <path d="M64 158 V76 a11 11 0 0 1 22 0 v56" />
-          {/* the thumb, folded over the side */}
-          <path d="M64 146 c-10 -2 -18 6 -14 15 c3 7 9 10 14 11" />
-        </g>
-      </svg>
-    </div>
-  );
-});
-
-/* 05 · Guest spots: the round table projecting the world. */
-export const WorldTable = forwardRef<ObjectHandle, object>(function WorldTable(_, ref) {
-  const root = useRef<HTMLDivElement>(null);
-  const beam = useRef<HTMLDivElement>(null);
-
-  useImperativeHandle(ref, () => ({
-    reset: () => gsap.set([root.current, beam.current], { clearProps: "all" }),
-    select: () =>
-      new Promise((resolve) => {
-        const el = root.current!;
-        if (reduced()) return resolve(el.getBoundingClientRect());
-        gsap
-          .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-          .to(beam.current, { scale: 2.2, opacity: 1, duration: 0.35, ease: "power2.out" })
-          .to(el, { rotateX: 10, scale: 1.08, y: -8, duration: 0.35, ease: "power2.out", transformPerspective: 800 }, "<")
-          .to(beam.current, { scale: 9, duration: 0.5, ease: "power3.in" }, ">-0.05")
-          .to(el, { scale: 2.4, duration: 0.5, ease: "power3.in" }, "<");
-      }),
-  }));
-
-  const sparks = [
-    [22, 30, 0],
-    [38, 18, 0.7],
-    [61, 14, 1.4],
-    [78, 26, 0.3],
-    [30, 46, 1.9],
-    [70, 44, 1.1],
-    [50, 36, 2.3],
-  ];
-
-  return (
-    <div ref={root} className="relative aspect-square w-full origin-center will-change-transform">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/deck/table.webp"
-        alt=""
-        draggable={false}
-        className="absolute inset-0 h-full w-full object-contain select-none"
-        style={{ maskImage: "radial-gradient(ellipse 64% 60% at 50% 52%, black 52%, transparent 82%)", WebkitMaskImage: "radial-gradient(ellipse 64% 60% at 50% 52%, black 52%, transparent 82%)" }}
-      />
+    return (
       <div
-        ref={beam}
-        aria-hidden
-        className="p-beam absolute aspect-square w-[36%] -translate-x-1/2 -translate-y-1/2 rounded-full"
-        style={{ left: "50%", top: "50%", background: "radial-gradient(circle, rgb(255 208 110 / 0.75), rgb(255 170 60 / 0.25) 40%, transparent 65%)", mixBlendMode: "screen", filter: "blur(6px)" }}
-      />
-      {sparks.map(([x, y, d], k) => (
-        <span key={k} aria-hidden className="p-twinkle absolute h-[3px] w-[3px] rounded-full bg-[#ffd98a]" style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${d}s` }} />
-      ))}
-    </div>
-  );
-});
+        ref={root}
+        className="relative aspect-square w-full origin-center will-change-transform"
+        style={{ perspective: "900px" }}
+      >
+        <div
+          ref={flare}
+          aria-hidden
+          className="absolute aspect-square w-[72%] -translate-x-1/2 -translate-y-1/2"
+          style={{ left: "50%", top: "50%" }}
+        >
+          <div
+            className="p-beam absolute inset-0 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle, rgb(255 206 110 / 0.5), rgb(255 170 60 / 0.15) 45%, transparent 70%)",
+              filter: "blur(14px)",
+            }}
+          />
+        </div>
+        <div className="p-float absolute top-1/2 -left-[12%] w-[124%] -translate-y-1/2">
+          <div
+            ref={tilt}
+            style={{ transform: "rotateX(18deg)", transformOrigin: "50% 60%" }}
+          >
+            <WorldMap
+              pins={pins}
+              className="w-full drop-shadow-[0_26px_30px_rgb(0_0_0/0.7)]"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  },
+);
 
 /* 01 · The artist: a print of the poster, taped up. */
-export const Portrait = forwardRef<ObjectHandle, { src: string | null; name: string; grey: boolean }>(function Portrait({ src, name, grey }, ref) {
+export const Portrait = forwardRef<
+  ObjectHandle,
+  { src: string | null; name: string; grey: boolean }
+>(function Portrait({ src, name, grey }, ref) {
   const root = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
-    reset: () => gsap.set(root.current, { clearProps: "all" }),
+    reset: () => gsap.set(root.current, CLEAR),
     select: () =>
       new Promise((resolve) => {
         const el = root.current!;
         if (reduced()) return resolve(el.getBoundingClientRect());
         gsap
           .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-          .to(el, { rotate: 0, scale: 1.06, duration: 0.28, ease: "power2.out" })
+          .to(el, { y: -10, scale: 1.06, duration: 0.28, ease: "power2.out" })
           .to(el, { scale: 2.3, duration: 0.55, ease: "power3.in" });
       }),
   }));
 
   return (
-    <div ref={root} className="p-float-slow relative mx-auto aspect-[3/4.2] w-[86%] origin-center -rotate-2 bg-bone p-[4%] pb-[11%] shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9)] will-change-transform">
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" draggable={false} className={`h-full w-full object-cover object-top select-none ${grey ? "grayscale" : ""}`} />
-      ) : (
-        <div className="grid h-full w-full place-items-center bg-ink-2">
-          <span className="p-display text-[3rem] text-bone/30">{name.slice(0, 1)}</span>
-        </div>
-      )}
-      <span aria-hidden className="absolute -top-[3%] left-[8%] h-[5%] w-[26%] -rotate-6 bg-[#e9dfc4]/70 shadow-sm" />
-      <span aria-hidden className="absolute -top-[3%] right-[8%] h-[5%] w-[26%] rotate-6 bg-[#e9dfc4]/70 shadow-sm" />
-      <span className="p-quote absolute right-0 bottom-[2.5%] left-0 text-center text-[clamp(0.8rem,3.2vw,1rem)] text-ink/80">{name}</span>
+    <div
+      ref={root}
+      className="relative mx-auto aspect-[3/4.2] w-[86%] origin-center will-change-transform"
+    >
+      <div className="p-float-slow absolute inset-0 bg-bone p-[4%] pb-[11%] shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9)]">
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            className={`h-full w-full object-cover object-top select-none ${grey ? "grayscale" : ""}`}
+          />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-ink-2">
+            <span className="p-display text-[3rem] text-bone/30">
+              {name.slice(0, 1)}
+            </span>
+          </div>
+        )}
+        <span
+          aria-hidden
+          className="absolute -top-[3%] left-[8%] h-[5%] w-[26%] -rotate-6 bg-[#e9dfc4]/70 shadow-sm"
+        />
+        <span
+          aria-hidden
+          className="absolute -top-[3%] right-[8%] h-[5%] w-[26%] rotate-6 bg-[#e9dfc4]/70 shadow-sm"
+        />
+        <span className="p-quote absolute right-0 bottom-[2.5%] left-0 text-center text-[clamp(0.8rem,3.2vw,1rem)] text-ink/80">
+          {name}
+        </span>
+      </div>
     </div>
   );
 });
