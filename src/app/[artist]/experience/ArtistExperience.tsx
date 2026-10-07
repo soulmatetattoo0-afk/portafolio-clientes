@@ -94,7 +94,7 @@ export function ArtistExperience({ data }: { data: ExperienceData }) {
       {!ready ? null : view === "cover" ? (
         <Cover data={data} onEnter={enter} />
       ) : (
-        <Deck data={data} initial={last} onOpen={open} />
+        <Deck data={data} initial={last} active={!isPanel(view)} onOpen={open} />
       )}
       {isPanel(view) && (
         <Panel id={view} data={data} from={from} onBack={back} onGo={go}>

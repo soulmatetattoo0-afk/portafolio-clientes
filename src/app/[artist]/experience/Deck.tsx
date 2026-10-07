@@ -7,6 +7,7 @@ import { LangToggle } from "@/components/LangToggle";
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 
+import { GalleryFrame, Portrait, ReserveSign, Sketchbook, WorldTable, type ObjectHandle } from "./objects";
 import { PANELS, type ExperienceData, type PanelId } from "./types";
 
 const N = PANELS.length;
@@ -14,23 +15,34 @@ const N = PANELS.length;
 const dist = (i: number, angle: number) => ((((i - angle) % N) + N + N / 2) % N) - N / 2;
 
 /**
- * The deck: all five cards stand on a ring. The front card faces you, the
- * others curve away on both sides; drag with a thumb and the ring turns, the
- * card leaving on the left comes back round on the right. Tap the front card
- * and it comes forward while the rest fall away, then its panel opens.
+ * The deck: five objects stand on a ring, one per category: the taped-up
+ * poster, the gilded frame, the sketchbook, the sign with the finger, the
+ * table projecting the world. The front one faces you, the others curve
+ * away on both sides; drag with a thumb and the ring turns, the one leaving
+ * on the left comes back round on the right. Tap the front object and it
+ * plays its entrance, then its panel opens out of it.
  */
-export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial: PanelId; onOpen: (id: PanelId, from: DOMRect) => void }) {
+export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; initial: PanelId; active: boolean; onOpen: (id: PanelId, from: DOMRect) => void }) {
   const { artist, t, locale } = data;
   const a = t.artist;
   const stage = useRef<HTMLDivElement>(null);
   const cards = useRef<(HTMLButtonElement | null)[]>([]);
+  const objects = useRef<(ObjectHandle | null)[]>([]);
   const [angle, setAngle] = useState(PANELS.indexOf(initial));
   const [dragging, setDragging] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
   const drag = useRef({ x0: 0, a0: 0, moved: false, lastX: 0, lastT: 0, v: 0, hit: -1 });
-  const active = ((Math.round(angle) % N) + N) % N;
+  const current = ((Math.round(angle) % N) + N) % N;
 
   const step = () => Math.max(160, Math.min(stage.current?.clientWidth ?? 320, 520) * 0.62);
+
+  // Coming back from a panel: put every object back where it idles.
+  useEffect(() => {
+    if (!active) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpening(null);
+    objects.current.forEach((o) => o?.reset());
+  }, [active]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (opening !== null) return;
@@ -70,36 +82,53 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
   };
 
   const open = useCallback(
-    (i: number) => {
+    async (i: number) => {
       const c = cards.current[i];
       if (!c) return;
-      const rect = c.getBoundingClientRect();
       setOpening(i);
-      setTimeout(() => onOpen(PANELS[i], rect), 420);
+      const rect = (await objects.current[i]?.select()) ?? c.getBoundingClientRect();
+      onOpen(PANELS[i], rect);
     },
     [onOpen],
   );
 
   const tap = (i: number) => {
-    if (i !== active) turnTo(i);
-    else open(i);
+    if (i !== current) turnTo(i);
+    else void open(i);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!active) return;
       if (e.key === "ArrowRight") setAngle((v) => Math.round(v) + 1);
       else if (e.key === "ArrowLeft") setAngle((v) => Math.round(v) - 1);
-      else if (e.key === "Enter") open(active);
+      else if (e.key === "Enter") void open(current);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, open]);
+  }, [active, current, open]);
 
-  const cover = artist.portrait_url;
-  const firstWork = data.portfolio.find((p) => p.url)?.url ?? null;
-  const firstFlash = data.flash.find((f) => f.url)?.url ?? null;
+  const photos = data.portfolio.map((p) => p.url).filter((u): u is string => !!u).slice(0, 6);
   const openCount = data.flash.filter((f) => f.status === "available").length;
-  const front = a.deck.cards[PANELS[active]];
+  const front = a.deck.cards[PANELS[current]];
+
+  const object = (id: PanelId, i: number) => {
+    const set = (el: ObjectHandle | null) => {
+      objects.current[i] = el;
+    };
+    switch (id) {
+      case "bio":
+        return <Portrait ref={set} src={artist.portrait_url} name={artist.display_name} grey={!artist.cover_poster} />;
+      case "work":
+        return <GalleryFrame ref={set} photos={photos} count={data.portfolio.length} />;
+      case "flash":
+        return <Sketchbook ref={set} />;
+      case "book":
+        return <ReserveSign ref={set} label={a.deck.sign.toUpperCase()} />;
+      case "spots":
+        return <WorldTable ref={set} />;
+    }
+  };
 
   return (
     <div className="p-immerse relative flex h-dvh flex-col overflow-hidden">
@@ -131,9 +160,9 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
           const ad = Math.abs(d);
           const isOpening = opening === i;
           const transform = isOpening
-            ? "translate(-50%, -50%) translateZ(340px) scale(1.12)"
-            : `translate(-50%, -50%) translateX(${(d * 62).toFixed(2)}%) translateZ(${(-ad * 150).toFixed(1)}px) rotateY(${(-d * 20).toFixed(2)}deg) scale(${(1 - ad * 0.08).toFixed(3)})`;
-          const opacity = opening !== null && !isOpening ? 0 : Math.max(0.3, 1 - ad * 0.22);
+            ? "translate(-50%, -50%) translateZ(90px)"
+            : `translate(-50%, -50%) translateX(${(d * 66).toFixed(2)}%) translateZ(${(-ad * 170).toFixed(1)}px) rotateY(${(-d * 22).toFixed(2)}deg) scale(${(1 - ad * 0.1).toFixed(3)})`;
+          const opacity = opening !== null && !isOpening ? 0 : Math.max(0.22, 1 - ad * 0.3);
           return (
             <button
               key={id}
@@ -142,57 +171,29 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
               }}
               type="button"
               role="option"
-              aria-selected={i === active}
+              aria-selected={i === current}
+              aria-label={c.title}
               data-card={i}
               onClick={(e) => {
                 // Pointer taps are handled on the stage; this is for the keyboard.
                 if (e.detail === 0) tap(i);
               }}
-              style={{ transform, opacity, zIndex: 100 - Math.round(ad * 10) }}
-              className={`p-ring-card flex aspect-[3/4.4] w-[min(62vw,300px)] flex-col justify-between overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ${TONES[id]}`}
+              style={{ transform, opacity, zIndex: 100 - Math.round(ad * 10), filter: ad > 0.5 ? `brightness(${(1 - ad * 0.25).toFixed(2)})` : undefined }}
+              className="p-ring-card flex w-[min(70vw,320px)] flex-col items-center text-center text-bone"
             >
-              {id === "bio" && cover && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={cover} alt="" className={`absolute inset-0 h-full w-full object-cover object-top opacity-85 ${artist.cover_poster ? "" : "grayscale"}`} draggable={false} />
-              )}
-              {id === "work" && (firstWork ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={firstWork} alt="" className="absolute inset-0 h-full w-full object-cover opacity-75" draggable={false} />
-              ) : (
-                <Numeral n={data.portfolio.length} />
-              ))}
-              {id === "flash" && (firstFlash ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={firstFlash} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60 mix-blend-multiply" draggable={false} />
-              ) : (
-                <Numeral n={openCount} />
-              ))}
-              {id === "book" && <FigureMark />}
-              {id === "spots" && (
-                <div aria-hidden className="absolute inset-x-0 top-12 overflow-hidden">
-                  {data.stops.slice(0, 4).map((s) => (
-                    <p key={s.id} className="p-display truncate px-4 text-[2.4rem] leading-[0.95] opacity-20">
-                      {s.city}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
-              <span className="p-gothic relative text-[1.15rem] opacity-90">{c.kicker}</span>
-              <span className="relative">
-                <span className="p-display block text-[2.1rem]">{c.title}</span>
-                <span className="mt-1 block text-[0.82rem] opacity-80">{c.body}</span>
-              </span>
+              <div className="w-full px-2">{object(id, i)}</div>
+              <span className="p-gothic mt-4 text-[1.05rem] text-accent">{c.kicker}</span>
+              <span className="p-display text-[2rem] leading-none">{c.title}</span>
             </button>
           );
         })}
       </div>
 
-      {/* The front card, named below the ring, like the track under a player. */}
+      {/* The front object, named below the ring, like the track under a player. */}
       <div className="relative z-10 grid gap-3 px-5 pb-[max(env(safe-area-inset-bottom),1.1rem)] text-center">
         <div className="flex items-center justify-center gap-2" aria-hidden>
           {PANELS.map((id, i) => (
-            <span key={id} className={`h-[3px] rounded-full transition-all ${i === active ? "w-7 bg-accent" : "w-3 bg-bone/25"}`} />
+            <span key={id} className={`h-[3px] rounded-full transition-all ${i === current ? "w-7 bg-accent" : "w-3 bg-bone/25"}`} />
           ))}
         </div>
         <p className="p-stamp text-bone-dim">{a.deck.hint}</p>
@@ -200,48 +201,18 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
           <div className="min-w-0 text-left">
             <p className="p-display truncate text-[1.25rem]">{front.title}</p>
             <p className="truncate text-[0.78rem] text-bone-dim">
-              {PANELS[active] === "work" && data.portfolio.length ? fill(a.panel.work.count, { n: data.portfolio.length }) : null}
-              {PANELS[active] === "flash" && data.flash.length ? `${openCount} ${a.panel.flash.available.toLowerCase()}` : null}
-              {PANELS[active] === "spots" && data.stops[1] ? `${data.stops[1].city} · ${dateRange(data.stops[1].starts_on, data.stops[1].ends_on, locale)}` : null}
-              {PANELS[active] === "book" ? (artist.accepting ? a.booksOpen : a.booksClosed) : null}
-              {PANELS[active] === "bio" ? front.body : null}
+              {PANELS[current] === "work" && data.portfolio.length ? fill(a.panel.work.count, { n: data.portfolio.length }) : null}
+              {PANELS[current] === "flash" && data.flash.length ? `${openCount} ${a.panel.flash.available.toLowerCase()}` : null}
+              {PANELS[current] === "spots" && data.stops[1] ? `${data.stops[1].city} · ${dateRange(data.stops[1].starts_on, data.stops[1].ends_on, locale)}` : null}
+              {PANELS[current] === "book" ? (artist.accepting ? a.booksOpen : a.booksClosed) : null}
+              {PANELS[current] === "bio" ? front.body : null}
             </p>
           </div>
-          <button type="button" className="btn btn-accent shrink-0" onClick={() => open(active)}>
+          <button type="button" className="btn btn-accent shrink-0" onClick={() => void open(current)}>
             {a.deck.enter}
           </button>
         </div>
       </div>
     </div>
-  );
-}
-
-/* Each card wears its own paper. */
-const TONES: Record<PanelId, string> = {
-  bio: "border-bone/20 bg-ink-2 text-bone",
-  work: "border-bone/20 bg-[#1c1a18] text-bone",
-  flash: "border-black/20 bg-accent text-ink",
-  book: "border-black/10 bg-bone text-ink",
-  spots: "border-bone/20 bg-[#121a16] text-bone",
-};
-
-/** A count set huge and faint, for cards that have no photo yet. */
-function Numeral({ n }: { n: number }) {
-  return (
-    <span aria-hidden className="p-gothic pointer-events-none absolute -top-2 -right-1 text-[9rem] leading-none opacity-[0.14]">
-      {String(n).padStart(2, "0")}
-    </span>
-  );
-}
-
-/** A quiet figure outline for the booking card. */
-function FigureMark() {
-  return (
-    <svg aria-hidden viewBox="0 0 100 160" className="absolute top-1/2 right-3 h-[62%] -translate-y-1/2 text-ink/70" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <ellipse cx="50" cy="18" rx="10" ry="13" />
-      <path d="M38 33c-14 3-20 10-21 24l-4 36 8 1 5-30 2 28-3 50h10l7-44 7 44h10l-3-50 2-28 5 30 8-1-4-36c-1-14-7-21-21-24" />
-      <circle cx="31" cy="84" r="7" className="text-accent" stroke="currentColor" strokeWidth="2" />
-      <circle cx="31" cy="84" r="2" className="text-accent" fill="currentColor" />
-    </svg>
   );
 }

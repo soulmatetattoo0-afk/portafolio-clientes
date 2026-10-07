@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Big_Shoulders, Cinzel, Cormorant_Garamond, Instrument_Sans, Instrument_Serif, Pirata_One } from "next/font/google";
+import { Big_Shoulders, Cinzel, Cormorant_Garamond, Instrument_Serif, Pirata_One } from "next/font/google";
+import localFont from "next/font/local";
 
 import { getDict } from "@/i18n/server";
 import { env } from "@/lib/env";
@@ -8,7 +9,8 @@ import "./globals.css";
 
 const cinzel = Cinzel({ variable: "--font-cinzel", subsets: ["latin"], weight: ["500", "600"] });
 const cormorant = Cormorant_Garamond({ variable: "--font-cormorant", subsets: ["latin"], weight: ["500", "600"], style: ["normal", "italic"] });
-const instrument = Instrument_Sans({ variable: "--font-instrument", subsets: ["latin"], weight: ["400", "500", "600"] });
+// The UI face ships with the app (variable, 400–600) so a build never waits on Google for it.
+const instrument = localFont({ variable: "--font-instrument", src: "../fonts/instrument-sans.woff2", weight: "400 600", display: "swap" });
 // The poster set for the public artist experience: a tall condensed display, a blackletter for numerals and kickers, a sharp italic for quotes.
 const shoulders = Big_Shoulders({ variable: "--font-shoulders", subsets: ["latin"], axes: ["opsz"] });
 const pirata = Pirata_One({ variable: "--font-pirata", subsets: ["latin"], weight: "400" });

@@ -90,6 +90,7 @@ const es: Dict = {
       hint: "Gira la rueda. Toca la carta del frente para entrar.",
       menu: "Menú",
       enter: "Entrar",
+      sign: "Reservar",
       cards: {
         bio: { kicker: "01 · Quién", title: "El artista", body: "Quién sostiene la máquina." },
         work: { kicker: "02 · Hechos", title: "Galería", body: "Trabajos terminados y curados." },

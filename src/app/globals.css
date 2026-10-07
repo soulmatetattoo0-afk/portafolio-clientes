@@ -523,6 +523,115 @@
     animation: p-marquee 28s linear infinite;
   }
 
+  /* The objects on the ring: idle motion. */
+  @keyframes p-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-9px);
+    }
+  }
+  @keyframes p-float-slow {
+    0%,
+    100% {
+      transform: rotate(-2deg) translateY(0);
+    }
+    50% {
+      transform: rotate(-1.4deg) translateY(-6px);
+    }
+  }
+  @keyframes p-sheen {
+    0% {
+      background-position: 130% 0;
+    }
+    60%,
+    100% {
+      background-position: -30% 0;
+    }
+  }
+  @keyframes p-bulb {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translate(-50%, -50%) scale(0.92);
+    }
+    50% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.06);
+    }
+  }
+  @keyframes p-beam {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translate(-50%, -50%) scale(0.9);
+    }
+    50% {
+      opacity: 0.95;
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+  }
+  @keyframes p-twinkle {
+    0%,
+    100% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.4);
+      box-shadow: 0 0 8px 2px rgb(255 214 130 / 0.8);
+    }
+  }
+  @keyframes p-hover {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(5px);
+    }
+  }
+  @keyframes p-kenburns {
+    from {
+      transform: scale(1);
+    }
+    to {
+      transform: scale(1.09);
+    }
+  }
+  .p-float {
+    animation: p-float 4.2s ease-in-out infinite;
+  }
+  .p-float-slow {
+    animation: p-float-slow 5.5s ease-in-out infinite;
+  }
+  .p-sheen {
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    opacity: 0.9;
+    background: linear-gradient(115deg, transparent 42%, rgb(255 244 214 / 0.95) 50%, transparent 58%);
+    background-size: 260% 100%;
+    animation: p-sheen 6s ease-in-out infinite;
+  }
+  .p-bulb {
+    animation: p-bulb 2.8s ease-in-out infinite;
+  }
+  .p-beam {
+    animation: p-beam 3.2s ease-in-out infinite;
+  }
+  .p-twinkle {
+    animation: p-twinkle 2.6s ease-in-out infinite;
+  }
+  .p-hover {
+    animation: p-hover 2.2s ease-in-out infinite;
+  }
+  .p-kenburns {
+    animation: p-kenburns 4s ease-out both;
+  }
+
   /* The deck: five cards on a ring. JS sets each card's transform from its distance to the front. */
   .p-ring {
     perspective: 1200px;
@@ -613,7 +722,15 @@
 
   @media (prefers-reduced-motion: reduce) {
     .p-marquee,
-    .p-pulse {
+    .p-pulse,
+    .p-float,
+    .p-float-slow,
+    .p-sheen,
+    .p-bulb,
+    .p-beam,
+    .p-twinkle,
+    .p-hover,
+    .p-kenburns {
       animation: none;
     }
   }

@@ -88,6 +88,7 @@ const en = {
       hint: "Turn the ring. Tap the front card to go in.",
       menu: "Menu",
       enter: "Enter",
+      sign: "Reserve",
       cards: {
         bio: { kicker: "01 · Who", title: "The artist", body: "Who's holding the machine." },
         work: { kicker: "02 · Done", title: "Gallery", body: "Finished and healed work." },
