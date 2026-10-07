@@ -10,62 +10,123 @@ import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 import { PanelHead } from "../Panel";
 import type { ExperienceData } from "../types";
 
-/** Finished work: an editorial two-column wall; tap a piece to see it alone. */
+/* The wall's rhythm: column span and row span for each slot, repeating. A hero, then pairs and odd ones. */
+const SLOTS: [number, number][] = [
+  [6, 5],
+  [3, 4],
+  [3, 3],
+  [2, 3],
+  [4, 4],
+  [3, 3],
+  [3, 4],
+  [6, 4],
+  [2, 3],
+  [2, 3],
+  [2, 3],
+];
+
+/** Finished work as a wall: one hero, then a dense collage; or grouped by style with a big header each. */
 export function Gallery({ data }: { data: ExperienceData }) {
   const { t, locale, portfolio } = data;
   const a = t.artist;
   const p = a.panel.work;
-  const styles = useMemo(() => [...new Set(portfolio.map((i) => i.style).filter(Boolean))] as string[], [portfolio]);
-  const [filter, setFilter] = useState<string | null>(null);
+  const [mode, setMode] = useState<"wall" | "style">("wall");
+  const [seed, setSeed] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
-  const shown = filter ? portfolio.filter((i) => i.style === filter) : portfolio;
+
+  const styles = useMemo(() => [...new Set(portfolio.map((i) => i.style).filter(Boolean))] as string[], [portfolio]);
+  const wall = useMemo(() => (seed === 0 ? portfolio : shuffle(portfolio, seed)), [portfolio, seed]);
+  const groups = useMemo(() => styles.map((s) => ({ style: s, items: portfolio.filter((i) => i.style === s) })), [styles, portfolio]);
+  const flat = mode === "wall" ? wall : groups.flatMap((g) => g.items);
 
   return (
     <div className="pb-16">
       <PanelHead id="work" kicker={a.deck.cards.work.kicker} title={a.deck.cards.work.title} lead={portfolio.length ? fill(p.count, { n: portfolio.length }) : undefined} />
-      {styles.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto px-5 pb-4 [scrollbar-width:none]" role="group">
-          <button type="button" className="chip shrink-0" aria-pressed={filter === null} onClick={() => setFilter(null)}>
-            {p.all}
-          </button>
-          {styles.map((s) => (
-            <button key={s} type="button" className="chip shrink-0" aria-pressed={filter === s} onClick={() => setFilter(s)}>
-              {styleLabel(s, locale)}
+      {portfolio.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-5 pb-5">
+          <div className="seg" role="group">
+            <button type="button" aria-pressed={mode === "wall"} onClick={() => setMode("wall")}>
+              {p.wall}
             </button>
-          ))}
+            {styles.length > 1 && (
+              <button type="button" aria-pressed={mode === "style"} onClick={() => setMode("style")}>
+                {p.byStyle}
+              </button>
+            )}
+          </div>
+          {mode === "wall" && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSeed((s) => s + 1)}>
+              ⟳ {p.shuffle}
+            </button>
+          )}
         </div>
       )}
-      {shown.length === 0 ? (
+
+      {portfolio.length === 0 ? (
         <p className="px-5 text-bone-dim">{p.empty}</p>
+      ) : mode === "wall" ? (
+        <Wall items={wall} offset={0} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
       ) : (
-        <ul className="grid grid-cols-2 gap-3 px-4">
-          {shown.map((item, i) => (
-            <li key={item.id} className={i % 2 === 1 ? "mt-10" : ""}>
-              <button type="button" onClick={() => setOpen(i)} className="group block w-full text-left" aria-label={fill(p.open, { title: item.title ?? "" })}>
-                <span className="relative block aspect-[4/5] overflow-hidden rounded-[14px] bg-ink-2">
-                  {item.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.url} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" loading="lazy" />
-                  ) : (
-                    <Plate item={item} index={i} />
-                  )}
-                  {item.is_healed && <span className="p-stamp absolute top-2 left-2 rounded-full bg-ink/80 px-2 py-1 text-[0.58rem] text-bone">{p.healed}</span>}
-                </span>
-                <span className="mt-2 flex items-baseline justify-between gap-2">
-                  <span className="p-stamp whitespace-nowrap text-bone-dim">№ {String(i + 1).padStart(2, "0")}</span>
-                  <span className="truncate text-[0.82rem] text-bone/80">{item.title}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="grid gap-10">
+          {groups.map((g, gi) => {
+            const offset = groups.slice(0, gi).reduce((n, x) => n + x.items.length, 0);
+            return (
+              <section key={g.style} aria-label={styleLabel(g.style, locale)}>
+                <div className="flex items-baseline justify-between gap-3 px-5 pb-3">
+                  <h3 className="p-display text-[2.6rem] text-bone">{styleLabel(g.style, locale)}</h3>
+                  <span className="p-gothic text-[1.2rem] text-accent">{fill(p.count, { n: g.items.length })}</span>
+                </div>
+                <Wall items={g.items} offset={offset} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
+              </section>
+            );
+          })}
+        </div>
       )}
-      {open !== null && shown[open] && <Lightbox items={shown} index={open} locale={locale} close={t.common.close} onChange={setOpen} />}
+      {open !== null && flat[open] && <Lightbox items={flat} index={open} locale={locale} close={t.common.close} piece={p.piece} onChange={setOpen} />}
     </div>
   );
 }
 
-function Lightbox({ items, index, locale, close, onChange }: { items: PortfolioItem[]; index: number; locale: "en" | "es"; close: string; onChange: (i: number | null) => void }) {
+function Wall({ items, offset, locale, healed, openLabel, onOpen }: { items: PortfolioItem[]; offset: number; locale: "en" | "es"; healed: string; openLabel: string; onOpen: (i: number) => void }) {
+  return (
+    <ul className="p-wall px-3">
+      {items.map((item, i) => {
+        const [c, r] = SLOTS[i % SLOTS.length];
+        const n = offset + i;
+        return (
+          <li key={item.id} style={{ gridColumn: `span ${c}`, gridRow: `span ${r}` }} className="min-w-0">
+            <button type="button" onClick={() => onOpen(n)} className="group relative block h-full w-full overflow-hidden rounded-[12px] bg-ink-2 text-left" aria-label={fill(openLabel, { title: item.title ?? "" })}>
+              {item.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.url} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" loading="lazy" />
+              ) : (
+                <Plate item={item} index={n} variant={i % 3} locale={locale} />
+              )}
+              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent opacity-80" />
+              <span className="p-gothic absolute top-2 left-3 text-[1.1rem] text-bone/90">{String(n + 1).padStart(2, "0")}</span>
+              {item.is_healed && <span className="p-stamp absolute top-2.5 right-2.5 rounded-full bg-ink/75 px-2 py-0.5 text-[0.55rem] text-bone">{healed}</span>}
+              {item.url && <span className="p-quote absolute right-3 bottom-2 left-3 truncate text-[1.05rem] text-bone">{item.title}</span>}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Deterministic shuffle so a seed gives the same wall on every render. */
+function shuffle<T>(list: T[], seed: number) {
+  const out = [...list];
+  let s = seed * 9301 + 49297;
+  for (let i = out.length - 1; i > 0; i--) {
+    s = (s * 9301 + 49297) % 233280;
+    const j = Math.floor((s / 233280) * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function Lightbox({ items, index, locale, close, piece, onChange }: { items: PortfolioItem[]; index: number; locale: "en" | "es"; close: string; piece: string; onChange: (i: number | null) => void }) {
   const item = items[index];
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,9 +154,9 @@ function Lightbox({ items, index, locale, close, onChange }: { items: PortfolioI
         setX0(null);
       }}
     >
-      <div className="flex items-center justify-between px-3 pt-[max(env(safe-area-inset-top),0.6rem)]">
-        <span className="p-stamp text-bone-dim">
-          {index + 1} / {items.length}
+      <div className="flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),0.6rem)]">
+        <span className="p-gothic text-[1.2rem] text-bone-dim">
+          {piece} {index + 1} / {items.length}
         </span>
         <button type="button" className="btn btn-ghost text-bone" onClick={() => onChange(null)} aria-label={close}>
           <span aria-hidden className="text-[1.4rem]">×</span>
@@ -104,30 +165,51 @@ function Lightbox({ items, index, locale, close, onChange }: { items: PortfolioI
       <div className="grid min-h-0 flex-1 place-items-center p-4">
         {item.url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt={item.title ?? ""} className="max-h-full max-w-full rounded-[12px] object-contain" />
+          <img key={item.id} src={item.url} alt={item.title ?? ""} className="p-immerse max-h-full max-w-full rounded-[12px] object-contain" />
         ) : (
-          <div className="relative aspect-[4/5] h-[min(60dvh,520px)] max-w-full overflow-hidden rounded-[14px]">
-            <Plate item={item} index={index} />
+          <div key={item.id} className="p-immerse relative aspect-[4/5] h-[min(58dvh,520px)] max-w-full overflow-hidden rounded-[14px]">
+            <Plate item={item} index={index} variant={index % 3} locale={locale} />
           </div>
         )}
       </div>
       <div className="px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-        <p className="p-quote text-[1.4rem] text-bone">{item.title}</p>
+        <p className="p-quote text-[1.6rem] text-bone">{item.title}</p>
         <p className="mt-1 text-[0.85rem] text-bone-dim">{[styleLabel(item.style, locale), colorLabel(item.color_mode, locale), placement].filter(Boolean).join(" · ")}</p>
       </div>
     </div>
   );
 }
 
-/** Typeset stand-in for a piece without a photo yet. */
-export function Plate({ item, index }: { item: { title: string | null; style?: string | null }; index: number }) {
+/** Typeset stand-in for a piece without a photo yet; three treatments so a wall of them still has rhythm. */
+export function Plate({ item, index, variant = 0, locale = "en" }: { item: { title: string | null; style?: string | null }; index: number; variant?: number; locale?: "en" | "es" }) {
+  const n = String(index + 1).padStart(2, "0");
+  if (variant === 1) {
+    return (
+      <span className="absolute inset-0 flex items-end justify-between overflow-hidden bg-[#161412] p-3">
+        <span className="p-halftone" aria-hidden />
+        <span className="p-quote relative max-w-[70%] text-[1.2rem] leading-tight text-bone">{item.title}</span>
+        <span aria-hidden className="p-display relative text-[3.2rem] leading-none text-accent/80">{n}</span>
+      </span>
+    );
+  }
+  if (variant === 2) {
+    return (
+      <span className="absolute inset-0 grid place-items-center overflow-hidden bg-bone p-3 text-ink">
+        <span aria-hidden className="absolute inset-3 rounded-full border-2 border-ink/80" />
+        <span aria-hidden className="absolute inset-5 rounded-full border border-dashed border-ink/50" />
+        <span className="p-display relative max-w-[80%] text-center text-[1.5rem] leading-[0.95]">{item.title}</span>
+        <span aria-hidden className="p-gothic absolute right-3 bottom-2 text-[1.2rem]">{n}</span>
+        {item.style && <span className="p-stamp absolute bottom-2 left-3 text-[0.55rem] opacity-70">{styleLabel(item.style, locale)}</span>}
+      </span>
+    );
+  }
   return (
     <span className="absolute inset-0 flex flex-col justify-end overflow-hidden bg-ink-2 p-3">
-      <span aria-hidden className="p-display pointer-events-none absolute -top-3 -right-2 text-[6.5rem] leading-none text-bone/[0.07]">
-        {String(index + 1).padStart(2, "0")}
+      <span aria-hidden className="p-display pointer-events-none absolute -top-4 -right-2 text-[7rem] leading-none text-bone/[0.08]">
+        {n}
       </span>
       <span className="p-halftone" aria-hidden />
-      <span className="p-quote relative text-[1.15rem] leading-tight text-bone">{item.title}</span>
+      <span className="p-quote relative text-[1.3rem] leading-tight text-bone">{item.title}</span>
     </span>
   );
 }

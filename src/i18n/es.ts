@@ -87,8 +87,9 @@ const es: Dict = {
     policyTitle: "Política de depósito",
     cover: { enter: "Toca para entrar", since: "Desde {year}", skip: "Saltar intro" },
     deck: {
-      hint: "Desliza. Toca una carta para entrar.",
+      hint: "Gira la rueda. Toca la carta del frente para entrar.",
       menu: "Menú",
+      enter: "Entrar",
       cards: {
         bio: { kicker: "01 · Quién", title: "El artista", body: "Quién sostiene la máquina." },
         work: { kicker: "02 · Hechos", title: "Galería", body: "Trabajos terminados y curados." },
@@ -103,7 +104,7 @@ const es: Dict = {
       prev: "Anterior",
       close: "Cerrar",
       bio: { based: "Base en", since: "Desde", styles: "Estilos", follow: "Seguir", starting: "Piezas desde", noBio: "Pronto habrá una biografía." },
-      work: { all: "Todos", healed: "Curado", fresh: "Recién hecho", open: "Abrir {title}", count: "{n} piezas", empty: "Pronto habrá trabajos nuevos." },
+      work: { all: "Todos", healed: "Curado", fresh: "Recién hecho", open: "Abrir {title}", count: "{n} piezas", empty: "Pronto habrá trabajos nuevos.", wall: "Muro", byStyle: "Por estilo", shuffle: "Mezclar", piece: "Pieza" },
       flash: {
         lead: "Diseños que ya dibujé y quiero tatuar. Elige uno y la solicitud empieza con él.",
         available: "Disponible",

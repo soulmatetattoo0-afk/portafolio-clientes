@@ -25,7 +25,9 @@
   --font-display: var(--font-cinzel), "Trajan Pro", Georgia, serif;
   --font-serif: var(--font-cormorant), Garamond, Georgia, serif;
   --font-sans: var(--font-instrument), "Helvetica Neue", Arial, sans-serif;
-  --font-poster: var(--font-anton), Impact, "Arial Narrow Bold", sans-serif;
+  --font-poster: var(--font-shoulders), Impact, "Arial Narrow Bold", sans-serif;
+  --font-gothic: var(--font-pirata), "Old English Text MT", serif;
+  --font-quote: var(--font-instrument-serif), "Times New Roman", serif;
 
   /* Poster palette for the public artist experience: ink, bone, one accent per artist. */
   --color-ink: #0a0a0a;
@@ -398,10 +400,16 @@
   /* Type: the giant condensed face, the stamp label, the magazine column. */
   .p-display {
     font-family: var(--font-poster);
-    font-weight: 400;
+    font-weight: 900;
+    font-variation-settings: "opsz" 72;
     text-transform: uppercase;
-    line-height: 0.86;
-    letter-spacing: -0.01em;
+    line-height: 0.88;
+    letter-spacing: 0.005em;
+  }
+  .p-gothic {
+    font-family: var(--font-gothic);
+    font-weight: 400;
+    letter-spacing: 0.02em;
   }
   .p-stamp {
     font-family: var(--font-sans);
@@ -411,15 +419,16 @@
     text-transform: uppercase;
   }
   .p-quote {
-    font-family: var(--font-serif);
+    font-family: var(--font-quote);
     font-style: italic;
-    font-weight: 500;
-    line-height: 1.2;
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
   }
   .p-col {
-    font-family: var(--font-serif);
-    font-size: 1.22rem;
-    line-height: 1.5;
+    font-family: var(--font-quote);
+    font-size: 1.3rem;
+    line-height: 1.45;
   }
 
   /* Film grain over everything; the halftone sits behind panel titles. */
@@ -514,26 +523,32 @@
     animation: p-marquee 28s linear infinite;
   }
 
-  /* The deck: a horizontal snap rail; cards are transformed by scroll position in JS. */
-  .p-rail {
-    display: flex;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+  /* The deck: five cards on a ring. JS sets each card's transform from its distance to the front. */
+  .p-ring {
+    perspective: 1200px;
+    perspective-origin: 50% 45%;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
   }
-  .p-rail::-webkit-scrollbar {
-    display: none;
+  .p-ring-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+    will-change: transform, opacity;
+    transition:
+      transform 520ms var(--ease-out-quart),
+      opacity 520ms var(--ease-out-quart);
   }
-  .p-card {
-    scroll-snap-align: center;
-    flex: 0 0 auto;
-    will-change: transform;
-    transition: transform 160ms var(--ease-out-quart);
-  }
-  .p-rail.is-dragging .p-card {
+  .p-ring.is-dragging .p-ring-card {
     transition: none;
+  }
+  .p-ring.is-opening .p-ring-card {
+    transition:
+      transform 460ms cubic-bezier(0.6, 0, 0.3, 1),
+      opacity 360ms ease;
   }
 
   /* Panels drop in from the card. */
@@ -545,6 +560,48 @@
     to {
       opacity: 1;
       transform: none;
+    }
+  }
+  /* The portal: the panel grows out of the card, flashes bright, then settles. */
+  @keyframes p-portal {
+    0% {
+      filter: brightness(2.2) contrast(0.8);
+    }
+    100% {
+      filter: none;
+    }
+  }
+  .p-portal {
+    animation: p-portal 700ms ease-out both;
+  }
+  @keyframes p-letter {
+    from {
+      opacity: 0;
+      transform: translateY(0.35em) rotate(-4deg) scale(0.9);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+  .p-letter {
+    display: inline-block;
+    animation: p-letter 620ms var(--ease-out-quart) both;
+  }
+  /* Gallery wall: a dense collage; spans are set per piece. */
+  .p-wall {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-rows: 9vw;
+    grid-auto-flow: dense;
+    gap: 6px;
+  }
+  @media (min-width: 768px) {
+    .p-wall {
+      grid-auto-rows: 64px;
+      gap: 10px;
     }
   }
   .p-immerse {

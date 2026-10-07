@@ -85,8 +85,9 @@ const en = {
     policyTitle: "Deposit policy",
     cover: { enter: "Tap to enter", since: "Est. {year}", skip: "Skip intro" },
     deck: {
-      hint: "Swipe. Tap a card to go in.",
+      hint: "Turn the ring. Tap the front card to go in.",
       menu: "Menu",
+      enter: "Enter",
       cards: {
         bio: { kicker: "01 · Who", title: "The artist", body: "Who's holding the machine." },
         work: { kicker: "02 · Done", title: "Gallery", body: "Finished and healed work." },
@@ -101,7 +102,7 @@ const en = {
       prev: "Previous",
       close: "Close",
       bio: { based: "Based in", since: "Since", styles: "Styles", follow: "Follow", starting: "Pieces from", noBio: "Bio coming soon." },
-      work: { all: "All", healed: "Healed", fresh: "Fresh", open: "Open {title}", count: "{n} pieces", empty: "New work is on the way." },
+      work: { all: "All", healed: "Healed", fresh: "Fresh", open: "Open {title}", count: "{n} pieces", empty: "New work is on the way.", wall: "Wall", byStyle: "By style", shuffle: "Shuffle", piece: "Piece" },
       flash: {
         lead: "Designs I've already drawn and want to tattoo. Pick one and the request starts with it.",
         available: "Available",

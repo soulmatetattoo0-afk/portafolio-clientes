@@ -48,8 +48,8 @@ export function Panel({
   return (
     <section
       aria-labelledby={`panel-${id}`}
-      className="fixed inset-0 z-30 flex flex-col bg-ink text-bone"
-      style={{ clipPath: clip, transition: "clip-path 560ms var(--ease-out-quart)" }}
+      className={`fixed inset-0 z-30 flex flex-col bg-ink text-bone ${from ? "p-portal" : ""}`}
+      style={{ clipPath: clip, transition: "clip-path 620ms cubic-bezier(0.7, 0, 0.2, 1)" }}
     >
       <div className="p-grain" aria-hidden />
       <header className="relative z-10 mx-auto flex w-full max-w-3xl items-center justify-between gap-2 border-b border-line/70 bg-ink/85 px-3 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2 backdrop-blur-md">
@@ -57,7 +57,7 @@ export function Panel({
           <span aria-hidden className="text-[1.3rem] leading-none">←</span>
           <span className="p-stamp hidden sm:inline">{a.panel.back}</span>
         </button>
-        <span className="p-stamp truncate text-bone-dim">{c.kicker}</span>
+        <span className="p-gothic truncate text-[1.05rem] text-bone-dim">{c.kicker}</span>
         <div className="flex">
           <button type="button" className="btn btn-ghost px-2 text-bone disabled:opacity-25" onClick={() => prev && onGo(prev)} disabled={!prev} aria-label={a.panel.prev}>
             <span aria-hidden>‹</span>
@@ -76,14 +76,23 @@ export function Panel({
   );
 }
 
-/** Panel title block: the ordinal stamp, the giant word, the lead. */
+/** Panel title block: the blackletter kicker, the giant word landing letter by letter, the lead. */
 export function PanelHead({ id, title, lead, kicker }: { id: PanelId; title: string; lead?: string; kicker: string }) {
   return (
     <div className="relative px-5 pt-8 pb-6">
       <div className="p-halftone" aria-hidden />
-      <p className="p-stamp relative text-accent">{kicker}</p>
-      <h2 id={`panel-${id}`} className="p-display relative mt-2 text-[clamp(3.4rem,17vw,7rem)] text-bone">
-        {title}
+      <p className="p-gothic relative text-[1.35rem] text-accent">{kicker}</p>
+      <h2 id={`panel-${id}`} className="p-display relative mt-1 text-[clamp(3.6rem,18vw,7.5rem)] text-bone" aria-label={title}>
+        {title.split(" ").map((word, w, words) => (
+          <span key={w} aria-hidden className="inline-block whitespace-nowrap">
+            {word.split("").map((ch, i) => (
+              <span key={i} className="p-letter" style={{ animationDelay: `${180 + (words.slice(0, w).join(" ").length + i) * 38}ms` }}>
+                {ch}
+              </span>
+            ))}
+            {w < words.length - 1 ? "\u00a0" : ""}
+          </span>
+        ))}
       </h2>
       {lead && <p className="relative mt-4 max-w-[46ch] text-[1rem] leading-relaxed text-bone/85">{lead}</p>}
     </div>
