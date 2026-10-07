@@ -478,6 +478,7 @@ const Profile = z.object({
   cover_quote: z.string().trim().max(160),
   since_year: z.union([z.literal(""), z.coerce.number().int().min(1950).max(2100)]),
   accent: z.union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)]),
+  cover_poster: z.boolean(),
 });
 
 export async function saveProfile(_prev: FormState, form: FormData): Promise<FormState> {
@@ -496,17 +497,18 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
     cover_quote: form.get("cover_quote") ?? "",
     since_year: form.get("since_year") ?? "",
     accent: form.get("accent") ?? "",
+    cover_poster: form.get("cover_poster") === "on",
   });
   if (!parsed.success) return { ok: false, message: t.common.error, field: String(parsed.error.issues[0]?.path[0] ?? "") };
   const p = parsed.data;
   const db = await getDb();
   await db.query(
     `update artists set display_name = $3, headline = $4, bio = $5, instagram = $6, home_city = $7, styles = $8, accepting = $9, min_price_cents = $10,
-            cover_word = $11, cover_quote = $12, since_year = $13, accent = $14
+            cover_word = $11, cover_quote = $12, since_year = $13, accent = $14, cover_poster = $15
       where id = $1 and studio_id = $2`,
     [
       member.artistId, member.studioId, p.display_name, p.headline || null, p.bio || null, p.instagram || null, p.home_city || null, p.styles, p.accepting,
-      p.min_price === "" ? null : Math.round(p.min_price * 100), p.cover_word || null, p.cover_quote || null, p.since_year === "" ? null : p.since_year, p.accent || null,
+      p.min_price === "" ? null : Math.round(p.min_price * 100), p.cover_word || null, p.cover_quote || null, p.since_year === "" ? null : p.since_year, p.accent || null, p.cover_poster,
     ],
   );
   revalidatePath("/", "layout");

@@ -84,6 +84,13 @@ export function ProfileForm({ artist, labels, locale, cover }: { artist: Artist;
         <legend className="t-heading float-left mb-1 w-full">{labels.coverTitle}</legend>
         <p className="-mt-3 max-w-[60ch] text-ash">{labels.coverLead}</p>
         {cover}
+        <label className="flex items-start gap-2.5">
+          <input type="checkbox" name="cover_poster" className="mt-1 h-4 w-4" defaultChecked={artist.cover_poster} />
+          <span>
+            {labels.poster}
+            <span className="block text-[0.85rem] text-ash-dim">{labels.posterHint}</span>
+          </span>
+        </label>
         <div className="grid gap-5 sm:grid-cols-2">
           <Text name="cover_word" label={labels.coverWord} hint={labels.coverWordHint} defaultValue={artist.cover_word} max={24} optional={labels.optional} />
           <Text name="since_year" type="number" label={labels.since} defaultValue={artist.since_year ? String(artist.since_year) : ""} optional={labels.optional} />

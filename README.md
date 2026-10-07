@@ -24,7 +24,7 @@ Open http://localhost:3000. With no environment variables the whole product runs
 Try it:
 
 - `/` is the page for artists.
-- `/iris` is a sample artist page. "Tell me your idea" opens the client brief.
+- `/camo` is a sample artist page (`/iris` a second one). "Tell me your idea" opens the client brief.
 - `/login`, then "Enter the demo studio", opens the artist studio with a request in every stage.
 
 Delete `.data/` to start from a fresh seed.

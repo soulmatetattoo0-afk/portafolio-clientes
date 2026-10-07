@@ -22,27 +22,45 @@ function at(daysFromNow: number, hour: number, minute = 0) {
 const dateOnly = (daysFromNow: number) => new Date(Date.now() + daysFromNow * day).toISOString().slice(0, 10);
 
 export async function seedDemo(db: Db) {
-  const studio = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('iris-calderon', 'Iris Calderón Tattoo', 'solo', 'founding', 'active') returning id`);
+  const studio = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('soulmate-tattoo', 'Soulmate Tattoo', 'solo', 'founding', 'active') returning id`);
   const s = studio!.id;
-  // The demo cover is a render of the same statue clients place their tattoo on.
-  const coverSrc = path.join(process.cwd(), "public", "demo", "iris-cover.jpg");
-  let portrait: string | null = null;
-  if (fs.existsSync(coverSrc)) {
-    portrait = "demo/iris-cover.jpg";
-    await putFile("public", portrait, fs.readFileSync(coverSrc), "image/jpeg").catch(() => (portrait = null));
-  }
+  const upload = async (file: string, mime: string) => {
+    const src = path.join(process.cwd(), "public", "demo", file);
+    if (!fs.existsSync(src)) return null;
+    const key = `demo/${file}`;
+    return putFile("public", key, fs.readFileSync(src), mime).then(() => key).catch(() => null);
+  };
+  // Camo Contreras, Soulmate Tattoo: the first artist on the platform. His cover is his own poster.
+  const camoCover = await upload("camo-cover.webp", "image/webp");
   const artist = await db.one<{ id: string }>(
-    `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, portrait_path)
-     values ($1, 'iris', 'Iris Calderón',
-       'Black & grey realism and surreal portraits',
-       'I tattoo in New York and travel to Europe twice a year. Most of my work is large-scale realism: portraits, sculpture, nature and dreamlike compositions built around the body.',
-       'iris.calderon.ink', 'New York', '{realism,surrealism,illustrative}', 30000, 'usd',
-       'REALISM', 'Skin remembers what the eye forgets.', 2016, '#d8552f', $2)
+    `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, cover_poster, portrait_path)
+     values ($1, 'camo', 'Camo Contreras',
+       'Realism & surrealism · colour and black & grey',
+       'Soulmate Tattoo. Large-scale realism and surreal compositions built around the body: portraits, sculpture, nature and the dreamlike, in colour or in black and grey.
+
+Based in New York, with guest spots in Europe every year. Every piece starts with a conversation: where it goes, how big it lives on you, and what it has to carry.',
+       'soulmate.tattoo', 'New York', '{realism,surrealism,illustrative}', 30000, 'usd',
+       'SOULMATE', 'Skin remembers what the eye forgets.', 2016, '#e34b36', true, $2)
      returning id`,
-    [s, portrait],
+    [s, camoCover],
   );
   const a = artist!.id;
   await db.query(`insert into members (studio_id, user_id, email, role, locale, artist_id) values ($1, $2, 'demo@brief.local', 'owner', 'es', $3)`, [s, DEMO_USER_ID, a]);
+
+  // A second artist so Explore has a neighbour: a studio of her own, no member. Her cover is a render of the statue.
+  const iris = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('iris-calderon', 'Iris Calderón Tattoo', 'solo', 'founding', 'active') returning id`);
+  const irisCover = await upload("iris-cover.jpg", "image/jpeg");
+  const irisArtist = await db.one<{ id: string }>(
+    `insert into artists (studio_id, slug, display_name, headline, bio, instagram, home_city, styles, min_price_cents, currency, cover_word, cover_quote, since_year, accent, portrait_path)
+     values ($1, 'iris', 'Iris Calderón', 'Black & grey realism and surreal portraits',
+       'I tattoo in New York and travel to Europe twice a year. Most of my work is large-scale realism: portraits, sculpture, nature and dreamlike compositions built around the body.',
+       'iris.calderon.ink', 'New York', '{realism,surrealism,illustrative}', 30000, 'usd', 'REALISM', 'Marble first, then skin.', 2018, '#d8552f', $2) returning id`,
+    [iris!.id, irisCover],
+  );
+  await db.query(`insert into tour_stops (studio_id, artist_id, city, country, studio_name, timezone, status, is_home) values ($1, $2, 'New York', 'United States', 'Nocturne Studio', 'America/New_York', 'booking', true)`, [iris!.id, irisArtist!.id]);
+  for (const [i, title] of ["Marble Medusa", "Clockwork moth", "Hands of the sculptor"].entries()) {
+    await db.query(`insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, sort) values ($1, $2, null, $3, 'realism', 'black_grey', $4)`, [iris!.id, irisArtist!.id, title, i]);
+  }
 
   const stop = async (city: string, country: string, studio: string, address: string, tz: string, start: string | null, end: string | null, status: string, home = false) =>
     (await db.one<{ id: string }>(
@@ -50,7 +68,7 @@ export async function seedDemo(db: Db) {
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
       [s, a, city, country, studio, address, tz, start, end, status, home],
     ))!.id;
-  const ny = await stop("New York", "United States", "Nocturne Studio", "214 Bowery, New York, NY", "America/New_York", null, null, "booking", true);
+  const ny = await stop("New York", "United States", "Soulmate Tattoo", "Brooklyn, NY", "America/New_York", null, null, "booking", true);
   const london = await stop("London", "United Kingdom", "Saint Ink", "41 Hackney Rd, London", "Europe/London", dateOnly(120), dateOnly(131), "booking");
   const milan = await stop("Milan", "Italy", "Officina Nera", "Via Tortona 12, Milano", "Europe/Rome", dateOnly(136), dateOnly(142), "announced");
 

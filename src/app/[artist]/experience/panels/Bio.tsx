@@ -20,7 +20,7 @@ export function Bio({ data }: { data: ExperienceData }) {
       {artist.portrait_url && (
         <figure className="relative mx-5 aspect-[4/5] overflow-hidden rounded-[18px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={artist.portrait_url} alt={artist.display_name} className="h-full w-full object-cover object-top grayscale contrast-[1.08]" />
+          <img src={artist.portrait_url} alt={artist.display_name} className={`h-full w-full object-cover object-top ${artist.cover_poster ? "" : "grayscale contrast-[1.08]"}`} />
           <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink via-transparent to-transparent" />
           {artist.headline && <figcaption className="p-quote absolute right-5 bottom-5 left-5 text-[1.5rem] text-bone">{artist.headline}</figcaption>}
         </figure>

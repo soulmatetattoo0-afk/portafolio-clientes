@@ -31,6 +31,28 @@ export function Cover({ data, onEnter }: { data: ExperienceData; onEnter: () => 
     setTimeout(onEnter, 420);
   };
 
+  if (artist.cover_poster && artist.portrait_url) {
+    // The artist's own poster: shown whole on ink, one pulse to enter.
+    return (
+      <button
+        type="button"
+        onClick={enter}
+        aria-label={a.cover.enter}
+        className={`relative mx-auto block h-dvh w-full max-w-[720px] cursor-pointer overflow-hidden bg-ink text-left transition-[opacity,transform] duration-500 ease-[var(--ease-out-quart)] ${leaving ? "scale-[1.04] opacity-0" : ""}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={artist.portrait_url} alt={artist.display_name} className="p-rise absolute inset-x-0 top-0 h-[calc(100%-4.5rem)] w-full object-contain object-top" />
+        <div aria-hidden className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-ink via-ink/70 to-transparent" />
+        <div className="p-grain" aria-hidden />
+        <p className="p-stamp p-rise p-pulse absolute right-5 bottom-[max(env(safe-area-inset-bottom),1.5rem)] left-5 flex items-center justify-center gap-3 text-bone" style={{ animationDelay: "900ms" }}>
+          <span aria-hidden className="inline-block h-[2px] w-8 bg-accent" />
+          {a.cover.enter}
+          <span aria-hidden className="inline-block h-[2px] w-8 bg-accent" />
+        </p>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"

@@ -37,7 +37,7 @@ export default async function Home() {
               <a href="#access" className="btn btn-primary">
                 {l.ctaAccess}
               </a>
-              <Link href="/iris" className="btn btn-secondary">
+              <Link href="/camo" className="btn btn-secondary">
                 {l.ctaDemo}
               </Link>
             </div>

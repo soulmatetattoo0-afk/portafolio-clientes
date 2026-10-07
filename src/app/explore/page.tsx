@@ -79,7 +79,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
                 <li key={a.slug} className="relative aspect-[3/4] overflow-hidden rounded-[16px] border border-line bg-ink-2" style={{ ["--accent" as string]: a.accent ?? "#d8552f" }}>
                   {a.portrait_url && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.portrait_url} alt="" className="absolute inset-0 h-full w-full object-cover object-top grayscale" />
+                    <img src={a.portrait_url} alt="" className={`absolute inset-0 h-full w-full object-cover object-top ${a.cover_poster ? "" : "grayscale"}`} />
                   )}
                   <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink via-ink/20 to-transparent" />
                   <div className="absolute right-3 bottom-3 left-3">

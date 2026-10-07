@@ -153,7 +153,7 @@ export function Deck({ data, initial, onOpen }: { data: ExperienceData; initial:
             >
               {id === "bio" && cover && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover object-top opacity-85 grayscale" draggable={false} />
+                <img src={cover} alt="" className={`absolute inset-0 h-full w-full object-cover object-top opacity-85 ${artist.cover_poster ? "" : "grayscale"}`} draggable={false} />
               )}
               {id === "work" && (firstWork ? (
                 // eslint-disable-next-line @next/next/no-img-element

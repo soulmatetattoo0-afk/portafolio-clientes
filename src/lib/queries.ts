@@ -30,6 +30,8 @@ export interface Artist {
   since_year: number | null;
   /** Per-artist accent colour (#rrggbb) for the public experience. */
   accent: string | null;
+  /** The photo is a finished poster: show it whole, write nothing over it. */
+  cover_poster: boolean;
   portrait_url: string | null;
 }
 
@@ -73,7 +75,7 @@ export interface PortfolioItem {
 
 const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bio, a.instagram, a.home_city, a.styles, a.accepting,
   a.min_price_cents, a.currency, a.deposit_policy, a.stripe_account_id, a.stripe_charges_enabled,
-  a.cover_word, a.cover_quote, a.since_year, a.accent, a.portrait_path`;
+  a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path`;
 
 type ArtistRow = Omit<Artist, "portrait_url"> & { portrait_path: string | null };
 
@@ -141,6 +143,7 @@ export interface ArtistCard {
   home_city: string | null;
   styles: string[];
   accent: string | null;
+  cover_poster: boolean;
   portrait_url: string | null;
 }
 
@@ -148,7 +151,7 @@ export interface ArtistCard {
 export async function listArtists(): Promise<ArtistCard[]> {
   const db = await getDb();
   const rows = await db.query<Omit<ArtistCard, "portrait_url"> & { portrait_path: string | null }>(
-    `select a.slug, a.display_name, a.headline, a.home_city, a.styles, a.accent, a.portrait_path from artists a order by a.created_at`,
+    `select a.slug, a.display_name, a.headline, a.home_city, a.styles, a.accent, a.cover_poster, a.portrait_path from artists a order by a.created_at`,
   );
   return Promise.all(rows.map(async ({ portrait_path, ...a }) => ({ ...a, portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null })));
 }

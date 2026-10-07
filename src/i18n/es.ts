@@ -570,6 +570,8 @@ const es: Dict = {
         accent: "Color de acento",
         accentHint: "Un color para botones y destacados en tu página.",
         preview: "Abrir mi página",
+        poster: "Mi foto ya es un póster terminado",
+        posterHint: "La portada la muestra completa y no escribe nada encima: ni palabra ni nombre. Úsalo cuando la tipografía ya viene en la imagen.",
       },
       plans: { founding: "Artista fundador", artist: "Artista", pro: "Pro", studio: "Estudio" },
     },

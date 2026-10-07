@@ -568,6 +568,8 @@ const en = {
         accent: "Accent colour",
         accentHint: "One colour for buttons and highlights on your page.",
         preview: "Open my page",
+        poster: "My photo is a finished poster",
+        posterHint: "The cover shows it whole and writes nothing over it: no word, no name. Use it when the type is already on the image.",
       },
       plans: { founding: "Founding artist", artist: "Artist", pro: "Pro", studio: "Studio" },
     },

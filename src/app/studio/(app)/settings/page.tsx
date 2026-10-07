@@ -84,6 +84,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/studio/
               since: s.cover.since,
               accent: s.cover.accent,
               accentHint: s.cover.accentHint,
+              poster: s.cover.poster,
+              posterHint: s.cover.posterHint,
             }}
             cover={
               <CoverPhoto
