@@ -23,6 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+// The embedded demo database boots and seeds on a cold start; give functions room for it.
+export const maxDuration = 60;
+
 export const viewport: Viewport = {
   themeColor: "#120f0c",
   colorScheme: "dark",

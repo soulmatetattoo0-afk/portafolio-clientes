@@ -10,7 +10,8 @@ const read = (name: string) => {
 };
 
 export const env = {
-  appUrl: (read("APP_URL") ?? "http://localhost:3000").replace(/\/$/, ""),
+  // On Vercel the deployment's own host stands in for APP_URL (emails, Stripe redirects, cookie security).
+  appUrl: (read("APP_URL") ?? (read("VERCEL_PROJECT_PRODUCTION_URL") ? `https://${read("VERCEL_PROJECT_PRODUCTION_URL")}` : read("VERCEL_URL") ? `https://${read("VERCEL_URL")}` : "http://localhost:3000")).replace(/\/$/, ""),
   appSecret: read("APP_SECRET") ?? "local-dev-secret-change-me",
   databaseUrl: read("DATABASE_URL"),
   supabaseUrl: read("NEXT_PUBLIC_SUPABASE_URL"),

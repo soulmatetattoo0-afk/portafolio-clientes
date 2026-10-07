@@ -37,7 +37,8 @@ async function connectPostgres(url: string): Promise<Db> {
 async function connectLocal(): Promise<Db> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { btree_gist } = await import("@electric-sql/pglite/contrib/btree_gist");
-  const dir = path.join(process.cwd(), ".data", "pglite");
+  // Vercel's filesystem is read-only outside /tmp; the demo keeps its database there (per instance, reseeded on cold start).
+  const dir = process.env.VERCEL ? path.join("/tmp", "brief-data", "pglite") : path.join(process.cwd(), ".data", "pglite");
   const fresh = !fs.existsSync(path.join(dir, "PG_VERSION"));
   fs.mkdirSync(dir, { recursive: true });
   const pg = new PGlite(dir, { extensions: { btree_gist } });

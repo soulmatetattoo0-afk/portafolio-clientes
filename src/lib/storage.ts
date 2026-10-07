@@ -9,7 +9,7 @@ import { sign, verify } from "./util";
 export type Bucket = "public" | "private";
 
 const BUCKET_NAMES: Record<Bucket, string> = { public: "portfolio", private: "brief-files" };
-const LOCAL_ROOT = path.join(process.cwd(), ".data", "files");
+const LOCAL_ROOT = process.env.VERCEL ? path.join("/tmp", "brief-data", "files") : path.join(process.cwd(), ".data", "files");
 
 const admin = () => createClient(env.supabaseUrl!, env.supabaseServiceKey!, { auth: { persistSession: false } });
 
