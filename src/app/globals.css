@@ -636,6 +636,35 @@
   .p-kenburns {
     animation: p-kenburns 4s ease-out both;
   }
+  /* The artist's cover: a slow hand-held tilt, and the sheen of a screen passing over it. */
+  @keyframes p-cover-idle {
+    0%,
+    100% {
+      transform: rotateY(-7deg) rotateX(2.5deg) translateY(0);
+    }
+    50% {
+      transform: rotateY(7deg) rotateX(-2deg) translateY(-6px);
+    }
+  }
+  @keyframes p-screen {
+    0% {
+      background-position: 140% 0;
+    }
+    55%,
+    100% {
+      background-position: -40% 0;
+    }
+  }
+  .p-cover-idle {
+    animation: p-cover-idle 8s ease-in-out infinite;
+  }
+  .p-screen {
+    pointer-events: none;
+    mix-blend-mode: screen;
+    background: linear-gradient(112deg, transparent 38%, rgb(255 255 255 / 0.22) 47%, rgb(255 255 255 / 0.06) 52%, transparent 62%);
+    background-size: 280% 100%;
+    animation: p-screen 9s ease-in-out infinite;
+  }
 
   @keyframes p-ping {
     0% {
@@ -861,7 +890,9 @@
     .p-twinkle-dot,
     .p-dash,
     .p-ink,
-    .p-flicker {
+    .p-flicker,
+    .p-cover-idle,
+    .p-screen {
       animation: none;
     }
   }

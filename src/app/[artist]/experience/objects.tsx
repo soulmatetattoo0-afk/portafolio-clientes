@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 
+import { BRAND } from "@/lib/brand";
+
 import { WorldMap, type Pin } from "./WorldMap";
 
 /**
@@ -582,57 +584,192 @@ export const WorldObject = forwardRef<ObjectHandle, { pins: Pin[] }>(
   },
 );
 
-/* 01 · The artist: a print of the poster, taped up. */
+/* 01 · The artist: the cover of a digital magazine, his poster as it came. */
 export const Portrait = forwardRef<
   ObjectHandle,
   { src: string | null; name: string; grey: boolean }
 >(function Portrait({ src, name, grey }, ref) {
   const root = useRef<HTMLDivElement>(null);
+  const idle = useRef<HTMLDivElement>(null);
+  const issue = useRef<HTMLDivElement>(null);
+  const cover = useRef<HTMLDivElement>(null);
+  const flash = useRef<HTMLDivElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const tab = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
-    reset: () => gsap.set(root.current, CLEAR),
+    reset: () => {
+      gsap.set(
+        [root.current, cover.current, flash.current, page.current, tab.current],
+        CLEAR,
+      );
+      gsap.set(idle.current, { clearProps: "animationPlayState" });
+    },
     select: () =>
       new Promise((resolve) => {
         const el = root.current!;
-        if (reduced()) return resolve(el.getBoundingClientRect());
+        const box = issue.current!;
+        if (reduced()) return resolve(box.getBoundingClientRect());
+        // Hold the idle tilt where it is; the lift and the page turn happen in that pose.
+        gsap.set(idle.current, { animationPlayState: "paused" });
         gsap
-          .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-          .to(el, { y: -10, scale: 1.06, duration: 0.28, ease: "power2.out" })
-          .to(el, { scale: 2.3, duration: 0.55, ease: "power3.in" });
+          .timeline({ onComplete: () => resolve(box.getBoundingClientRect()) })
+          // the cover comes up to you
+          .to(el, { y: -14, scale: 1.08, duration: 0.3, ease: "power2.out" })
+          // one flash of the screen
+          .fromTo(
+            flash.current,
+            { xPercent: -140, opacity: 1 },
+            { xPercent: 240, duration: 0.5, ease: "power1.inOut" },
+            "<0.05",
+          )
+          .to(flash.current, { opacity: 0, duration: 0.2 }, "<0.32")
+          // the cover turns around its spine and the first page shows
+          .to(
+            cover.current,
+            { rotateY: -168, duration: 0.9, ease: "power2.inOut" },
+            ">-0.15",
+          )
+          .to(
+            page.current,
+            { filter: "brightness(1)", duration: 0.6, ease: "power2.out" },
+            "<0.25",
+          )
+          .to(el, { scale: 2.2, duration: 0.5, ease: "power3.in" }, "<0.3")
+          .to(tab.current, { opacity: 0, duration: 0.2 }, "<");
       }),
   }));
 
   return (
     <div
       ref={root}
-      className="relative mx-auto aspect-[3/4.2] w-[86%] origin-center will-change-transform"
+      className="relative mx-auto w-[68%] origin-center will-change-transform"
+      style={{ perspective: "900px" }}
     >
-      <div className="p-float-slow absolute inset-0 bg-bone p-[4%] pb-[11%] shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9)]">
-        {src ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt=""
-            draggable={false}
-            className={`h-full w-full object-cover object-top select-none ${grey ? "grayscale" : ""}`}
+      <div
+        ref={idle}
+        className="p-cover-idle relative aspect-[9/16] w-full"
+        style={{ transformStyle: "preserve-3d" }}
+      >
+        {/* the issues underneath, a stack of them */}
+        {[2, 1].map((k) => (
+          <div
+            key={k}
+            aria-hidden
+            className="absolute inset-0 rounded-[6px] bg-ink-2"
+            style={{
+              transform: `translate3d(${k * 4}px, ${k * 5}px, ${-k * 7}px)`,
+              boxShadow:
+                "inset 0 0 0 1px rgb(244 237 224 / 0.2), 0 14px 30px -12px rgb(0 0 0 / 0.9)",
+              opacity: 1 - k * 0.22,
+            }}
           />
-        ) : (
-          <div className="grid h-full w-full place-items-center bg-ink-2">
-            <span className="p-display text-[3rem] text-bone/30">
-              {name.slice(0, 1)}
+        ))}
+        {/* the first page, bone, under the cover */}
+        <div
+          ref={page}
+          aria-hidden
+          className="absolute inset-0 overflow-hidden rounded-[6px] bg-bone text-ink"
+          style={{
+            transform: "translateZ(-1px)",
+            filter: "brightness(0.55)",
+            boxShadow: "inset 0 0 0 1px rgb(0 0 0 / 0.08)",
+          }}
+        >
+          <div className="p-halftone" />
+          <div
+            className="absolute inset-y-0 left-0 w-[16%]"
+            style={{
+              background:
+                "linear-gradient(to right, rgb(0 0 0 / 0.22), rgb(0 0 0 / 0.04) 60%, transparent)",
+            }}
+          />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-[6%]">
+            <span className="p-stamp text-[0.5rem] text-ink/55">{BRAND.name}</span>
+            <span className="p-gothic text-[2.6rem] leading-none text-accent">
+              Vol. 01
             </span>
+            <span className="h-px w-[28%] bg-ink/25" />
           </div>
-        )}
-        <span
-          aria-hidden
-          className="absolute -top-[3%] left-[8%] h-[5%] w-[26%] -rotate-6 bg-[#e9dfc4]/70 shadow-sm"
-        />
-        <span
-          aria-hidden
-          className="absolute -top-[3%] right-[8%] h-[5%] w-[26%] rotate-6 bg-[#e9dfc4]/70 shadow-sm"
-        />
-        <span className="p-quote absolute right-0 bottom-[2.5%] left-0 text-center text-[clamp(0.8rem,3.2vw,1rem)] text-ink/80">
-          {name}
+        </div>
+        {/* the cover: the poster as it came, behind glass */}
+        <div
+          ref={cover}
+          className="absolute inset-0"
+          style={{ transformStyle: "preserve-3d", transformOrigin: "0% 50%" }}
+        >
+          <div
+            ref={issue}
+            className="absolute inset-0 overflow-hidden rounded-[6px] bg-ink-2"
+            style={{
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              boxShadow:
+                "0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 60px -18px rgb(0 0 0 / 0.95)",
+            }}
+          >
+            {src ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt=""
+                draggable={false}
+                className={`h-full w-full object-cover object-top select-none ${grey ? "grayscale" : ""}`}
+              />
+            ) : (
+              <div className="relative grid h-full w-full place-items-end bg-[radial-gradient(ellipse_at_30%_20%,#2a2622,#0c0b0a_70%)] p-[9%]">
+                <span className="p-display absolute top-[6%] left-[8%] text-[1.1rem] text-accent">
+                  {BRAND.name}
+                </span>
+                <span className="p-display text-[4.6rem] leading-[0.8] text-bone/25">
+                  {name.slice(0, 1)}
+                </span>
+                <span className="p-stamp absolute bottom-[7%] left-[8%] text-[0.52rem] text-bone/70">
+                  {name}
+                </span>
+              </div>
+            )}
+            {/* the glass: a thin bright edge, a soft specular, the sheen that sweeps */}
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-[6px]"
+              style={{
+                boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.55)",
+                background:
+                  "radial-gradient(ellipse 70% 45% at 18% 0%, rgb(255 255 255 / 0.16), transparent 70%)",
+              }}
+            />
+            <div aria-hidden className="p-screen absolute inset-0" />
+            <div
+              ref={flash}
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-[60%] opacity-0"
+              style={{
+                background:
+                  "linear-gradient(105deg, transparent 20%, rgb(255 255 255 / 0.55) 50%, transparent 80%)",
+                mixBlendMode: "screen",
+              }}
+            />
+          </div>
+          {/* the inside of the cover */}
+          <div
+            aria-hidden
+            className="absolute inset-0 rounded-[6px] bg-bone-dim"
+            style={{
+              transform: "rotateY(180deg)",
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              background:
+                "linear-gradient(to left, rgb(0 0 0 / 0.2), transparent 30%), var(--color-bone-dim)",
+            }}
+          />
+        </div>
+      </div>
+      {/* the issue tab, below the cover and never on it */}
+      <div ref={tab} className="mt-2.5 flex items-center justify-center gap-1.5">
+        <span aria-hidden className="h-1 w-1 rounded-full bg-accent" />
+        <span className="p-stamp text-[0.5rem] text-bone-dim">
+          {BRAND.name} · Vol. 01
         </span>
       </div>
     </div>
