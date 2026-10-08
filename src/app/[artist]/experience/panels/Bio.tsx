@@ -358,7 +358,9 @@ function Book({ pages, labels }: { pages: React.ReactNode[]; labels: { page: str
 
   const left = spread ? (leaf ? leaf.left : (pages[p - 1] ?? null)) : null;
   const right = leaf ? leaf.right : pages[p];
-  const shown = spread ? (p === 0 ? "01" : `${String(p).padStart(2, "0")}–${String(Math.min(p + 1, last + 1)).padStart(2, "0")}`) : String(p + 1).padStart(2, "0");
+  // The counter speaks in folios: the cover has none, Welcome is 01, so the number on the page and the number below agree.
+  const num = (i: number) => String(i).padStart(2, "0");
+  const shown = p === 0 ? "—" : spread ? `${num(p - 1)}–${num(Math.min(p, last))}` : num(p);
 
   return (
     <div className="flex h-[calc(100dvh-4.2rem)] min-h-[520px] flex-col px-3 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
@@ -408,7 +410,7 @@ function Book({ pages, labels }: { pages: React.ReactNode[]; labels: { page: str
           <span className="p-stamp ml-1">{labels.prev}</span>
         </button>
         <span className="p-stamp text-bone-dim tabular-nums">
-          {labels.page} {shown} / {String(pages.length).padStart(2, "0")}
+          {labels.page} {shown} / {num(last)}
         </span>
         <button type="button" className="btn btn-ghost btn-sm text-bone disabled:opacity-25" onClick={() => turn(1)} disabled={!canNext} aria-label={labels.next}>
           <span className="p-stamp mr-1">{labels.next}</span>
@@ -453,7 +455,7 @@ function Ink({ children }: { children: React.ReactNode }) {
 /** The piece as printed: the photo, or a striped plate with its title until there is one. */
 function Art({ piece, className = "" }: { piece: PortfolioItem; className?: string }) {
   return (
-    <figure className={`relative min-h-0 overflow-hidden bg-[#e9e5dc] ${className}`}>
+    <figure className={`min-h-0 overflow-hidden bg-[#e9e5dc] ${className}`}>
       {piece.url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={piece.url} alt={piece.title ?? ""} className="h-full w-full object-cover" loading="lazy" draggable={false} />
