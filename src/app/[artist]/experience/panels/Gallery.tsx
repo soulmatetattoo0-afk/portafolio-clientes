@@ -10,20 +10,51 @@ import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 import { PanelHead } from "../Panel";
 import type { ExperienceData } from "../types";
 
-/* The wall's rhythm: column span and row span for each slot, repeating. A hero, then pairs and odd ones. */
-const SLOTS: [number, number][] = [
-  [6, 5],
-  [3, 4],
-  [3, 3],
-  [2, 3],
-  [4, 4],
-  [3, 3],
-  [3, 4],
-  [6, 4],
-  [2, 3],
-  [2, 3],
-  [2, 3],
-];
+/** The wall reads as pages of six; the CSS in globals.css closes every row of a page. */
+const PAGE = 6;
+
+type PhoneSlot = "hero" | "square" | "tall" | "wide";
+type WideSlot = "hero" | "square" | "column" | "tall" | "wide" | "strip";
+
+/** Two columns: hero on top, two squares, two talls, one wide. A lone tile in a row widens so the row closes. */
+function phoneSlot(i: number, n: number): PhoneSlot {
+  if (i === 0) return "hero";
+  if (i === 5) return "wide";
+  if (i <= 2) return n === 2 ? "wide" : "square";
+  return n === 4 ? "wide" : "tall";
+}
+
+/** Three columns: a square hero over two rows with two squares beside it, then a row of three talls. */
+function wideSlot(i: number, n: number): WideSlot {
+  if (n === 1) return "strip";
+  if (i === 0) return "hero";
+  if (i <= 2) return n === 2 ? "column" : "square";
+  const last = n - 3;
+  if (last === 1) return "strip";
+  if (last === 2) return i === 3 ? "wide" : "tall";
+  return "tall";
+}
+
+/** Deterministic shuffle so a seed gives the same wall on every render. */
+function shuffle<T>(list: T[], seed: number) {
+  const out = [...list];
+  let s = seed * 9301 + 49297;
+  for (let i = out.length - 1; i > 0; i--) {
+    s = (s * 9301 + 49297) % 233280;
+    const j = Math.floor((s / 233280) * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** The hero is always a featured piece; a shuffle picks another one and reorders the rest. */
+function arrange(items: PortfolioItem[], seed: number) {
+  const featured = items.filter((i) => i.featured);
+  const hero = featured.length ? featured[seed % featured.length] : items[0];
+  if (!hero) return items;
+  const rest = items.filter((i) => i !== hero);
+  return [hero, ...(seed === 0 ? rest : shuffle(rest, seed))];
+}
 
 /** Finished work as a wall: one hero, then a dense collage; or grouped by style with a big header each. */
 export function Gallery({ data }: { data: ExperienceData }) {
@@ -35,7 +66,7 @@ export function Gallery({ data }: { data: ExperienceData }) {
   const [open, setOpen] = useState<number | null>(null);
 
   const styles = useMemo(() => [...new Set(portfolio.map((i) => i.style).filter(Boolean))] as string[], [portfolio]);
-  const wall = useMemo(() => (seed === 0 ? portfolio : shuffle(portfolio, seed)), [portfolio, seed]);
+  const wall = useMemo(() => arrange(portfolio, seed), [portfolio, seed]);
   const groups = useMemo(() => styles.map((s) => ({ style: s, items: portfolio.filter((i) => i.style === s) })), [styles, portfolio]);
   const flat = mode === "wall" ? wall : groups.flatMap((g) => g.items);
 
@@ -65,18 +96,20 @@ export function Gallery({ data }: { data: ExperienceData }) {
       {portfolio.length === 0 ? (
         <p className="px-5 text-bone-dim">{p.empty}</p>
       ) : mode === "wall" ? (
-        <Wall items={wall} offset={0} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
+        <Wall items={wall} offset={0} page0={0} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
       ) : (
         <div className="grid gap-10">
           {groups.map((g, gi) => {
-            const offset = groups.slice(0, gi).reduce((n, x) => n + x.items.length, 0);
+            const before = groups.slice(0, gi);
+            const offset = before.reduce((n, x) => n + x.items.length, 0);
+            const page0 = before.reduce((n, x) => n + Math.ceil(x.items.length / PAGE), 0);
             return (
               <section key={g.style} aria-label={styleLabel(g.style, locale)}>
                 <div className="flex items-baseline justify-between gap-3 px-5 pb-3">
                   <h3 className="p-display text-[2.6rem] text-bone">{styleLabel(g.style, locale)}</h3>
                   <span className="p-gothic text-[1.2rem] text-accent">{fill(p.count, { n: g.items.length })}</span>
                 </div>
-                <Wall items={g.items} offset={offset} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
+                <Wall items={g.items} offset={offset} page0={page0} locale={locale} healed={p.healed} openLabel={p.open} onOpen={setOpen} />
               </section>
             );
           })}
@@ -87,43 +120,71 @@ export function Gallery({ data }: { data: ExperienceData }) {
   );
 }
 
-function Wall({ items, offset, locale, healed, openLabel, onOpen }: { items: PortfolioItem[]; offset: number; locale: "en" | "es"; healed: string; openLabel: string; onOpen: (i: number) => void }) {
+function Wall({ items, offset, page0, locale, healed, openLabel, onOpen }: { items: PortfolioItem[]; offset: number; page0: number; locale: "en" | "es"; healed: string; openLabel: string; onOpen: (i: number) => void }) {
+  const pages: PortfolioItem[][] = [];
+  for (let i = 0; i < items.length; i += PAGE) pages.push(items.slice(i, i + PAGE));
   return (
-    <ul className="p-wall px-3">
-      {items.map((item, i) => {
-        const [c, r] = SLOTS[i % SLOTS.length];
-        const n = offset + i;
+    <div className="grid gap-3 px-3">
+      {pages.map((page, pi) => {
+        const first = offset + pi * PAGE;
+        const flip = (page0 + pi) % 2 === 1;
         return (
-          <li key={item.id} style={{ gridColumn: `span ${c}`, gridRow: `span ${r}` }} className="min-w-0">
-            <button type="button" onClick={() => onOpen(n)} className="group relative block h-full w-full overflow-hidden rounded-[12px] bg-ink-2 text-left" aria-label={fill(openLabel, { title: item.title ?? "" })}>
-              {item.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.url} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" loading="lazy" />
-              ) : (
-                <Plate item={item} index={n} variant={i % 3} locale={locale} />
-              )}
-              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent opacity-80" />
-              <span className="p-gothic absolute top-2 left-3 text-[1.1rem] text-bone/90">{String(n + 1).padStart(2, "0")}</span>
-              {item.is_healed && <span className="p-stamp absolute top-2.5 right-2.5 rounded-full bg-ink/75 px-2 py-0.5 text-[0.55rem] text-bone">{healed}</span>}
-              {item.url && <span className="p-quote absolute right-3 bottom-2 left-3 truncate text-[1.05rem] text-bone">{item.title}</span>}
-            </button>
-          </li>
+          <div key={pi}>
+            {pages.length > 1 && (
+              <div aria-hidden className="flex items-center gap-3 px-1 pt-2 pb-3">
+                <span className="p-gothic text-[1.05rem] text-bone-dim">
+                  {String(first + 1).padStart(2, "0")} – {String(first + page.length).padStart(2, "0")}
+                </span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            )}
+            <ul className={`p-wall ${flip ? "p-wall--flip" : ""}`}>
+              {page.map((item, i) => {
+                const n = first + i;
+                return (
+                  <li key={item.id} data-s={phoneSlot(i, page.length)} data-l={wideSlot(i, page.length)}>
+                    <Tile item={item} index={n} locale={locale} healed={healed} label={fill(openLabel, { title: item.title ?? "" })} onOpen={() => onOpen(n)} />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
-/** Deterministic shuffle so a seed gives the same wall on every render. */
-function shuffle<T>(list: T[], seed: number) {
-  const out = [...list];
-  let s = seed * 9301 + 49297;
-  for (let i = out.length - 1; i > 0; i--) {
-    s = (s * 9301 + 49297) % 233280;
-    const j = Math.floor((s / 233280) * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+/** One piece on the wall. A photo that fails to load gives way to the typeset plate so the grid never shows a hole. */
+function Tile({ item, index, locale, healed, label, onOpen }: { item: PortfolioItem; index: number; locale: "en" | "es"; healed: string; label: string; onOpen: () => void }) {
+  const [broken, setBroken] = useState(false);
+  const photo = item.url && !broken;
+  return (
+    <button type="button" onClick={onOpen} className="group absolute inset-0 block text-left" aria-label={label}>
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.url ?? undefined}
+          alt=""
+          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+          loading={index < 3 ? "eager" : "lazy"}
+          onError={() => setBroken(true)}
+          ref={(el) => {
+            // A 404 that happened before hydration never fires onError; read the result off the element.
+            if (el && el.complete && el.naturalWidth === 0) setBroken(true);
+          }}
+        />
+      ) : (
+        <Plate item={item} index={index} variant={index % 3} locale={locale} />
+      )}
+      {photo && <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/5 to-transparent" />}
+      <span aria-hidden className="p-gothic absolute top-2 left-3 text-[1.1rem] leading-none text-bone/90">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      {item.is_healed && <span className="p-stamp absolute top-2.5 right-2.5 rounded-full bg-ink/75 px-2 py-0.5 text-[0.55rem] text-bone">{healed}</span>}
+      {photo && <span className="p-quote absolute right-3 bottom-2 left-3 truncate text-[1.05rem] text-bone">{item.title}</span>}
+    </button>
+  );
 }
 
 function Lightbox({ items, index, locale, close, piece, onChange }: { items: PortfolioItem[]; index: number; locale: "en" | "es"; close: string; piece: string; onChange: (i: number | null) => void }) {

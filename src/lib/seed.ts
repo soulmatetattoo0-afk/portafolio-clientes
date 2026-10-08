@@ -76,6 +76,12 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
     ["Drowned cathedral", "surrealism", "color", "thigh_L", true, "A cathedral under water, light coming down through the nave. The first piece in colour for a client who had only worn black and grey. Three sessions over a winter."],
     ["Lion & laurel", "realism", "black_grey", "chest_full", false, null],
     ["Hands of the sculptor", "illustrative", "black_grey", "calf_R", true, null],
+    ["Saint Sebastian", "realism", "black_grey", "back_full", true, "Arrows and bound hands from a Renaissance panel, scaled to the whole back. Four sessions over a summer, the longest piece in the book."],
+    ["Koi under ice", "surrealism", "color", "forearm_outer_R", true, null],
+    ["The astronomer's eye", "surrealism", "black_grey", "chest_center", false, "A single eye, a sextant and the night sky folded into one composition on the sternum. One session, no colour."],
+    ["Wolf & moon", "realism", "black_grey", "shoulder_R", true, null],
+    ["Paper boats on the Hudson", "illustrative", "black_grey", "ribs_L", true, null],
+    ["Blooming skull", "illustrative", "color", "thigh_R", false, "A skull overgrown with peonies, drawn for a florist. Colour kept to the petals so the bone stays bone."],
   ];
   for (const [i, [title, style, color, placement, healed, story]] of portfolio.entries()) {
     await db.query(
