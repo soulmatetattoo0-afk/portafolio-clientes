@@ -4,8 +4,6 @@ import { dict, fill, type Locale } from "@/i18n";
 import { dateRange } from "@/lib/format";
 import type { SpotCard as Spot } from "@/lib/search";
 
-import { CoverPlate } from "./CoverPlate";
-
 /**
  * One guest artist in the strip, as a portrait: who, the city they are
  * coming to and when. Wears the page's accent. Taps through to the
@@ -23,7 +21,12 @@ export function SpotTile({ spot, locale, priority = false }: { spot: Spot; local
             // eslint-disable-next-line @next/next/no-img-element
             <img src={artist.portrait_url} alt="" loading={priority ? "eager" : "lazy"} decoding="async" className={`absolute inset-0 h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.03] ${artist.cover_poster ? "" : "grayscale"}`} />
           ) : (
-            <CoverPlate name={artist.display_name} compact />
+            // No portrait yet: a tour poster, the city they are coming to set huge and faint behind the name.
+            <span aria-hidden className="absolute inset-0 overflow-hidden bg-ink-2">
+              <span className="p-halftone" />
+              <span className="absolute inset-x-0 top-0 h-[3px] bg-accent" />
+              <span className="p-display absolute top-[8%] -left-[0.04em] block w-[120%] text-[34cqw] leading-[0.82] break-words text-accent/30 uppercase">{stop.city}</span>
+            </span>
           )}
           <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink via-ink/35 to-transparent" />
           <span className="absolute inset-x-3 bottom-3 block">
