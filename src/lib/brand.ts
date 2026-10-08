@@ -1,12 +1,12 @@
 /**
- * The house brand: the name on every magazine's masthead and the line that
- * says who makes it. One place to change when the name is settled.
+ * The house brand. Soot: lampblack, the first tattoo ink and the black of
+ * print, the same pigment. One place to change if the name moves.
  */
 export const BRAND = {
-  name: "INKFOLIO",
-  /** Under the masthead, in small caps. */
-  tagline: { en: "Art · Skin · Stories", es: "Arte · Piel · Historias" },
-  /** The AI as the editor-in-chief, said plainly. */
-  madeBy: { en: "Edited by AI", es: "Editada por IA" },
-  instagram: "inkfolio",
+  name: "SOOT",
+  /** The brand line. */
+  tagline: { en: "Every artist is a cover story.", es: "Cada artista es una historia de portada." },
+  /** The AI as a post on the masthead, for the colophon; never on the cover. */
+  editor: { en: "An AI at the editor's desk. A human on the cover.", es: "Una IA en la mesa del editor. Un humano en la portada." },
+  instagram: "soot.mag",
 } as const;

@@ -10,7 +10,7 @@ import { PLACEMENT_BY_SLUG, ZONE_BY_SLUG } from "@/mannequin/catalog";
 
 import { BRAND } from "@/lib/brand";
 
-import { coverWordOf, type ExperienceData } from "../types";
+import type { ExperienceData } from "../types";
 
 /**
  * The artist's digital magazine. Not paper: full-screen chapters that slide
@@ -23,7 +23,6 @@ export function Bio({ data }: { data: ExperienceData }) {
   const a = t.artist;
   const p = a.panel.bio;
   const m = p.mag;
-  const word = coverWordOf(artist, a.deck.cards.bio.title);
   const styles = artist.styles.map((s) => STYLE_BY_SLUG.get(s)?.label[locale] ?? s);
   const paragraphs = (artist.bio ?? "").split(/\n{2,}/).filter(Boolean);
   const featured = data.portfolio.filter((i) => i.featured);
@@ -39,75 +38,78 @@ export function Bio({ data }: { data: ExperienceData }) {
 
   const chapters: { key: string; label: string; node: React.ReactNode }[] = [];
 
-  // The cover: the house masthead, the artist's portrait, the cover lines, the name.
-  const lines = featured.slice(0, 3);
+  // The cover: the house masthead across the full width, the portrait in black and white,
+  // facts as cover lines, the artist's name at the foot, the volume line, the RESERVE stamp.
+  const coverLines = [
+    styles.length ? styles.slice(0, 2).join(" · ") : null,
+    home ? [home.studio_name, home.city].filter(Boolean).join(", ") : artist.home_city,
+    cities.length && years ? `${cities.length} ${m.cities} · ${years} ${m.years}` : null,
+    featured[0]?.title ? `${m.popular}: ${featured[0].title}` : null,
+  ].filter((l): l is string => !!l);
   chapters.push({
     key: "cover",
     label: m.issue,
     node: (
       <Ch tone="ink">
-        <div className="absolute inset-0 @3xl:left-1/2 @3xl:w-[76cqh] @3xl:-translate-x-1/2">
-          {/* the portrait, in the artist's colour when it is not already a poster */}
+        <div className="absolute inset-0 @3xl:left-1/2 @3xl:w-[62cqh] @3xl:-translate-x-1/2">
           <div className="absolute inset-0 overflow-hidden" data-img>
             {portrait ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={portrait.src} alt={artist.display_name} draggable={false} className={`block h-full w-full object-cover object-top ${portrait.grey ? "grayscale contrast-[1.08]" : ""}`} />
+              <img src={portrait.src} alt={artist.display_name} draggable={false} className="block h-full w-full object-cover object-top grayscale-[.85] contrast-[1.08]" />
             ) : (
               <div className="mag-stripes absolute inset-0 opacity-30" />
             )}
-            {portrait?.grey && <div aria-hidden className="absolute inset-0 bg-accent opacity-80 mix-blend-multiply" />}
-            <div aria-hidden className="absolute inset-x-0 top-0 h-[34%] bg-gradient-to-b from-black/85 via-black/35 to-transparent" />
-            <div aria-hidden className="absolute inset-x-0 bottom-0 h-[42%] bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+            <div aria-hidden className="absolute inset-x-0 top-0 h-[38%] bg-gradient-to-b from-black/80 via-black/30 to-transparent" />
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-[46%] bg-gradient-to-t from-black/92 via-black/50 to-transparent" />
           </div>
-          {/* masthead */}
-          <div className="absolute inset-x-0 top-[2.5%] text-center">
-            <p data-r className="p-stamp flex justify-between px-[4cqw] text-bone/70">
-              <span>{m.vol} 01 · {year}</span>
-              <span>{BRAND.madeBy[locale]}</span>
-            </p>
-            <h3 data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-gothic mt-[1cqw] text-[clamp(3rem,19cqw,10rem)] leading-[0.9] text-bone @3xl:text-[17cqw]">
-              {BRAND.name}
-            </h3>
-            <p data-r style={{ "--d": "160ms" } as React.CSSProperties} className="p-stamp mt-[0.5cqw] text-bone/80">
-              {BRAND.tagline[locale]}
+          {/* masthead: the name set to the full width of the cover */}
+          <div className="absolute inset-x-[4cqw] top-[3cqw]">
+            <svg data-r viewBox="0 0 100 26" className="block w-full" aria-label={BRAND.name} role="img">
+              <text x="0" y="25" textLength="100" lengthAdjust="spacingAndGlyphs" fill="var(--color-bone)" style={{ fontFamily: "var(--font-poster)", fontWeight: 900, fontSize: 36, fontVariationSettings: '"opsz" 72', letterSpacing: "0.005em" }}>
+                {BRAND.name}
+              </text>
+            </svg>
+            <p data-r style={{ "--d": "90ms" } as React.CSSProperties} className="p-gothic mt-[0.5cqw] flex justify-between text-[clamp(0.95rem,3.2cqw,1.5rem)] text-bone/85">
+              <span>{m.issue}</span>
+              <span className="text-accent">{m.vol} 01</span>
             </p>
           </div>
-          {/* cover lines */}
-          {lines.length > 0 && (
-            <ul className="absolute bottom-[22%] left-[4cqw] grid max-w-[42%] gap-[2.2cqw]">
-              {lines.map((piece, i) => (
-                <li key={piece.id} data-r style={{ "--d": `${240 + i * 90}ms` } as React.CSSProperties} className="border-l-[0.5cqw] border-accent pl-[2cqw]">
-                  <span className="p-display block text-[clamp(1.05rem,4.6cqw,2.4rem)] leading-[0.95] text-bone">{piece.title ?? m.work}</span>
-                  <span className="p-stamp mt-[0.6cqw] block text-bone/70">{styleOf(piece) ?? m.popular}</span>
-                </li>
-              ))}
-            </ul>
+          {/* cover lines: facts, each under a hairline in the artist's colour */}
+          <ul className="absolute top-[42%] left-[4cqw] grid max-w-[46%] gap-[2.4cqw]">
+            {coverLines.slice(0, 4).map((line, i) => (
+              <li key={line} data-r style={{ "--d": `${200 + i * 80}ms` } as React.CSSProperties} className="border-t border-accent pt-[1.2cqw]">
+                <span className="p-stamp block text-[clamp(0.6rem,2.6cqw,0.9rem)] leading-[1.25] text-bone">{line.toUpperCase()}</span>
+              </li>
+            ))}
+          </ul>
+          {/* RESERVE: the sign from the ring, stamped on the cover */}
+          {artist.accepting && (
+            <a
+              href={`/${artist.slug}/request`}
+              data-r
+              style={{ "--d": "520ms" } as React.CSSProperties}
+              className="p-display absolute bottom-[23%] left-[5cqw] -rotate-[8deg] border-2 border-accent px-[2.2cqw] py-[0.8cqw] text-[clamp(0.9rem,4cqw,1.9rem)] leading-none text-accent"
+            >
+              {a.deck.sign.toUpperCase()}
+            </a>
           )}
-          {/* the name */}
-          <div className="absolute right-[4cqw] bottom-[4%] left-[4cqw] flex items-end justify-between gap-[3cqw]">
-            <dl data-r style={{ "--d": "420ms" } as React.CSSProperties} className="p-stamp grid gap-1 text-bone/70">
-              {artist.home_city && <Fact label={p.based}>{artist.home_city}</Fact>}
-              {artist.since_year && <Fact label={p.since}>{artist.since_year}</Fact>}
-            </dl>
+          {/* the volume line and the name */}
+          <div className="absolute right-[4cqw] bottom-[3cqw] left-[4cqw] flex items-end justify-between gap-[3cqw]">
+            <p data-r style={{ "--d": "420ms" } as React.CSSProperties} className="p-stamp text-[clamp(0.55rem,2.2cqw,0.8rem)] leading-[1.6] text-bone/75">
+              {BRAND.name} · {year}
+              {artist.home_city ? <><br />{artist.home_city.toUpperCase()}</> : null}
+            </p>
             <div className="min-w-0 text-right">
-              <p data-r style={{ "--d": "300ms" } as React.CSSProperties} className="p-display text-[clamp(3.4rem,20cqw,11rem)] leading-[0.82] text-bone @3xl:text-[18cqw]">
+              <p data-r style={{ "--d": "300ms" } as React.CSSProperties} className="p-display text-[clamp(3rem,17cqw,9rem)] leading-[0.84] text-bone @3xl:text-[16cqw]">
                 {first}
               </p>
               {restName.length > 0 && (
-                <p data-r style={{ "--d": "360ms" } as React.CSSProperties} className="p-display text-[clamp(1.4rem,7cqw,3.8rem)] leading-none text-bone/90">
+                <p data-r style={{ "--d": "360ms" } as React.CSSProperties} className="p-display text-[clamp(1.6rem,9cqw,4.6rem)] leading-[0.9] text-bone">
                   {restName.join(" ")}
-                </p>
-              )}
-              {artist.headline && (
-                <p data-r style={{ "--d": "440ms" } as React.CSSProperties} className="p-stamp mt-[1cqw] max-w-[34ch] text-bone/80">
-                  {artist.headline}
                 </p>
               )}
             </div>
           </div>
-          <span aria-hidden data-r style={{ "--d": "500ms" } as React.CSSProperties} className="p-display absolute top-[38%] left-[3cqw] [writing-mode:vertical-rl] text-[clamp(0.9rem,3cqw,1.6rem)] text-accent">
-            {word}
-          </span>
         </div>
       </Ch>
     ),
@@ -142,7 +144,7 @@ export function Bio({ data }: { data: ExperienceData }) {
             </ol>
           </div>
           <div className="relative min-h-0">
-            <Fig src={portrait?.src} grey={portrait?.grey} title={artist.display_name} className="absolute top-0 right-0 h-[84%] w-[58%] @3xl:h-[90%] @3xl:w-[60%]" />
+            <Fig src={portrait?.src} grey duo title={artist.display_name} className="absolute top-0 right-0 h-[84%] w-[58%] @3xl:h-[90%] @3xl:w-[60%]" />
             {data.portfolio[1] && <Fig src={data.portfolio[1].url} title={data.portfolio[1].title ?? ""} caption={data.portfolio[1].title ?? undefined} delay="260ms" className="absolute bottom-0 left-0 h-[48%] w-[50%] ring-[0.6cqw] ring-bone" />}
             {styles.length > 0 && (
               <ul data-r style={{ "--d": "380ms" } as React.CSSProperties} className="absolute top-[2%] left-0 grid gap-1.5">
@@ -262,6 +264,9 @@ export function Bio({ data }: { data: ExperienceData }) {
                 “{artist.cover_quote}”
               </p>
             )}
+            <p data-r style={{ "--d": "240ms" } as React.CSSProperties} className="p-stamp mt-[3cqw] max-w-[40ch] text-ink/70">
+              {BRAND.editor[locale]} · {BRAND.name} {m.vol} 01{artist.home_city ? ` · ${artist.home_city}` : ""}
+            </p>
           </div>
           <div data-r style={{ "--d": "260ms" } as React.CSSProperties} className="flex flex-wrap items-center justify-between gap-4 border-t border-ink/25 pt-[2.5cqw]">
             {artist.instagram ? (
@@ -439,20 +444,21 @@ function Ch({ tone, children }: { tone: "ink" | "bone" | "accent"; children: Rea
 }
 
 /** A photograph, or the striped plate with its title until there is one. */
-function Fig({ src, grey, title, caption, sub, delay, className = "" }: { src?: string | null; grey?: boolean; title: string; caption?: string; sub?: string; delay?: string; className?: string }) {
+function Fig({ src, grey, duo, title, caption, sub, delay, className = "" }: { src?: string | null; grey?: boolean; duo?: boolean; title: string; caption?: string; sub?: string; delay?: string; className?: string }) {
   // Callers that place the figure themselves pass `absolute`; everyone else gets a positioned box for the caption.
   const pos = /\babsolute\b/.test(className) ? "" : "relative";
   return (
     <figure data-img style={{ "--d": delay ?? "0ms" } as React.CSSProperties} className={`${pos} overflow-hidden bg-[#161412] [container-type:inline-size] ${className}`}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={title} draggable={false} loading="lazy" className={`block h-full w-full object-cover ${grey ? "grayscale" : ""}`} />
+        <img src={src} alt={title} draggable={false} loading="lazy" className={`block h-full w-full object-cover ${grey ? "grayscale contrast-[1.08]" : ""}`} />
       ) : (
         <div className="grid h-full w-full place-items-center p-[6cqw]">
           <span aria-hidden className="mag-stripes absolute inset-0 opacity-25" />
           <span className="p-script relative text-center text-[clamp(1rem,9cqw,1.8rem)] leading-tight text-bone/70">{title}</span>
         </div>
       )}
+      {duo && src && <div aria-hidden className="absolute inset-0 bg-accent opacity-85 mix-blend-multiply" />}
       {caption && (
         <figcaption className="absolute right-0 bottom-0 left-0 flex items-baseline justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-[4cqw] pt-[8cqw] pb-[3cqw] text-bone">
           <span className="p-stamp truncate">{caption}</span>
