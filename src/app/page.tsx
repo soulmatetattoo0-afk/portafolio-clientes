@@ -132,7 +132,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <section className="mt-12" aria-label={w.spots.title}>
           <p className="p-gothic text-[1.2rem] text-accent">{w.spots.lead}</p>
           <h2 className="p-display mt-0.5 text-[clamp(2.4rem,11vw,3.4rem)] text-bone">
-            {w.spots.title} <span className="text-bone-dim">{spotsEverywhere || !current ? w.spots.everywhere : fill(w.spots.near, { city: current.city })}</span>
+            {w.spots.title} <span className="text-bone-dim">{spotsEverywhere || !current ? w.spots.everywhere : fill(w.spots.inCity, { city: current.city })}</span>
           </h2>
           {spots.length === 0 ? (
             <p className="mt-4 text-bone-dim">{fill(w.spots.empty, { city: place })}</p>
