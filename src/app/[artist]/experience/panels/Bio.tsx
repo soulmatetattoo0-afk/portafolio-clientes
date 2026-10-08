@@ -51,7 +51,7 @@ export function Bio({ data }: { data: ExperienceData }) {
     label: m.issue,
     node: (
       <Ch tone="ink">
-        <div className="absolute inset-0 @3xl:left-1/2 @3xl:w-[62cqh] @3xl:-translate-x-1/2">
+        <div className="absolute inset-0 [container-type:size] @3xl:left-1/2 @3xl:w-[62cqh] @3xl:-translate-x-1/2">
           <div className="absolute inset-0 overflow-hidden" data-img>
             {portrait ? (
               // eslint-disable-next-line @next/next/no-img-element
