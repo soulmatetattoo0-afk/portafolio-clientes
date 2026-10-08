@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LangToggle } from "@/components/LangToggle";
+import { SaveButton } from "@/components/world/SaveButton";
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 
@@ -141,6 +142,12 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
             <span aria-hidden className="text-[1.1rem] leading-none">⌕</span>
             <span className="p-stamp">{t.explore.title}</span>
           </Link>
+          <SaveButton
+            artistId={artist.id}
+            following={data.following}
+            className="h-10 w-10"
+            labels={{ save: fill(t.world.card.save, { name: artist.display_name }), saved: t.world.card.saved, signIn: fill(t.world.card.signInToSave, { name: artist.display_name }) }}
+          />
           <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
         </div>
       </header>

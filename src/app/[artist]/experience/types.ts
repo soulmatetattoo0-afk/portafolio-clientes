@@ -1,5 +1,5 @@
 import type { Dict, Locale } from "@/i18n";
-import type { Artist, FlashItem, PortfolioItem, TourStop } from "@/lib/queries";
+import type { Artist, ArtistCard, FlashItem, PortfolioItem, TourStop } from "@/lib/queries";
 
 export type PanelId = "bio" | "work" | "flash" | "book" | "spots";
 export const PANELS: PanelId[] = ["bio", "work", "flash", "book", "spots"];
@@ -13,6 +13,10 @@ export interface ExperienceData {
   demand: { city: string; n: number }[];
   /** Days already taken on each stop (by stop id), as ISO dates on the stop's clock. */
   taken: Record<string, string[]>;
+  /** Whether the signed-in client follows this artist; null when signed out. */
+  following: boolean | null;
+  /** Artists like this one, for the "more like" rows. */
+  related: ArtistCard[];
   locale: Locale;
   t: Dict;
   demo: boolean;

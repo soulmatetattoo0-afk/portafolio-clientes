@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { ArtistCard } from "@/components/world/ArtistCard";
 import { fill } from "@/i18n";
 import { colorLabel, styleLabel } from "@/lib/catalog";
 import type { PortfolioItem } from "@/lib/queries";
@@ -114,6 +115,18 @@ export function Gallery({ data }: { data: ExperienceData }) {
             );
           })}
         </div>
+      )}
+      {data.related.length > 0 && (
+        <section className="mt-12 px-5" aria-label={fill(t.world.card.more, { artist: data.artist.display_name.split(" ")[0] })}>
+          <p className="p-gothic text-[1.2rem] text-accent">{fill(t.world.card.more, { artist: data.artist.display_name.split(" ")[0] })}</p>
+          <ul className="-mx-5 mt-3 flex snap-x gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
+            {data.related.slice(0, 6).map((r) => (
+              <li key={r.id} className="shrink-0 snap-start">
+                <ArtistCard artist={r} locale={locale} compact />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {open !== null && flat[open] && <Lightbox items={flat} index={open} locale={locale} close={t.common.close} piece={p.piece} onChange={setOpen} />}
     </div>
