@@ -7,7 +7,8 @@
 import { DEMO_USER_ID } from "./env";
 import type { Db } from "./db";
 
-const day = 24 * 3600 * 1000;
+const DAY = 24 * 3600 * 1000;
+const day = DAY;
 
 function at(daysFromNow: number, hour: number, minute = 0) {
   // Local wall time in New York, expressed in UTC (good enough for demo data: EST/EDT offset 4–5h).
@@ -61,9 +62,12 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
       [s, a, city, country, studio, address, tz, start, end, status, home],
     ))!.id;
+  // Home, then a US leg over the next two months, then Europe: the map frames the leg.
   const ny = await stop("New York", "United States", "Soulmate Tattoo", "Brooklyn, NY", "America/New_York", null, null, "booking", true);
+  const miami = await stop("Miami", "United States", "Ocean Drive Ink", "1200 Collins Ave, Miami Beach, FL", "America/New_York", dateOnly(18), dateOnly(24), "booking");
+  const la = await stop("Los Angeles", "United States", "Golden Hour Tattoo", "7510 Melrose Ave, Los Angeles, CA", "America/Los_Angeles", dateOnly(31), dateOnly(37), "booking");
+  const austin = await stop("Austin", "United States", "Red River Social", "604 E 6th St, Austin, TX", "America/Chicago", dateOnly(45), dateOnly(50), "announced");
   const london = await stop("London", "United Kingdom", "Saint Ink", "41 Hackney Rd, London", "Europe/London", dateOnly(120), dateOnly(131), "booking");
-  const milan = await stop("Milan", "Italy", "Officina Nera", "Via Tortona 12, Milano", "Europe/Rome", dateOnly(136), dateOnly(142), "announced");
 
   const portfolio: [string, string, string, string, boolean, string | null][] = [
     ["Grandmother & pocket watch", "realism", "black_grey", "forearm_inner_L", true, "A portrait from a 1962 photograph, the watch she wore to work for forty years. Two sessions, inner forearm, so it faces him when he reads."],
@@ -95,9 +99,9 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
     );
   }
 
-  await db.query(`insert into waitlist (studio_id, artist_id, tour_stop_id, city, email, name) values ($1, $2, $3, 'Milan', 'giulia@example.com', 'Giulia'), ($1, $2, $3, 'Milan', 'marco@example.com', 'Marco')`, [s, a, milan]);
+  await db.query(`insert into waitlist (studio_id, artist_id, tour_stop_id, city, email, name) values ($1, $2, $3, 'Austin', 'giulia@example.com', 'Giulia'), ($1, $2, $3, 'Austin', 'marco@example.com', 'Marco')`, [s, a, austin]);
   // Cities the public is asking for, no stop planned yet.
-  const asks: [string, number][] = [["Miami", 14], ["Los Angeles", 9], ["Mexico City", 7], ["Madrid", 5], ["Santiago", 4], ["Toronto", 2]];
+  const asks: [string, number][] = [["Mexico City", 7], ["Madrid", 5], ["Chicago", 4], ["Santiago", 4], ["Toronto", 2], ["Berlin", 2]];
   for (const [city, n] of asks) {
     for (let i = 0; i < n; i++) {
       await db.query(`insert into waitlist (studio_id, artist_id, tour_stop_id, city, email) values ($1, $2, null, $3, $4)`, [s, a, city, `${city.toLowerCase().replace(/\s+/g, "")}${i}@example.com`]);
@@ -220,6 +224,28 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
   await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, data, created_at) values ($1, $2, 'paid', 'client', $3, $4)`, [
     s, chloeBrief, JSON.stringify({ amount_cents: 30000, currency: "usd" }), new Date(Date.now() - 9 * day).toISOString(),
   ]);
+
+  // Sessions already booked on the road, so the guest-spot calendars show taken days.
+  const booked = async (who: string, email: string, ref: string, placement: string, description: string, stopId: string, city: string, tz: string, day: number, hour: number, hours: number, token: string) => {
+    const c = await client(who, email, "en", null);
+    const b = await brief({ client: c, ref, status: "booked", style: "realism", color: "black_grey", placement, body: "f", height: 170, w: 12, h: 18, description, budget: [100000, 200000], timing: "specific", stop: stopId, daysAgo: 14 });
+    const q = await db.one<{ id: string }>(
+      `insert into quotes (studio_id, brief_id, artist_id, token, price_min_cents, price_max_cents, sessions, hours_per_session, deposit_cents, currency, message, policy, expires_at, status, created_at)
+       values ($1, $2, $3, $4, 150000, null, 1, $5, 30000, 'usd', 'See you there!', $6, $7, 'paid', $8) returning id`,
+      [s, b, a, token, hours, JSON.stringify({ refundable: false, reschedule_notice_hours: 72, reschedules_allowed: 1, applies_to_final_price: true }), new Date(Date.now() + day * DAY).toISOString(), new Date(Date.now() - 12 * DAY).toISOString()],
+    );
+    const sl = await db.one<{ id: string }>(`insert into quote_slots (studio_id, quote_id, starts_at, ends_at, timezone, tour_stop_id, status) values ($1, $2, $3, $4, $5, $6, 'booked') returning id`, [
+      s, q!.id, at(day, hour), at(day, hour + hours), tz, stopId,
+    ]);
+    const ap = await db.one<{ id: string }>(
+      `insert into appointments (studio_id, artist_id, client_id, brief_id, quote_id, slot_id, starts_at, ends_at, timezone, city) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [s, a, c, b, q!.id, sl!.id, at(day, hour), at(day, hour + hours), tz, city],
+    );
+    await db.query(`insert into payments (studio_id, quote_id, appointment_id, provider, checkout_id, amount_cents, currency, status) values ($1, $2, $3, 'demo', $4, 30000, 'usd', 'paid')`, [s, q!.id, ap!.id, `demo_seed_${token}`]);
+  };
+  await booked("Valeria Soto", "valeria@example.com", "B-4MR2K", "forearm_outer_R", "A heron standing in still water, soft black and grey.", miami, "Miami", "America/New_York", 19, 11, 6, "demo-quote-valeria-soto-0003x");
+  await booked("Marcus Hill", "marcus@example.com", "B-6QT8N", "calf_L", "Bust of Apollo with a crack of light through the marble.", miami, "Miami", "America/New_York", 21, 12, 7, "demo-quote-marcus-hill-0004x");
+  await booked("Lena Park", "lena@example.com", "B-1ZC5V", "shoulder_L", "A moth over a melting candle, fine shading.", la, "Los Angeles", "America/Los_Angeles", 33, 12, 6, "demo-quote-lena-park-0005x");
 
   const kevin = await client("Kevin Brooks", "kevin@example.com", "en", null);
   const kevinBrief = await brief({

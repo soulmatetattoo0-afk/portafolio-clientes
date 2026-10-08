@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { getDict } from "@/i18n/server";
 import { demoMode } from "@/lib/env";
-import { getArtistBySlug, listCityDemand, listFlash, listPortfolio, listStops } from "@/lib/queries";
+import { getArtistBySlug, listCityDemand, listFlash, listPortfolio, listStops, listTakenDays } from "@/lib/queries";
 
 import { ArtistExperience } from "./experience/ArtistExperience";
 
@@ -27,12 +27,13 @@ export default async function ArtistPage({ params }: PageProps<"/[artist]">) {
   const { artist: slug } = await params;
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
-  const [{ t, locale }, stops, portfolio, flash, demand] = await Promise.all([
+  const stops = await listStops(artist.id, { publicOnly: true });
+  const [{ t, locale }, portfolio, flash, demand, taken] = await Promise.all([
     getDict(),
-    listStops(artist.id, { publicOnly: true }),
     listPortfolio(artist.id, { publishedOnly: true }),
     listFlash(artist.id, { publishedOnly: true }),
     listCityDemand(artist.id, 6),
+    listTakenDays(artist.id, stops),
   ]);
-  return <ArtistExperience data={{ artist, stops, portfolio, flash, demand, locale, t, demo: demoMode }} />;
+  return <ArtistExperience data={{ artist, stops, portfolio, flash, demand, taken, locale, t, demo: demoMode }} />;
 }

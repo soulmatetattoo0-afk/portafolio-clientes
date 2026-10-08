@@ -118,6 +118,47 @@ export async function listStops(artistId: string, opts: { publicOnly?: boolean }
   return rows.map(normStop);
 }
 
+/**
+ * The days already taken on each stop, as ISO dates on the stop's own clock:
+ * confirmed sessions, plus the slots someone is holding or has booked. A session
+ * belongs to the stop its slot names, else the stop in that city, else the stop
+ * whose dates hold it, else home. Days, not hours: a stop's calendar can say a
+ * day is taken, not how much of it.
+ */
+export async function listTakenDays(artistId: string, stops: TourStop[]): Promise<Record<string, string[]>> {
+  const db = await getDb();
+  const rows = await db.query<{ starts_at: Date | string; stop_id: string | null; city: string | null }>(
+    `select ap.starts_at, s.tour_stop_id as stop_id, ap.city
+       from appointments ap left join quote_slots s on s.id = ap.slot_id
+      where ap.artist_id = $1 and ap.status in ('confirmed', 'completed')
+     union all
+     select s.starts_at, s.tour_stop_id, null::text
+       from quote_slots s join quotes q on q.id = s.quote_id
+      where q.artist_id = $1 and s.tour_stop_id is not null and s.status in ('held', 'booked')`,
+    [artistId],
+  );
+  const dayIn = (at: Date, timezone: string) => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+    } catch {
+      return at.toISOString().slice(0, 10);
+    }
+  };
+  const home = stops.find((s) => s.is_home) ?? null;
+  const taken: Record<string, Set<string>> = {};
+  for (const r of rows) {
+    const at = new Date(r.starts_at);
+    const stop =
+      stops.find((s) => s.id === r.stop_id) ??
+      stops.find((s) => r.city && s.city.toLowerCase() === r.city.toLowerCase()) ??
+      stops.find((s) => !s.is_home && s.starts_on && s.ends_on && dayIn(at, s.timezone) >= s.starts_on && dayIn(at, s.timezone) <= s.ends_on) ??
+      home;
+    if (!stop) continue;
+    (taken[stop.id] ??= new Set()).add(dayIn(at, stop.timezone));
+  }
+  return Object.fromEntries(Object.entries(taken).map(([id, days]) => [id, [...days].sort()]));
+}
+
 export async function listPortfolio(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<PortfolioItem[]> {
   const db = await getDb();
   const rows = await db.query<Omit<PortfolioItem, "url"> & { image_path: string | null }>(

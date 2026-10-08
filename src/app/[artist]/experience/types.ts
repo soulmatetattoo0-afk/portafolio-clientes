@@ -11,6 +11,8 @@ export interface ExperienceData {
   flash: FlashItem[];
   /** Cities the public is asking the artist to visit, biggest first. */
   demand: { city: string; n: number }[];
+  /** Days already taken on each stop (by stop id), as ISO dates on the stop's clock. */
+  taken: Record<string, string[]>;
   locale: Locale;
   t: Dict;
   demo: boolean;
