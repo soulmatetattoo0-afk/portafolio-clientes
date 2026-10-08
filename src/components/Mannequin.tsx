@@ -59,11 +59,14 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     void import("@/mannequin/engine").then(({ MannequinEngine }) => {
       if (disposed || !host.current) return;
+      // The patch outline takes the page's accent (the artist's colour on public pages).
+      const accent = getComputedStyle(host.current).getPropertyValue("--accent").trim();
       engineRef.current = new MannequinEngine(host.current, {
         assetBase: "/mannequin",
         body: latest.current.body,
         heightCm: latest.current.heightCm,
         reducedMotion: reduced,
+        accent: accent || undefined,
         onReady: () => setReady(true),
         onError: () => latest.current.onUnsupported?.(),
         onZoneTap: (slug) => {

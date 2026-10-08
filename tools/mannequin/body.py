@@ -48,6 +48,8 @@ ZONES = [
     (27, "calf_R", "Pantorrilla derecha", "Right calf"),
     (28, "foot_L", "Pie izquierdo", "Left foot"),
     (29, "foot_R", "Pie derecho", "Right foot"),
+    # Appended later; ids are never renumbered.
+    (30, "chest_center", "Centro del pecho", "Centre chest"),
 ]
 ZONE_ID = {slug: zid for zid, slug, _, _ in ZONES}
 

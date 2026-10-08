@@ -312,23 +312,42 @@ def poly_neighbours(P: np.ndarray) -> np.ndarray:
     return nbr
 
 
-def smooth_poly_labels(P: np.ndarray, labels: np.ndarray, iters: int) -> np.ndarray:
+def smooth_poly_labels(P: np.ndarray, labels: np.ndarray, iters: int, need: int | None = None) -> np.ndarray:
     """Majority vote over edge neighbours (vectorised): a polygon takes the label
-    that at least two of its neighbours agree on, which erases speckles and
-    rounds off single-polygon teeth along a border."""
+    that at least `need` of its neighbours agree on (all but one by default,
+    so only speckles and single-polygon teeth change and the borders the
+    rules drew stay where they are)."""
     nbr = poly_neighbours(P)
+    k = nbr.shape[1]
+    need = max(2, k - 1) if need is None else need
     lab = labels.copy()
     pad = np.append(lab, -1)
     for _ in range(iters):
         pad[:-1] = lab
         nl = pad[nbr]  # -1 where no neighbour
         new = lab.copy()
-        for i in range(nl.shape[1]):
-            for j in range(i + 1, nl.shape[1]):
-                agree = (nl[:, i] == nl[:, j]) & (nl[:, i] >= 0)
-                new = np.where(agree, nl[:, i], new)
+        for i in range(k):
+            cand = nl[:, i]
+            count = np.zeros(len(lab), dtype=np.int64)
+            for j in range(k):
+                count += (nl[:, j] == cand) & (cand >= 0)
+            new = np.where((count >= need) & (cand != lab), cand, new)
         lab = new
     return lab
+
+
+def smooth_normals(P: np.ndarray, N: np.ndarray, iters: int) -> np.ndarray:
+    """Average each polygon's normal with its edge neighbours' a few times, so
+    the zone rules read the body's overall shape rather than every bump."""
+    nbr = poly_neighbours(P)
+    valid = nbr >= 0
+    out = N.copy()
+    for _ in range(iters):
+        acc = out.copy()
+        for k in range(nbr.shape[1]):
+            acc += np.where(valid[:, k : k + 1], out[np.maximum(nbr[:, k], 0)], 0.0)
+        out = acc / np.maximum(np.linalg.norm(acc, axis=1, keepdims=True), 1e-12)
+    return out
 
 
 def border_vertices(P: np.ndarray, labels: np.ndarray, n_verts: int, rings: int = 1) -> np.ndarray:
@@ -356,7 +375,29 @@ def unit(v):
 
 
 def classify(fig: Figure, centers: np.ndarray, normals: np.ndarray) -> np.ndarray:
-    """Zone id per face. Figure space: metres, y up, +z front, left side +x."""
+    """Zone id per face. Figure space: metres, y up, +z front, left side +x.
+
+    Each atomic zone follows the muscle group it is named after. Bone weights
+    decide the limb a face belongs to (arm, forearm, hand, thigh, lower leg,
+    foot, neck or torso); inside each limb the borders are geometric, from
+    skeleton landmarks and from the mesh itself:
+
+    - shoulder: the deltoid cap around the humeral head, ending in a V on the
+      outer arm at ~45 % of the humerus and much higher on the inner side.
+    - upper arm: from the deltoid insertion to the elbow, all the way round.
+    - forearm inner/outer: split by the volar (palm-side) direction.
+    - chest L/R: the pectoral, bounded below by the pec's lower edge, measured
+      on the mesh as the lowest downward-facing skin under each breast (the
+      inframammary fold), fitted as a curve across the chest; bounded on the
+      side where the skin turns sideways (the anterior axillary line).
+    - chest centre: the sternum strip, from the notch to just under the fold.
+    - stomach: under the pecs down to the pubis, between the hip points.
+    - ribs: the lateral band from under the armpit down to the iliac crest.
+    - back upper: traps and lats down to the bottom of the ribcage.
+    - back lower: below that to the sacrum, ending on a V at the glutes.
+    - hip: the iliac and gluteal sides, the glutes and the front hip points.
+    - thigh from the gluteal fold; shin = front of the lower leg; calf = the rest.
+    """
     # Interpolated part weights from the nearest base-mesh vertices.
     base = fig.V[fig.body_idx]
     tree = cKDTree(base)
@@ -365,24 +406,66 @@ def classify(fig: Figure, centers: np.ndarray, normals: np.ndarray) -> np.ndarra
     wk /= wk.sum(axis=1, keepdims=True)
     W = np.einsum("fk,fkp->fp", wk, fig.W[fig.body_idx][nn])
     part = np.array(PARTS, dtype=object)[W.argmax(axis=1)]
-    weight = lambda p: W[:, PART_INDEX[p]]  # noqa: E731
 
     x, y, z = centers[:, 0], centers[:, 1], centers[:, 2]
+    ax = np.abs(x)
     nx, ny, nz = normals[:, 0], normals[:, 1], normals[:, 2]
     side = np.where(x >= 0, "L", "R")
+    is_L = (side == "L")[:, None]
     zone = np.full(len(centers), "none", dtype=object)
 
     # Landmarks (heights in metres).
-    S = {s: fig.head(f"upperarm01.{s}") for s in "LR"}  # shoulder joint
+    S = {s: fig.head(f"upperarm01.{s}") for s in "LR"}  # shoulder joint (acromion)
     E = {s: fig.head(f"lowerarm01.{s}") for s in "LR"}  # elbow
     Wr = {s: fig.head(f"wrist.{s}") for s in "LR"}  # wrist
     y_shoulder = S["L"][1]
-    y_chest = fig.head("spine02")[1] + 0.35 * (fig.head("spine01")[1] - fig.head("spine02")[1])  # under the pectorals
-    y_back = fig.head("spine02")[1]  # bottom of the ribcage: upper/lower back
-    y_crest = fig.head("spine04")[1]  # iliac crest: ribs above, hips below
-    y_sacrum = fig.head("pelvis.L")[1]  # lower back ends, glutes begin
-    y_hip = fig.head("upperleg01.L")[1]  # hip joint: stomach ends
-    z_neck = fig.head("neck01")[2]
+    z_clav = fig.tail("clavicle.L")[2]  # the clavicle line splits top-of-shoulder faces front/back
+    y_breast = fig.tail("breast.L")[1]  # breast bone tip: the nipple line
+    y_back = fig.head("spine02")[1]  # bottom of the ribcage at the back: upper/lower back
+    y_crest = fig.tail("spine04")[1] - 0.02  # iliac crest: ribs above, hips below
+    y_sacrum = fig.head("pelvis.L")[1]  # top of the sacrum: the lower back ends here in the middle
+    y_pubis = fig.head("upperleg01.L")[1] - 0.03  # stomach ends; the crotch stays unselectable
+    y_gluteal = fig.head("upperleg02.L")[1] - 0.01  # gluteal fold: glutes above, thigh below
+
+    # Facing, from the horizontal part of the normal: 0 = straight ahead, pi = straight back.
+    phi = np.arctan2(np.abs(nx), nz)
+    facing_front = phi < np.radians(62)
+    facing_back = phi > np.radians(118)
+    facing_side = ~facing_front & ~facing_back
+
+    def put(mask, fn):
+        for i in np.nonzero(mask)[0]:
+            zone[i] = fn(i)
+
+    # Head stays unselectable; neck splits front/sides vs nape.
+    neck = part == "neck"
+    put(neck & (nz < -0.35), lambda i: "nape")
+    put(neck & (nz >= -0.35), lambda i: "neck")
+
+    # --- Arms. The deltoid is a cap around the humeral head: on the outer arm it
+    # reaches ~45 % of the way to the elbow (its V-shaped insertion), on the
+    # inner side it stops just under the armpit.
+    arm = np.isin(part, ["shoulder_L", "shoulder_R", "upperarm_L", "upperarm_R", "clavicle_L", "clavicle_R"])
+    S_f = np.where(is_L, S["L"], S["R"])
+    E_f = np.where(is_L, E["L"], E["R"])
+    lateral = ax / abs(S["L"][0])
+    hum = E_f - S_f
+    t_arm = np.einsum("ij,ij->i", centers - S_f, hum) / np.maximum(np.einsum("ij,ij->i", hum, hum), 1e-9)
+    radial = centers - S_f - hum * t_arm[:, None]
+    radial /= np.maximum(np.linalg.norm(radial, axis=1, keepdims=True), 1e-9)
+    hum_u = hum / np.maximum(np.linalg.norm(hum, axis=1, keepdims=True), 1e-9)
+    outward = np.where(is_L, [[1.0, 0.0, 0.0]], [[-1.0, 0.0, 0.0]])
+    outward = outward - hum_u * np.einsum("ij,ij->i", outward, hum_u)[:, None]
+    outward /= np.maximum(np.linalg.norm(outward, axis=1, keepdims=True), 1e-9)
+    f_out = (np.einsum("ij,ij->i", radial, outward) + 1.0) / 2.0  # 1 outer arm, 0 armpit side
+    f_out = f_out * f_out * (3.0 - 2.0 * f_out)
+    t_deltoid = 0.14 + 0.31 * f_out
+    # The deltoid's front and back borders run diagonally from the clavicle and
+    # the scapular spine down to the arm, so the arm/torso split widens with depth.
+    lat_thr = 0.72 + 2.0 * np.maximum(0.0, y_shoulder - 0.01 - y)
+    arm_proper = arm & (lateral > lat_thr)
+    put(arm_proper & (t_arm < t_deltoid), lambda i: f"shoulder_{side[i]}")
+    put(arm_proper & (t_arm >= t_deltoid), lambda i: f"upper_arm_{side[i]}")
 
     # Volar (palm-side) direction of each forearm, perpendicular to its axis.
     volar = {}
@@ -394,71 +477,123 @@ def classify(fig: Figure, centers: np.ndarray, normals: np.ndarray) -> np.ndarra
             palm = -palm  # mirrored hand: the cross product flips handedness
         axis = unit(Wr[s] - E[s])
         volar[s] = unit(palm - axis * (palm @ axis))
-
-    def put(mask, fn):
-        for i in np.nonzero(mask)[0]:
-            zone[i] = fn(i)
-
-    # Head stays unselectable; neck splits front/sides vs nape.
-    neck = part == "neck"
-    put(neck & (nz < -0.35), lambda i: "nape")
-    put(neck & (nz >= -0.35), lambda i: "neck")
-
-    # Arms. The deltoid cap is the first third of the shoulder->elbow axis.
-    arm = np.isin(part, ["shoulder_L", "shoulder_R", "upperarm_L", "upperarm_R"])
-    is_L = (side == "L")[:, None]
-    S_f = np.where(is_L, S["L"], S["R"])
-    E_f = np.where(is_L, E["L"], E["R"])
-    lateral = np.abs(x) / abs(S["L"][0])
-    t_arm = np.einsum("ij,ij->i", centers - S_f, E_f - S_f) / np.maximum(np.einsum("ij,ij->i", E_f - S_f, E_f - S_f), 1e-9)
-    arm_proper = arm & (lateral > 0.72)
-    put(arm_proper & (t_arm < 0.34), lambda i: f"shoulder_{side[i]}")
-    put(arm_proper & (t_arm >= 0.34), lambda i: f"upper_arm_{side[i]}")
     fore = np.isin(part, ["forearm_L", "forearm_R"])
-    inner = np.einsum("ij,ij->i", normals, np.where(is_L, volar["L"], volar["R"])) > 0
+    # Radial direction around the forearm axis, so the split is a clean line
+    # along the bone rather than a wobble of the surface normal.
+    E_ff = np.where(is_L, E["L"], E["R"])
+    W_ff = np.where(is_L, Wr["L"], Wr["R"])
+    fa = W_ff - E_ff
+    t_f = np.einsum("ij,ij->i", centers - E_ff, fa) / np.maximum(np.einsum("ij,ij->i", fa, fa), 1e-9)
+    r_f = centers - E_ff - fa * t_f[:, None]
+    r_f /= np.maximum(np.linalg.norm(r_f, axis=1, keepdims=True), 1e-9)
+    inner = np.einsum("ij,ij->i", r_f, np.where(is_L, volar["L"], volar["R"])) > 0
     put(fore & inner, lambda i: f"forearm_inner_{side[i]}")
     put(fore & ~inner, lambda i: f"forearm_outer_{side[i]}")
     put(np.isin(part, ["hand_L", "hand_R"]), lambda i: f"hand_{side[i]}")
 
-    # Legs.
-    put(np.isin(part, ["thigh_L", "thigh_R"]), lambda i: f"thigh_{side[i]}")
+    # --- Legs. The glutes and the side of the hip above the gluteal fold are
+    # "hip"; the thigh starts under the fold (and at the front, at the groin).
+    thigh = np.isin(part, ["thigh_L", "thigh_R"])
+    glute = thigh & (y > y_gluteal) & (nz < 0.2) & (phi > np.radians(70))
+    put(thigh & ~glute, lambda i: f"thigh_{side[i]}")
+    put(glute, lambda i: f"hip_{side[i]}")
     lower = np.isin(part, ["lowerleg_L", "lowerleg_R"])
-    put(lower & (nz > 0.15), lambda i: f"shin_{side[i]}")
-    put(lower & (nz <= 0.15), lambda i: f"calf_{side[i]}")
+    K_f = np.where(is_L, fig.head("lowerleg01.L"), fig.head("lowerleg01.R"))
+    A_f = np.where(is_L, fig.tail("lowerleg02.L"), fig.tail("lowerleg02.R"))
+    la = A_f - K_f
+    t_l = np.einsum("ij,ij->i", centers - K_f, la) / np.maximum(np.einsum("ij,ij->i", la, la), 1e-9)
+    r_l = centers - K_f - la * t_l[:, None]
+    r_l /= np.maximum(np.linalg.norm(r_l, axis=1, keepdims=True), 1e-9)
+    la_u = la / np.maximum(np.linalg.norm(la, axis=1, keepdims=True), 1e-9)
+    fwd = np.array([[0.0, 0.0, 1.0]]) - la_u * la_u[:, 2:3]
+    fwd /= np.maximum(np.linalg.norm(fwd, axis=1, keepdims=True), 1e-9)
+    shin = np.einsum("ij,ij->i", r_l, fwd) > 0.25  # the front ~150 degrees of the lower leg
+    put(lower & shin, lambda i: f"shin_{side[i]}")
+    put(lower & ~shin, lambda i: f"calf_{side[i]}")
     put(np.isin(part, ["foot_L", "foot_R"]), lambda i: f"foot_{side[i]}")
 
-    # Torso: everything spine-, pelvis-, breast- or clavicle-driven, plus the
-    # inner part of the shoulder girdle (trapezius, scapula).
+    # --- Torso: everything spine-, pelvis-, breast- or clavicle-driven, plus
+    # the inner part of the shoulder girdle (trapezius, scapula).
     torso = np.isin(part, ["spine01", "spine02", "spine03", "spine04", "pelvis", "pelvis_L", "pelvis_R", "breast_L", "breast_R", "clavicle_L", "clavicle_R"]) | (arm & ~arm_proper)
+    # Half-width per 2 cm band of torso faces, for a normalised lateral coordinate u.
+    band = np.round(y / 0.02).astype(np.int64)
+    ys, ws = [], []
+    for bnd in np.unique(band[torso]):
+        sel = torso & (band == bnd)
+        ys.append(bnd * 0.02)
+        ws.append(max(np.percentile(ax[sel], 97), 0.03))
+    half_w = np.interp(y, ys, ws)
+    u = ax / half_w
+
+    # The pec's lower edge, read off the mesh: under each breast the skin faces
+    # down; the lowest of that downward-facing skin, per 1 cm column, is the
+    # fold. A quadratic through those columns is the chest's lower border.
+    y_fold_default = y_breast - 0.055
+    under = torso & (ny < -0.3) & (nz > -0.2) & (y > y_breast - 0.11) & (y < y_breast + 0.02) & (ax > 0.025) & (ax < 0.16)
+    cols, vals, wts = [], [], []
+    for c in np.arange(0.025, 0.16, 0.01):
+        sel = under & (ax >= c) & (ax < c + 0.01)
+        if sel.sum() >= 4:
+            cols.append(c + 0.005)
+            vals.append(np.percentile(y[sel], 15))
+            wts.append(np.sqrt(sel.sum()))
+    if len(cols) >= 4:
+        coef = np.polyfit(cols, vals, 2, w=wts)
+        fold_poly = np.poly1d(coef)
+    else:
+        fold_poly = np.poly1d([y_fold_default])
+    x_lo, x_hi = 0.035, 0.145
+    fold = fold_poly(np.clip(ax, x_lo, x_hi))
+    fold = np.clip(fold, y_fold_default - 0.035, y_fold_default + 0.035)
+    # At the sternum the chest ends a little higher (the xiphoid); past the
+    # breast the edge climbs to the armpit along the anterior axillary line.
+    fold = fold + np.where(ax < x_lo, 0.012 * (1 - ax / x_lo), 0.0) + np.where(ax > x_hi, 1.6 * (ax - x_hi), 0.0)
+    y_fold = fold
+    print(f"[{fig.name}] pec lower edge: {fold_poly(0.1):.3f} m at |x|=10 cm ({len(cols)} columns measured, default {y_fold_default:.3f})")
+
     top = torso & (ny > 0.55) & (y > y_shoulder - 0.06)
-    put(top & (z < z_neck), lambda i: "back_upper")
-    put(top & (z >= z_neck), lambda i: f"chest_{side[i]}")
+    put(top & (z < z_clav), lambda i: "back_upper")
+    put(top & (z >= z_clav), lambda i: f"chest_{side[i]}")
     rest = torso & ~top
-    back = rest & (nz < -0.30)
+    y_armpit = y_shoulder - 0.08
+
+    back = rest & facing_back
     # The glutes start at the sacrum in the middle and higher towards the
     # sides, so the lower back ends on a shallow V, like the belt line does.
-    y_glute = y_sacrum - 0.03 + 0.45 * np.abs(x)
+    y_glute = y_sacrum - 0.03 + 0.6 * ax
     put(back & (y > y_back), lambda i: "back_upper")
     put(back & (y <= y_back) & (y > y_glute), lambda i: "back_lower")
     put(back & (y <= y_glute), lambda i: f"hip_{side[i]}")
-    # Flanks: the outer part of the torso's width at that height, where the
-    # surface already turns sideways. Half-width per 2 cm band of torso faces.
-    band = np.round(y / 0.02).astype(np.int64)
-    half_w = np.zeros(len(x))
-    for bnd in np.unique(band[torso]):
-        sel = torso & (band == bnd)
-        half_w[sel] = np.percentile(np.abs(x[sel]), 97)
-    flank = rest & ~back & (((np.abs(x) > 0.58 * half_w) & (np.abs(nx) > 0.35)) | (np.abs(nx) > 0.8))
-    armpit = flank & (y > y_shoulder - 0.09)
+
+    flank = rest & facing_side
+    armpit = flank & (y > y_armpit)
     put(armpit & (nz >= 0), lambda i: f"chest_{side[i]}")
     put(armpit & (nz < 0), lambda i: "back_upper")
-    put(flank & ~armpit & (y > y_crest), lambda i: f"ribs_{side[i]}")
-    put(flank & ~armpit & (y <= y_crest), lambda i: f"hip_{side[i]}")
-    front = rest & ~back & ~flank
-    breast = (weight("breast_L") + weight("breast_R")) > 0.08
-    put(front & ((y > y_chest) | breast), lambda i: f"chest_{side[i]}")
-    put(front & ~((y > y_chest) | breast) & (y > y_hip - 0.08), lambda i: "stomach")
-    # Below the pubic area at the front is the crotch: left unselectable.
+    # The outer side of the breast turns sideways but is still the pec, up to
+    # the anterior axillary line.
+    breast_side = flank & ~armpit & (y > y_fold) & (nz > 0.1) & (u < 0.86)
+    put(breast_side, lambda i: f"chest_{side[i]}")
+    put(flank & ~armpit & ~breast_side & (y > y_crest), lambda i: f"ribs_{side[i]}")
+    put(flank & ~armpit & ~breast_side & (y <= y_crest), lambda i: f"hip_{side[i]}")
+
+    front = rest & facing_front
+    sternum_w = 0.03
+    sternum_tail = 0.035 if fig.name == "f" else 0.015  # under-bust centre on the woman
+    chest = front & (y > y_fold)
+    # Beyond the breast's width and below the armpit the front-facing skin is the side of the ribcage.
+    chest_lateral = chest & (ax > x_hi + 0.025) & (y < y_armpit)
+    put(chest_lateral, lambda i: f"ribs_{side[i]}")
+    chest = chest & ~chest_lateral
+    put(chest & (ax >= sternum_w), lambda i: f"chest_{side[i]}")
+    put(chest & (ax < sternum_w), lambda i: "chest_center")
+    below = front & (y <= y_fold) & (y > y_pubis)
+    sternum_low = below & (ax < sternum_w) & (y > fold_poly(x_lo) + 0.012 - sternum_tail)
+    put(sternum_low, lambda i: "chest_center")
+    hip_front = below & ~sternum_low & (y < y_crest) & (u > 0.66)
+    put(hip_front, lambda i: f"hip_{side[i]}")
+    put(below & ~sternum_low & ~hip_front, lambda i: "stomach")
+    # Below the pubic area the sides are still the hip; the crotch itself stays unselectable.
+    put(front & (y <= y_pubis) & (u > 0.5), lambda i: f"hip_{side[i]}")
 
     return np.array([ZONE_ID[str(zs)] for zs in zone], dtype=np.int32)
 
@@ -470,7 +605,7 @@ def classify(fig: Figure, centers: np.ndarray, normals: np.ndarray) -> np.ndarra
 
 BASE_COLORS = {
     "neck": "#e03030", "nape": "#7a1515", "shoulder": "#f2d600", "upper_arm": "#d040d0",
-    "forearm_inner": "#20c0c0", "forearm_outer": "#f08020", "hand": "#6040c0", "chest": "#30b030",
+    "forearm_inner": "#20c0c0", "forearm_outer": "#f08020", "hand": "#6040c0", "chest": "#30b030", "chest_center": "#107070",
     "stomach": "#ff70a0", "ribs": "#205090", "back_upper": "#b0b020", "back_lower": "#8040a0",
     "hip": "#a07040", "thigh": "#e05020", "shin": "#3060e0", "calf": "#80d040", "foot": "#c02080",
 }
@@ -542,17 +677,32 @@ def render_previews(ob, zone: np.ndarray, outdir: Path, tag: str):
     for k, (zid, slug, _, _) in enumerate([z for z in ZONES if z[0]]):
         fc = bpy.data.curves.new(f"legend_{slug}", type="FONT")
         fc.body = slug
-        fc.size = 0.042
+        fc.size = 0.036
         txt = bpy.data.objects.new(f"legend_{slug}", fc)
         txt.data.materials.append(zone_material(f"legend_{slug}", pal[zid], emission=True))
         txt.parent = cam
         txt.visible_shadow = False
-        txt.location = (-0.70, 1.32 - k * 0.062, -3.0)
+        txt.location = (-0.70, 0.90 - k * 0.05, -3.0)
         scene.collection.objects.link(txt)
-    views = {"front": (0, -4, 0.9, 90, 0, 0), "back": (0, 4, 0.9, 90, 0, 180), "side": (4, 0, 0.9, 90, 0, 90)}
-    for v, (x, y, z, rx, ry, rz) in views.items():
+    # Whole figure from three sides, then the torso and arms up close (the
+    # borders that matter most), at the figure's own chest height.
+    yc = 0.70 * HEIGHT_CM[tag] / 100
+    views = {
+        "front": (0, -4, 0.9, 0, 2.0),
+        "back": (0, 4, 0.9, 180, 2.0),
+        "side": (4, 0, 0.9, 90, 2.0),
+        "torso-front": (0, -4, yc, 0, 0.95),
+        "torso-back": (0, 4, yc, 180, 0.95),
+        "torso-side": (4, 0, yc, 90, 0.95),
+        "torso-quarter": (-2.8, -2.8, yc, -45, 0.95),
+    }
+    legend = [o for o in scene.collection.objects if o.name.startswith("legend_")]
+    for v, (x, y, z, rz, scale) in views.items():
         cam.location = (x, y, z)
-        cam.rotation_euler = (math.radians(rx), math.radians(ry), math.radians(rz))
+        cam.rotation_euler = (math.radians(90), 0, math.radians(rz))
+        cam.data.ortho_scale = scale
+        for o in legend:
+            o.hide_render = scale < 1.5
         scene.render.filepath = str(outdir / f"{tag}-{v}.png")
         bpy.ops.render.render(write_still=True)
 
@@ -573,7 +723,11 @@ def build(name: str, target_tris: int, out: Path, preview: Path | None):
     remap[fig.body_idx] = np.arange(len(fig.body_idx))
     ob, Vq, Q = subdivide(fig.V[fig.body_idx], remap[fig.quads], levels=2)
     qc, qn = poly_data(Vq, Q)
-    fine = smooth_poly_labels(Q, classify(fig, qc, qn), iters=8)
+    qn = smooth_normals(Q, qn, iters=6)
+    # Speckles first, then two gentle passes that round single-polygon teeth
+    # off the borders without moving them.
+    fine = smooth_poly_labels(Q, classify(fig, qc, qn), iters=6)
+    fine = smooth_poly_labels(Q, fine, iters=2, need=2)
     keep = border_vertices(Q, fine, len(Vq), rings=1)
     print(f"[{name}] fine mesh: {len(Q)} quads, {int(keep.sum())} border verts kept in {time.time() - t0:.0f}s")
 

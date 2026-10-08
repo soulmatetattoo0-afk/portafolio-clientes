@@ -9,7 +9,7 @@ import { Mannequin, type MannequinHandle } from "@/components/Mannequin";
 import { fill, type Dict, type Locale } from "@/i18n";
 import { BUDGETS, COLOR_MODES, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
 import { dateRange, money } from "@/lib/format";
-import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, sizeBand, type BodyType, type PlacementGroup } from "@/mannequin/catalog";
+import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, sizeBand, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
 import type { DesignPlacement } from "@/mannequin/engine";
 
 import { prepareUploads, submitBrief } from "./actions";
@@ -428,8 +428,19 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
     },
     [],
   );
+  // The figure reports moves, and pinches that changed the size or the turn.
   const onPlace = useCallback((p: DesignPlacement) => {
-    setD((prev) => ({ ...prev, point: p.point, normal: p.normal }));
+    setD((prev) => {
+      const next = { ...prev, point: p.point, normal: p.normal };
+      const [pw, ph] = dims(prev.size, prev.shape);
+      if (Math.abs(p.widthCm - pw) > 0.01 || Math.abs(p.heightCmDesign - ph) > 0.01) {
+        const long = Math.round(Math.max(p.widthCm, p.heightCmDesign));
+        next.size = Math.min(maxSizeFor(prev.placement ?? ""), Math.max(MIN_DESIGN_CM, long));
+      }
+      const rot = Math.max(-90, Math.min(90, Math.round(p.rotationDeg / 5) * 5));
+      if (rot !== prev.rotation) next.rotation = rot;
+      return next;
+    });
   }, []);
 
   const stepNames = b.steps;
@@ -626,8 +637,15 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                 <p className={`mt-1 ${placement ? "p-display text-[1.9rem]" : "text-ash"}`} aria-live="polite">
                   {placement ? placement.label[locale] : b.placement.none}
                 </p>
+                {placement && (
+                  <p className="mt-1 flex items-center gap-2 text-[0.9rem] text-ash">
+                    <PainDot pain={painFor(placement.slug)} />
+                    {b.placement.pain}: {PAIN_LABELS[painFor(placement.slug)][locale]}
+                  </p>
+                )}
                 <FieldError id={`${uid}-placement-err`} message={show("placement")} />
               </div>
+              <PainLegend title={b.placement.painLegend} hint={b.placement.painHint} locale={locale} />
               <div id={`${uid}-placement`} tabIndex={-1} className="border-t border-line">
                 {(Object.keys(GROUP_LABELS) as PlacementGroup[]).map((g) => (
                   <details key={g} className="group border-b border-line" open={placement?.group === g}>
@@ -639,7 +657,8 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                     </summary>
                     <div className="flex flex-wrap gap-2 pb-4">
                       {PLACEMENTS.filter((p) => p.group === g).map((p) => (
-                        <button key={p.slug} type="button" className="chip" aria-pressed={d.placement === p.slug} onClick={() => onZoneTap(p.slug)}>
+                        <button key={p.slug} type="button" className="chip gap-2" aria-pressed={d.placement === p.slug} onClick={() => onZoneTap(p.slug)}>
+                          <PainDot pain={painFor(p.slug)} />
                           {p.label[locale]}
                         </button>
                       ))}
@@ -927,9 +946,20 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                     </div>
                   </ReviewRow>
                   <ReviewRow label={stepNames.placement} edit={() => editFrom(1)} editLabel={t.common.edit}>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Spec label={stepNames.placement}>{placement?.label[locale]}</Spec>
-                      <Spec label={b.placement.figure}>{figureLabel}</Spec>
+                    <div className="grid gap-4">
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                        <Spec label={stepNames.placement}>{placement?.label[locale]}</Spec>
+                        <Spec label={b.placement.figure}>{figureLabel}</Spec>
+                        {placement && (
+                          <Spec label={b.placement.pain}>
+                            <span className="flex items-center gap-2">
+                              <PainDot pain={painFor(placement.slug)} />
+                              {PAIN_LABELS[painFor(placement.slug)][locale]}
+                            </span>
+                          </Spec>
+                        )}
+                      </div>
+                      <PainLegend title={b.placement.painLegend} hint={b.placement.painHint} locale={locale} compact />
                     </div>
                   </ReviewRow>
                   {placement && (
@@ -1107,6 +1137,29 @@ function ReviewRow({ label, children, edit, editLabel }: { label: string; childr
         )}
       </dd>
       <dd className="col-span-2 col-start-1 min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+/** The pain colour of an area, as a dot: light blue mild, yellow moderate, orange high, red intense. */
+function PainDot({ pain }: { pain: Pain }) {
+  return <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PAIN_COLORS[pain], boxShadow: "0 0 0 1px rgb(0 0 0 / 0.35)" }} />;
+}
+
+/** The four pain colours with their names, so the figure's tint can be read. */
+function PainLegend({ title, hint, locale, compact = false }: { title: string; hint: string; locale: Locale; compact?: boolean }) {
+  return (
+    <div className={compact ? "" : "rounded-[var(--radius-md)] border border-line px-4 py-3"}>
+      <p className="p-stamp text-bone-dim">{title}</p>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[0.88rem]">
+        {PAIN_LEVELS.map((level) => (
+          <li key={level} className="flex items-center gap-2">
+            <PainDot pain={level} />
+            {PAIN_LABELS[level][locale]}
+          </li>
+        ))}
+      </ul>
+      {!compact && <p className="mt-2 text-[0.82rem] text-ash-dim">{hint}</p>}
     </div>
   );
 }
