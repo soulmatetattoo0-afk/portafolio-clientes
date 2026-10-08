@@ -30,6 +30,13 @@ export function dateLong(date: Date | string, locale: Locale = "en", timezone?: 
   return new Intl.DateTimeFormat(tag(locale), { weekday: "long", month: "long", day: "numeric", timeZone: timezone }).format(d);
 }
 
+/** "October 2026", for an issue's date line. */
+export function monthYear(date: Date | string, locale: Locale = "en") {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const s = new Intl.DateTimeFormat(tag(locale), { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export function dateRange(start: string | null, end: string | null, locale: Locale = "en") {
   if (!start) return "";
   const f = new Intl.DateTimeFormat(tag(locale), { month: "short", day: "numeric", timeZone: "UTC" });
