@@ -20,6 +20,8 @@ export interface MannequinProps {
   onZoneTap?: (slug: string) => void;
   onPlace?: (p: DesignPlacement) => void;
   onUnsupported?: () => void;
+  /** A still, framed on the placement: no orbit, no taps. Front/back stay available through the handle. */
+  readOnly?: boolean;
   className?: string;
   label: string;
 }
@@ -64,8 +66,12 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
         reducedMotion: reduced,
         onReady: () => setReady(true),
         onError: () => latest.current.onUnsupported?.(),
-        onZoneTap: (slug) => latest.current.onZoneTap?.(slug),
-        onPlace: (p) => latest.current.onPlace?.(p),
+        onZoneTap: (slug) => {
+          if (!latest.current.readOnly) latest.current.onZoneTap?.(slug);
+        },
+        onPlace: (p) => {
+          if (!latest.current.readOnly) latest.current.onPlace?.(p);
+        },
       });
     });
     return () => {
@@ -75,9 +81,9 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
     };
   }, []);
 
-  const { body, heightCm, mode, placement, design, savedPoint } = props;
+  const { body, heightCm, mode, placement, design, savedPoint, readOnly = false } = props;
   // Apply only what changed since the last sync, in order, so a new tap never re-frames the camera.
-  const applied = useRef<{ body?: BodyType; height?: number; mode?: ViewerMode; placement?: string | null; design?: string }>({});
+  const applied = useRef<{ body?: BodyType; height?: number; mode?: ViewerMode; placement?: string | null; design?: string; readOnly?: boolean }>({});
   const chain = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -116,15 +122,23 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
         }
         a.design = key;
       }
+      if (a.readOnly !== Boolean(p.readOnly)) {
+        a.readOnly = Boolean(p.readOnly);
+        // Becoming a still: let the host settle at its new size, then frame the placement again.
+        if (a.readOnly && p.placement) {
+          await new Promise<void>((r) => requestAnimationFrame(() => r()));
+          engineRef.current?.focusPlacement(p.placement);
+        }
+      }
     });
-  }, [ready, body, heightCm, mode, placement, design, savedPoint]);
+  }, [ready, body, heightCm, mode, placement, design, savedPoint, readOnly]);
 
   return (
     <div
       ref={host}
       role="img"
       aria-label={props.label}
-      className={`transition-opacity duration-700 ${ready ? "opacity-100" : "opacity-0"} ${props.className ?? "relative h-full w-full"}`}
+      className={`transition-opacity duration-700 ${ready ? "opacity-100" : "opacity-0"} ${readOnly ? "pointer-events-none" : ""} ${props.className ?? "relative h-full w-full"}`}
     />
   );
 });

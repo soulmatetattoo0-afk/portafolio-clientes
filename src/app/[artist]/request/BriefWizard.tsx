@@ -17,6 +17,7 @@ import { prepareUploads, submitBrief } from "./actions";
 type Shape = "tall" | "square" | "wide";
 type StepId = "style" | "placement" | "size" | "idea" | "timing" | "contact" | "review";
 const STEPS: StepId[] = ["style", "placement", "size", "idea", "timing", "contact", "review"];
+const REVIEW_STEP = STEPS.indexOf("review");
 
 interface Draft {
   step: number;
@@ -134,6 +135,8 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
   const [noWebgl, setNoWebgl] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Set when the client steps back from the review to change one thing; the next step returns there.
+  const [fromReview, setFromReview] = useState(false);
   const viewer = useRef<MannequinHandle>(null);
   const panelTop = useRef<HTMLDivElement>(null);
   const uid = useId();
@@ -254,13 +257,25 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
       const blob = await viewer.current.engine.snapshotPlacement();
       setSnapshot(blob);
     }
-    if (step === "placement" && placement?.fullCoverage) goTo(d.step + 2);
+    // A new placement still needs its size; everything else goes straight back to the review.
+    if (fromReview && !(step === "placement" && !placement?.fullCoverage)) {
+      setFromReview(false);
+      goTo(REVIEW_STEP);
+    } else if (step === "placement" && placement?.fullCoverage) goTo(d.step + 2);
     else goTo(d.step + 1);
   };
 
   const back = () => {
-    if (step === "idea" && placement?.fullCoverage) goTo(d.step - 2);
+    if (fromReview) {
+      setFromReview(false);
+      goTo(REVIEW_STEP);
+    } else if (step === "idea" && placement?.fullCoverage) goTo(d.step - 2);
     else goTo(d.step - 1);
+  };
+
+  const editFrom = (i: number) => {
+    setFromReview(true);
+    goTo(i);
   };
 
   const startOver = () => {
@@ -269,6 +284,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
     } catch {}
     setD({ ...EMPTY, attribution: d.attribution });
     setRestored(false);
+    setFromReview(false);
     setTried({});
     setTouched({});
     setSnapshot(null);
@@ -390,8 +406,17 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
 
   /* ------------------------------------------------------------ render */
 
-  const figureStep = step === "placement" || step === "size";
+  const review = step === "review";
+  const figureStep = step === "placement" || step === "size" || review;
   const viewerMode = step === "placement" ? "zone" : step === "size" && !placement?.fullCoverage ? "place" : "view";
+  const figureLabel = `${d.body === "f" ? b.placement.female : b.placement.male} · ${d.height} cm`;
+  const chosenStop = stops.find((s) => s.id === (d.stopId ?? stops[0]?.id));
+  const budgetLabel =
+    d.budget !== null && budgets[d.budget]
+      ? budgets[d.budget][1]
+        ? `${money(budgets[d.budget][0], artist.currency, locale)}–${money(budgets[d.budget][1], artist.currency, locale)}`
+        : fill(b.timing.budgetOpen, { price: money(budgets[d.budget][0], artist.currency, locale) })
+      : null;
   const design = placement && !placement.fullCoverage ? { widthCm: w, heightCm: h, rotationDeg: d.rotation } : null;
   const savedPoint = useMemo(() => (d.point && d.normal ? { point: d.point, normal: d.normal } : null), [d.point, d.normal]);
   const designMemo = useMemo(() => design, [design?.widthCm, design?.heightCm, design?.rotationDeg]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -442,10 +467,19 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
         </p>
       )}
 
-      <div className="mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 pt-4 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 lg:pt-8">
-        {/* The figure: sticky on phones while placing, always beside the form on desktop. */}
-        <div className={`${figureStep && !noWebgl ? "block" : "hidden"} sticky top-0 z-10 -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
-          <div className="relative h-[46dvh] min-h-[300px] overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 lg:h-[min(80dvh,760px)]">
+      {/* The review reads as one sheet: its title spans both columns, the figure and the brief sit under it. */}
+      {review && (
+        <div className="mx-auto w-full max-w-6xl px-4 pt-6 sm:px-6 lg:pt-10">
+          <StepHead id={`${uid}-title`} title={b.review.title} lead={fill(b.review.lead, { artist: artist.name })} />
+        </div>
+      )}
+
+      <div className={`mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 ${review ? "pt-6 lg:pt-8" : "pt-4 lg:pt-8"}`}>
+        {/* The figure: sticky on phones while placing, a still above the brief on review, always beside the form on desktop. */}
+        <div className={`${figureStep && !noWebgl ? "block" : "hidden"} ${review ? "" : "sticky top-0 z-10"} -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
+          <div
+            className={`relative overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 ${review ? "h-[58dvh] min-h-[380px] lg:h-[min(72dvh,720px)]" : "h-[46dvh] min-h-[300px] lg:h-[min(80dvh,760px)]"}`}
+          >
             <div className="p-grain" aria-hidden />
             {!noWebgl && (
               <Mannequin
@@ -457,6 +491,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                 placement={d.placement}
                 design={designMemo}
                 savedPoint={savedPoint}
+                readOnly={review}
                 onZoneTap={onZoneTap}
                 onPlace={onPlace}
                 onUnsupported={() => setNoWebgl(true)}
@@ -471,12 +506,35 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                 {b.placement.back}
               </button>
             </div>
-            {placement && (
+            {review && placement ? (
+              <>
+                {/* Spec-sheet corners and captions over the still. */}
+                <div aria-hidden className="pointer-events-none absolute inset-3">
+                  <span className="absolute top-0 left-0 h-5 w-5 border-t border-l border-accent" />
+                  <span className="absolute top-0 right-0 h-5 w-5 border-t border-r border-accent" />
+                  <span className="absolute bottom-0 left-0 h-5 w-5 border-b border-l border-accent" />
+                  <span className="absolute right-0 bottom-0 h-5 w-5 border-r border-b border-accent" />
+                </div>
+                <div className="pointer-events-none absolute top-5 right-5 left-5 flex items-start justify-between gap-4" aria-hidden>
+                  <div className="min-w-0 rounded-[10px] bg-soot/70 px-3 py-2 backdrop-blur">
+                    <p className="p-stamp text-accent">{b.review.sheet}</p>
+                    <p className="p-display mt-1.5 text-[1.6rem] lg:text-[2rem]">{placement.label[locale]}</p>
+                  </div>
+                  <p className="shrink-0 rounded-[10px] bg-soot/70 px-3 py-2 text-right backdrop-blur">
+                    <span className="t-num block text-[1.25rem] leading-none lg:text-[1.5rem]">{placement.fullCoverage ? b.size.fullTitle : `${w} × ${h} cm`}</span>
+                    <span className="p-stamp mt-1.5 block text-bone-dim">{placement.fullCoverage ? stepNames.placement : stepNames.size}</span>
+                  </p>
+                </div>
+                <p className="p-stamp pointer-events-none absolute right-5 bottom-5 rounded-[10px] bg-soot/70 px-3 py-2 text-right text-bone-dim backdrop-blur" aria-hidden>
+                  {figureLabel}
+                </p>
+              </>
+            ) : placement ? (
               <p className="p-quote pointer-events-none absolute top-3 right-3 left-3 text-right text-[1.25rem] lg:text-[1.45rem]" aria-hidden>
                 {placement.label[locale]}
                 {!placement.fullCoverage && d.step >= 2 ? <span className="t-num ml-2 font-sans text-[0.85rem] text-ash not-italic">{w} × {h} cm</span> : null}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -850,44 +908,114 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
             </div>
           )}
 
-          {step === "review" && (
-            <div className="grid gap-7">
-              <StepHead id={`${uid}-title`} title={b.review.title} lead={fill(b.review.lead, { artist: artist.name })} />
-              <dl className="divide-y divide-line border-y border-line">
-                <ReviewRow label={stepNames.style} edit={() => goTo(0)} editLabel={t.common.edit}>
-                  {styleLabel(d.style, locale)}, {colorLabel(d.color, locale).toLowerCase()}
-                </ReviewRow>
-                <ReviewRow label={stepNames.placement} edit={() => goTo(1)} editLabel={t.common.edit}>
-                  {placement?.label[locale]}
-                  {placement && !placement.fullCoverage ? <span className="t-num text-ash">, {w} × {h} cm</span> : null}
-                </ReviewRow>
-                <ReviewRow label={stepNames.idea} edit={() => goTo(3)} editLabel={t.common.edit}>
-                  <span className="block whitespace-pre-line">{d.description}</span>
-                  {d.avoid && <span className="mt-2 block text-ash">{b.review.notes}: {d.avoid}</span>}
-                  <span className="mt-2 block text-[0.88rem] text-ash">
-                    {[refs.length === 1 ? b.review.referencesOne : refs.length ? fill(b.review.references, { n: refs.length }) : b.review.noReferences, d.coverup ? b.review.coverup : null, d.firstTattoo ? b.review.firstTattoo : null]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </span>
-                </ReviewRow>
-                <ReviewRow label={stepNames.timing} edit={() => goTo(4)} editLabel={t.common.edit}>
-                  {[
-                    stops.find((s) => s.id === (d.stopId ?? stops[0]?.id))?.city ?? (stops.length ? b.timing.anyCity : null),
-                    d.timing ? (d.timing === "specific" && d.dates ? d.dates : b.timing[d.timing]) : null,
-                    d.budget !== null && budgets[d.budget]
-                      ? budgets[d.budget][1]
-                        ? `${money(budgets[d.budget][0], artist.currency, locale)}–${money(budgets[d.budget][1], artist.currency, locale)}`
-                        : fill(b.timing.budgetOpen, { price: money(budgets[d.budget][0], artist.currency, locale) })
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(", ")}
-                </ReviewRow>
-                <ReviewRow label={stepNames.contact} edit={() => goTo(5)} editLabel={t.common.edit}>
-                  {d.name}
-                  <span className="block text-ash">{d.email}</span>
-                </ReviewRow>
-              </dl>
+          {review && (
+            <div className="grid gap-5">
+              <article className="relative overflow-hidden rounded-[18px] border border-line bg-niche" aria-label={fill(b.review.kicker, { artist: artist.name })}>
+                <div className="p-halftone" aria-hidden />
+                <header className="relative border-b border-line px-5 pt-5 pb-4">
+                  <p className="p-stamp text-accent">{fill(b.review.kicker, { artist: artist.name })}</p>
+                  <p className="p-display mt-2 text-[clamp(1.7rem,6vw,2.3rem)]">
+                    {styleLabel(d.style, locale)}
+                    {placement ? <span className="text-bone-dim"> · {placement.label[locale]}</span> : null}
+                  </p>
+                </header>
+                <dl className="relative divide-y divide-line px-5">
+                  <ReviewRow label={stepNames.style} edit={() => editFrom(0)} editLabel={t.common.edit}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Spec label={stepNames.style}>{styleLabel(d.style, locale)}</Spec>
+                      <Spec label={b.review.color}>{colorLabel(d.color, locale)}</Spec>
+                    </div>
+                  </ReviewRow>
+                  <ReviewRow label={stepNames.placement} edit={() => editFrom(1)} editLabel={t.common.edit}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Spec label={stepNames.placement}>{placement?.label[locale]}</Spec>
+                      <Spec label={b.placement.figure}>{figureLabel}</Spec>
+                    </div>
+                  </ReviewRow>
+                  {placement && (
+                    <ReviewRow label={stepNames.size} edit={placement.fullCoverage ? undefined : () => editFrom(2)} editLabel={t.common.edit}>
+                      {placement.fullCoverage ? (
+                        <Spec label={stepNames.size}>{b.size.fullTitle}</Spec>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                          <Spec label={stepNames.size}>
+                            <span className="t-num">{w} × {h} cm</span>
+                            <span className="block text-[0.85rem] text-ash">{b.size.bands[sizeBand(d.size)]}</span>
+                          </Spec>
+                          <Spec label={b.size.shape}>{b.size[d.shape]}</Spec>
+                          <Spec label={b.size.rotation}>
+                            <span className="t-num">{d.rotation}°</span>
+                          </Spec>
+                        </div>
+                      )}
+                    </ReviewRow>
+                  )}
+                  <ReviewRow label={stepNames.idea} edit={() => editFrom(3)} editLabel={t.common.edit}>
+                    <div className="grid gap-4">
+                      <Spec label={b.idea.description}>
+                        <span className="block whitespace-pre-line">{d.description.trim()}</span>
+                      </Spec>
+                      {d.avoid.trim() && (
+                        <Spec label={b.idea.avoid}>
+                          <span className="block whitespace-pre-line">{d.avoid.trim()}</span>
+                        </Spec>
+                      )}
+                      <Spec label={b.idea.references}>
+                        {refs.length ? (
+                          <>
+                            <span className="block text-[0.85rem] text-ash">{refs.length === 1 ? b.review.referencesOne : fill(b.review.references, { n: refs.length })}</span>
+                            <ul className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                              {refs.map((r) => (
+                                <li key={r.id} className="aspect-square overflow-hidden rounded-[var(--radius-sm)] border border-line-strong bg-soot">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={r.preview} alt="" className="h-full w-full object-cover" />
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : (
+                          <span className="text-ash">{b.review.noReferences}</span>
+                        )}
+                      </Spec>
+                      {d.coverup && skin && (
+                        <Spec label={b.idea.skinPhoto}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={skin.preview} alt="" className="mt-1 h-20 w-20 rounded-[var(--radius-sm)] border border-line-strong object-cover" />
+                        </Spec>
+                      )}
+                      <Spec label={b.review.experience}>{[d.firstTattoo ? b.review.firstTattoo : b.review.notFirst, d.coverup ? b.review.coverup : null].filter(Boolean).join(" · ")}</Spec>
+                    </div>
+                  </ReviewRow>
+                  <ReviewRow label={stepNames.timing} edit={() => editFrom(4)} editLabel={t.common.edit}>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      {stops.length > 0 && (
+                        <Spec label={b.review.city}>
+                          {chosenStop?.city ?? b.timing.anyCity}
+                          {chosenStop && !chosenStop.home && <span className="block text-[0.85rem] text-ash">{dateRange(chosenStop.startsOn, chosenStop.endsOn, locale)}</span>}
+                        </Spec>
+                      )}
+                      <Spec label={b.review.when}>
+                        {d.timing ? b.timing[d.timing] : null}
+                        {d.timing === "specific" && d.dates.trim() && <span className="block text-[0.85rem] text-ash">{d.dates.trim()}</span>}
+                      </Spec>
+                      <Spec label={b.review.budget}>
+                        <span className="t-num">{budgetLabel}</span>
+                      </Spec>
+                    </div>
+                  </ReviewRow>
+                  <ReviewRow label={stepNames.contact} edit={() => editFrom(5)} editLabel={t.common.edit}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Spec label={b.contact.name}>{d.name.trim()}</Spec>
+                      <Spec label={b.contact.email}>
+                        <span className="break-all">{d.email.trim()}</span>
+                      </Spec>
+                      {d.phone.trim() && <Spec label={b.contact.phone}>{d.phone.trim()}</Spec>}
+                      {d.instagram.trim() && <Spec label={b.contact.instagram}>@{d.instagram.trim().replace(/^@/, "")}</Spec>}
+                    </div>
+                  </ReviewRow>
+                </dl>
+              </article>
+              <p className="text-[0.88rem] text-ash">{fill(b.review.sendHint, { artist: artist.name })}</p>
               <FieldError message={sendError ?? undefined} />
             </div>
           )}
@@ -966,16 +1094,29 @@ function Check({ id, checked, onChange, label, invalid }: { id: string; checked:
   );
 }
 
-function ReviewRow({ label, children, edit, editLabel }: { label: string; children: React.ReactNode; edit: () => void; editLabel: string }) {
+/** One section of the brief sheet: the step's name, its edit button, and the values underneath at full width. */
+function ReviewRow({ label, children, edit, editLabel }: { label: string; children: React.ReactNode; edit?: () => void; editLabel: string }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 py-4">
-      <dt className="t-label">{label}</dt>
-      <dd className="col-start-1 min-w-0">{children}</dd>
-      <dd className="col-start-2 row-span-2 row-start-1 self-start">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={edit} aria-label={`${editLabel}: ${label}`}>
-          {editLabel}
-        </button>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 py-4">
+      <dt className="p-quote text-[1.3rem] text-bone">{label}</dt>
+      <dd className="col-start-2 row-start-1">
+        {edit && (
+          <button type="button" className="btn btn-ghost btn-sm -mr-2" onClick={edit} aria-label={`${editLabel}: ${label}`}>
+            {editLabel}
+          </button>
+        )}
       </dd>
+      <dd className="col-span-2 col-start-1 min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+/** A stamped label over its value, the unit of the spec sheet. */
+function Spec({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <span className="p-stamp block text-bone-dim">{label}</span>
+      <span className="mt-1 block min-w-0 text-[1rem] leading-snug break-words">{children}</span>
     </div>
   );
 }
