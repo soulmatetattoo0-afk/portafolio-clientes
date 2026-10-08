@@ -367,8 +367,8 @@ function Quote({ tone, piece, n, kicker, folio, title, story, specs }: { tone: "
   return (
     <Ch tone={tone}>
       <div className="absolute inset-0 grid grid-rows-[49%_1fr] @3xl:grid-cols-[46%_minmax(0,1fr)] @3xl:grid-rows-1">
-        <div className="relative min-h-0">
-          <Fig src={piece.url} pos={posOf(piece)} title={title} className="absolute inset-0" />
+        <div className="relative h-full min-h-0 w-full">
+          <Fig src={piece.url} pos="top" title={title} className="relative h-full w-full" />
           <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t ${tone === "ink" ? "from-ink" : "from-bone"} to-transparent @3xl:hidden`} />
         </div>
         <div className="relative flex min-h-0 flex-col px-[4cqw] pt-0 pb-[2.4cqh] @3xl:justify-center @3xl:px-[5cqw] @3xl:py-[4cqh]">
