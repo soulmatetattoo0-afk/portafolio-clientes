@@ -21,6 +21,7 @@ import {
   Mesh,
   MeshMatcapMaterial,
   PerspectiveCamera,
+  Ray,
   Raycaster,
   Scene,
   SRGBColorSpace,
@@ -77,7 +78,11 @@ const GOLD = new Color("#c9a35f");
 
 const vertexPatch = /* glsl */ `
 attribute float _zone;
+attribute float _edge;
+attribute float _other;
 varying float vZone;
+varying float vEdge;
+flat varying float vOther;
 varying vec3 vObj;
 `;
 const fragmentPatch = /* glsl */ `
@@ -85,6 +90,8 @@ uniform float uZoneState[${MAX_ZONES}];
 uniform vec3 uGold;
 uniform float uTime;
 varying float vZone;
+varying float vEdge;
+flat varying float vOther;
 varying vec3 vObj;
 
 // Procedural wood: long grain running up the body, wavered by a little noise,
@@ -114,6 +121,80 @@ vec3 wood(vec3 p) {
   return c;
 }
 `;
+
+/** Feather width, in figure metres: how far from a zone border the highlight takes to reach full strength. */
+const FEATHER_M = 0.03;
+
+/**
+ * Per-vertex distance to the nearest zone border (`_edge`, 0 at the border, 1 at
+ * FEATHER_M and beyond) and the zone across that border (`_other`). The GLB
+ * only carries `_zone`; borders are where vertices of different zones share a
+ * position, and distances spread from them along mesh edges.
+ */
+function addBorderAttributes(geometry: BufferGeometry) {
+  const pos = geometry.getAttribute("position");
+  const zone = geometry.getAttribute("_zone");
+  const index = geometry.getIndex();
+  const n = pos.count;
+  const edge = new Float32Array(n).fill(1);
+  const other = new Float32Array(n);
+  for (let i = 0; i < n; i++) other[i] = zone ? zone.getX(i) : 0;
+  if (!zone || !index) {
+    geometry.setAttribute("_edge", new BufferAttribute(edge, 1));
+    geometry.setAttribute("_other", new BufferAttribute(other, 1));
+    return;
+  }
+  // Vertices sharing a position with a vertex of another zone sit on a border.
+  const dist = new Float32Array(n).fill(Infinity);
+  const byPos = new Map<string, number[]>();
+  for (let i = 0; i < n; i++) {
+    const key = `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
+    const list = byPos.get(key);
+    if (list) list.push(i);
+    else byPos.set(key, [i]);
+  }
+  for (const list of byPos.values()) {
+    if (list.length < 2) continue;
+    for (const i of list) {
+      const zi = Math.round(zone.getX(i));
+      for (const j of list) {
+        const zj = Math.round(zone.getX(j));
+        if (zj !== zi) {
+          dist[i] = 0;
+          other[i] = zj;
+          break;
+        }
+      }
+    }
+  }
+  // Relax along triangle edges: a few passes cover the feather width.
+  const idx = index.array as ArrayLike<number>;
+  const len = (a: number, b: number) => Math.hypot(pos.getX(a) - pos.getX(b), pos.getY(a) - pos.getY(b), pos.getZ(a) - pos.getZ(b));
+  for (let pass = 0; pass < 10; pass++) {
+    let changed = false;
+    for (let t = 0; t < idx.length; t += 3) {
+      for (let k = 0; k < 3; k++) {
+        const a = idx[t + k];
+        const b = idx[t + ((k + 1) % 3)];
+        if (dist[a] >= FEATHER_M && dist[b] >= FEATHER_M) continue;
+        const l = len(a, b);
+        if (dist[a] + l < dist[b]) {
+          dist[b] = dist[a] + l;
+          other[b] = other[a];
+          changed = true;
+        } else if (dist[b] + l < dist[a]) {
+          dist[a] = dist[b] + l;
+          other[a] = other[b];
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  for (let i = 0; i < n; i++) edge[i] = Math.min(1, dist[i] / FEATHER_M);
+  geometry.setAttribute("_edge", new BufferAttribute(edge, 1));
+  geometry.setAttribute("_other", new BufferAttribute(other, 1));
+}
 
 function makeMatcap(): CanvasTexture {
   // Neutral studio light for lacquered wood: soft key from above left, cool rim, tight varnish highlight.
@@ -255,25 +336,32 @@ export class MannequinEngine {
       shader.uniforms.uGold = { value: GOLD };
       shader.uniforms.uTime = { value: 0 };
       this.material.userData.shader = shader;
-      shader.vertexShader = vertexPatch + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vZone = _zone;\n  vObj = position;");
+      shader.vertexShader = vertexPatch + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vZone = _zone;\n  vEdge = _edge;\n  vOther = _other;\n  vObj = position;");
       shader.fragmentShader =
         fragmentPatch +
         shader.fragmentShader.replace(
           "#include <dithering_fragment>",
           /* glsl */ `#include <dithering_fragment>
   int zi = int(vZone + 0.5);
+  int oi = int(vOther + 0.5);
   float st = 0.0;
-  for (int k = 0; k < ${MAX_ZONES}; k++) { if (k == zi) st = uZoneState[k]; }
+  float so = 0.0;
+  for (int k = 0; k < ${MAX_ZONES}; k++) { if (k == zi) st = uZoneState[k]; if (k == oi) so = uZoneState[k]; }
   // 1 = hover, 2 = selected (pulses gently), 3 = dimmed (other zones while placing)
   float hover = step(0.5, st) * step(st, 1.5);
   float sel = step(1.5, st) * step(st, 2.5);
   float dim = step(2.5, st);
   float pulse = 0.82 + 0.18 * sin(uTime * 2.2);
+  // Zone borders are feathered: the tint eases in over the first centimetres
+  // from a border, but only where the zone across it is drawn differently, so
+  // two dimmed zones never show a seam.
+  float feather = smoothstep(0.0, 1.0, vEdge);
+  float wash = mix(0.4 + 0.6 * feather, 1.0, step(abs(st - so), 0.5));
   // Lacquered wood: the matcap carries the light, the grain carries the colour.
   gl_FragColor.rgb = wood(vObj) * gl_FragColor.rgb * 1.15;
   vec3 lum = vec3(dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)));
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uGold * (0.75 + lum * 1.5), hover * 0.4 + sel * 0.78 * pulse);
-  gl_FragColor.rgb *= 1.0 - dim * 0.35;`,
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uGold * (0.75 + lum * 1.5), (hover * 0.4 + sel * 0.78 * pulse) * wash);
+  gl_FragColor.rgb *= 1.0 - dim * 0.35 * wash;`,
         );
     };
 
@@ -352,15 +440,64 @@ export class MannequinEngine {
   focusPlacement(slug: string, animate = true) {
     const target = this.placementAnchor(slug);
     if (!target) return;
-    const { center, normal, radius } = target;
-    // Fit the zone's bounding sphere inside the narrower of the two FOVs.
+    const { center, radius } = target;
+    // Fit the zone's bounding sphere inside the narrower of the two FOVs with
+    // room around it, and never so close that the area loses its context.
     const vfov = (this.camera.fov * Math.PI) / 180;
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
-    const dist = Math.max(0.75, (radius / Math.tan(Math.min(vfov, hfov) / 2)) * 1.3);
-    const eye = center.clone().add(normal.clone().multiplyScalar(dist));
-    eye.y += radius * 0.3;
+    const half = Math.tan(Math.min(vfov, hfov) / 2);
+    const dist = Math.max(0.45 / half, (radius / half) * 1.45);
+    const dir = this.clearestView(target, dist);
+    const eye = center.clone().add(dir.multiplyScalar(dist));
+    eye.y += radius * 0.25;
     if (animate) this.flyTo(eye, center);
     else this.jumpTo(eye, center);
+  }
+
+  /**
+   * Direction to look at a placement from: close to its mean normal, but
+   * chosen among candidate directions by how much of the area is actually in
+   * sight (an inner forearm faces the body, so its mean normal would put the
+   * camera inside the torso). Level, front-facing views win ties.
+   */
+  private clearestView(anchor: { center: Vector3; normal: Vector3; samples: Vector3[] }, dist: number): Vector3 {
+    const geom = this.body!.geometry as BufferGeometry;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bvh = (geom as any).boundsTree as MeshBVH | undefined;
+    const base = anchor.normal.clone().normalize();
+    if (!bvh || !anchor.samples.length) return base;
+    const s = this.root.scale.x;
+    const centre = anchor.center.clone().divideScalar(s);
+    const az0 = Math.atan2(base.x, base.z);
+    const el0 = Math.asin(Math.max(-1, Math.min(1, base.y)));
+    const ray = new Ray();
+    const eye = new Vector3();
+    const dir = new Vector3();
+    let best = base;
+    let bestScore = -Infinity;
+    for (let k = -8; k < 8; k++) {
+      const az = az0 + (k * Math.PI) / 8;
+      for (const el of [el0, 0.35, 0, -0.35, -0.7]) {
+        dir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+        eye.copy(centre).addScaledVector(dir, dist / s);
+        let seen = 0;
+        for (const p of anchor.samples) {
+          ray.origin.copy(eye);
+          ray.direction.copy(p).sub(eye);
+          const d = ray.direction.length();
+          ray.direction.divideScalar(d);
+          const hit = bvh.raycastFirst(ray, 2 /* DoubleSide */);
+          if (hit && Math.abs(hit.distance - d) < 0.012) seen++;
+        }
+        const turn = Math.acos(Math.max(-1, Math.min(1, dir.dot(base))));
+        const score = seen / anchor.samples.length - 0.06 * turn - 0.12 * Math.abs(el) + 0.16 * dir.z;
+        if (score > bestScore) {
+          bestScore = score;
+          best = dir.clone();
+        }
+      }
+    }
+    return best;
   }
 
   private jumpTo(eye: Vector3, target: Vector3) {
@@ -395,8 +532,9 @@ export class MannequinEngine {
 
   frameAll(animate = true) {
     const h = this.heightCm / 100;
-    const target = new Vector3(0, h * 0.55, 0);
-    const eye = new Vector3(0.0, h * 0.62, h * 2.25);
+    // Aim a little below the middle so the feet clear the view buttons at the bottom.
+    const target = new Vector3(0, h * 0.44, 0);
+    const eye = new Vector3(0.0, h * 0.52, h * 2.55);
     if (animate) this.flyTo(eye, target);
     else {
       this.camera.position.copy(eye);
@@ -521,6 +659,7 @@ export class MannequinEngine {
         }
         geometry.setIndex(mesh.geometry.getIndex());
         geometry.applyMatrix4(nodeMatrix);
+        addBorderAttributes(geometry);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (geometry as any).computeBoundsTree();
         this.cache.set(body, geometry);
@@ -729,6 +868,7 @@ export class MannequinEngine {
     const box = new Box3();
     const v = new Vector3();
     let count = 0;
+    const members: number[] = [];
     for (let i = 0; i < zone.count; i++) {
       if (!ids.has(Math.round(zone.getX(i)))) continue;
       v.fromBufferAttribute(pos, i);
@@ -737,9 +877,17 @@ export class MannequinEngine {
       normal.x += nor.getX(i);
       normal.y += nor.getY(i);
       normal.z += nor.getZ(i);
+      members.push(i);
       count++;
     }
     if (!count) return null;
+    const step = Math.max(1, Math.floor(members.length / 48));
+    const samples: Vector3[] = [];
+    for (let k = 0; k < members.length; k += step) {
+      const i = members[k];
+      // Nudged off the skin along its normal so the visibility ray can reach it.
+      samples.push(new Vector3().fromBufferAttribute(pos, i).addScaledVector(new Vector3(nor.getX(i), nor.getY(i), nor.getZ(i)), 0.002));
+    }
     const s = this.root.scale.x;
     center.divideScalar(count).multiplyScalar(s);
     normal.y *= 0.3;
@@ -761,7 +909,7 @@ export class MannequinEngine {
       axis.set(cxx * axis.x + cxy * axis.y + cxz * axis.z, cxy * axis.x + cyy * axis.y + cyz * axis.z, cxz * axis.x + cyz * axis.y + czz * axis.z).normalize();
     }
     if (axis.y < 0) axis.negate();
-    return { center, normal, axis, radius: (size.length() * s) / 2 };
+    return { center, normal, axis, samples, radius: (size.length() * s) / 2 };
   }
 
   private refreshZoneState() {

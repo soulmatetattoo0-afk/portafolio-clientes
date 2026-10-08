@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "mannequin:build": "python tools/mannequin/build.py --out public/mannequin && npm run mannequin:compress",
+    "mannequin:build": "python tools/mannequin/human.py --out public/mannequin && npm run mannequin:compress",
     "mannequin:compress": "for b in f m; do gltf-transform meshopt public/mannequin/body-$b.glb public/mannequin/body-$b.glb --level medium; done"
   },
   "dependencies": {
