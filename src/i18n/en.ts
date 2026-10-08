@@ -176,6 +176,10 @@ const en = {
         mapLabel: "Map of the tour. Each city opens its dates.",
         hint: "Tap a city for its dates and open days.",
         later: "Then",
+        mode: { label: "Map style", paper: "Paper", ink: "Ink" },
+        zoomIn: "Zoom in",
+        zoomOut: "Zoom out",
+        world: "Whole world",
         detail: {
           studio: "Studio",
           address: "Address",

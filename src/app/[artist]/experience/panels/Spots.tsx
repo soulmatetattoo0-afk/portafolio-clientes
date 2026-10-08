@@ -14,12 +14,14 @@ import { PanelHead } from "../Panel";
 import { pinsOf } from "../pins";
 import { openDays, StopCalendar } from "../StopCalendar";
 import type { ExperienceData } from "../types";
-import { WorldMap } from "../WorldMap";
+import { WorldMap, type MapMode } from "../WorldMap";
 
 /** The leg the map frames: home and every stop that starts within this many days. Later stops wait at the edge. */
 const LEG_DAYS = 90;
 /** How far the home studio's calendar looks ahead. */
 const HOME_DAYS = 41;
+/** Where the browser remembers how the map is drawn. */
+const MODE_KEY = "map-mode";
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const plusDays = (iso: string, n: number) => isoDay(new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86400000));
@@ -41,6 +43,22 @@ export function Spots({ data }: { data: ExperienceData }) {
   const [picked, setPicked] = useState<string | null>(null);
   const items = useRef<Record<string, HTMLLIElement | null>>({});
   const scrollTo = useRef<string | null>(null);
+
+  // Paper by default; the browser remembers which drawing the viewer last chose.
+  const [mode, setMode] = useState<MapMode>("paper");
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem(MODE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (m === "paper" || m === "ink") setMode(m);
+    } catch {}
+  }, []);
+  const choose = (m: MapMode) => {
+    setMode(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {}
+  };
 
   const pins = useMemo(() => pinsOf(data), [data]);
   // The frame: home plus the stops of the coming months; if nothing is that close, the next one.
@@ -75,15 +93,37 @@ export function Spots({ data }: { data: ExperienceData }) {
     <div className="pb-16">
       <PanelHead id="spots" kicker={a.deck.cards.spots.kicker} title={a.deck.cards.spots.title} lead={p.lead} />
 
-      {/* The region: gold land, the states or borders, the home, the stops. */}
-      <figure className="relative mx-5 overflow-hidden rounded-[22px] border border-line bg-[radial-gradient(ellipse_at_50%_40%,#17130f,#0a0a0a_70%)] px-3 pt-5 pb-4">
-        <div className="p-halftone" aria-hidden />
-        <WorldMap pins={pins} frame={frame} active={picked} onPick={(id) => pick(id, true)} label={p.mapLabel} later={p.later} className="relative w-full" />
+      {/* How to read it, and how to draw it: by hand on paper, or in the deck's gold. */}
+      <div className="mx-5 mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="max-w-[34ch] text-[0.8rem] text-bone-dim">{p.hint}</p>
+        <div className="seg" role="group" aria-label={p.mode.label}>
+          <button type="button" className="p-stamp" aria-pressed={mode === "paper"} onClick={() => choose("paper")}>
+            {p.mode.paper}
+          </button>
+          <button type="button" className="p-stamp" aria-pressed={mode === "ink"} onClick={() => choose("ink")}>
+            {p.mode.ink}
+          </button>
+        </div>
+      </div>
+
+      {/* The region: the land, the states or borders, the home, the stops. */}
+      <figure data-mode={mode} className="wm-figure relative mx-5 overflow-hidden rounded-[22px] border border-line px-3 pt-5 pb-4">
+        {mode === "paper" ? <div className="p-grain" aria-hidden /> : <div className="p-halftone" aria-hidden />}
+        <WorldMap
+          pins={pins}
+          frame={frame}
+          active={picked}
+          onPick={(id) => pick(id, true)}
+          label={p.mapLabel}
+          later={p.later}
+          mode={mode}
+          labels={{ zoomIn: p.zoomIn, zoomOut: p.zoomOut, world: p.world }}
+          className="w-full"
+        />
         <figcaption className="relative mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2">
           <span className="flex items-center gap-2 text-[0.8rem] text-bone/80">
-            <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" />
+            <span aria-hidden className="wm-dot inline-block h-2.5 w-2.5 rounded-full bg-accent" />
             {stops.length} {a.deck.cards.spots.title.toLowerCase()}
-            <span className="hidden text-bone-dim sm:inline">· {p.hint}</span>
           </span>
           {next && (
             <span className="p-gothic text-[1.05rem] text-accent">
@@ -92,7 +132,6 @@ export function Spots({ data }: { data: ExperienceData }) {
           )}
         </figcaption>
       </figure>
-      <p className="mt-3 px-7 text-[0.8rem] text-bone-dim sm:hidden">{p.hint}</p>
 
       {/* The route: each stop opens on its details and its days. */}
       {stops.length === 0 ? (
