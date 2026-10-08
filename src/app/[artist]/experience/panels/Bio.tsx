@@ -33,19 +33,11 @@ export function Bio({ data }: { data: ExperienceData }) {
   const home = data.stops.find((s) => s.is_home);
   const place = (slug: string) => (PLACEMENT_BY_SLUG.get(slug) ?? ZONE_BY_SLUG.get(slug))?.label[locale] ?? slug;
   const styleOf = (piece: PortfolioItem) => (piece.style ? (STYLE_BY_SLUG.get(piece.style)?.label[locale] ?? piece.style) : null);
-  const [first, ...restName] = artist.display_name.split(" ");
   const portrait = artist.portrait_url ? { src: artist.portrait_url, grey: !artist.cover_poster } : null;
 
   const chapters: { key: string; label: string; node: React.ReactNode }[] = [];
 
-  // The cover: the house masthead across the full width, the portrait in black and white,
-  // facts as cover lines, the artist's name at the foot, the volume line, the RESERVE stamp.
-  const coverLines = [
-    styles.length ? styles.slice(0, 2).join(" · ") : null,
-    home ? [home.studio_name, home.city].filter(Boolean).join(", ") : artist.home_city,
-    cities.length && years ? `${cities.length} ${m.cities} · ${years} ${m.years}` : null,
-    featured[0]?.title ? `${m.popular}: ${featured[0].title}` : null,
-  ].filter((l): l is string => !!l);
+  // The cover: the artist's own poster, untouched, with only the volume line at the foot.
   chapters.push({
     key: "cover",
     label: m.issue,
@@ -55,60 +47,23 @@ export function Bio({ data }: { data: ExperienceData }) {
           <div className="absolute inset-0 overflow-hidden" data-img>
             {portrait ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={portrait.src} alt={artist.display_name} draggable={false} className="block h-full w-full object-cover object-top grayscale-[.85] contrast-[1.08]" />
+              <img src={portrait.src} alt={artist.display_name} draggable={false} className={`block h-full w-full object-cover object-top ${portrait.grey ? "grayscale contrast-[1.08]" : ""}`} />
             ) : (
               <div className="mag-stripes absolute inset-0 opacity-30" />
             )}
-            <div aria-hidden className="absolute inset-x-0 top-0 h-[38%] bg-gradient-to-b from-black/80 via-black/30 to-transparent" />
-            <div aria-hidden className="absolute inset-x-0 bottom-0 h-[46%] bg-gradient-to-t from-black/92 via-black/50 to-transparent" />
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-[18%] bg-gradient-to-t from-black/80 to-transparent" />
           </div>
-          {/* masthead: the name set to the full width of the cover */}
-          <div className="absolute inset-x-[4cqw] top-[3cqw]">
-            <svg data-r viewBox="0 0 100 26" className="block w-full" aria-label={BRAND.name} role="img">
-              <text x="0" y="25" textLength="100" lengthAdjust="spacingAndGlyphs" fill="var(--color-bone)" style={{ fontFamily: "var(--font-poster)", fontWeight: 900, fontSize: 36, fontVariationSettings: '"opsz" 72', letterSpacing: "0.005em" }}>
-                {BRAND.name}
-              </text>
-            </svg>
-            <p data-r style={{ "--d": "90ms" } as React.CSSProperties} className="p-gothic mt-[0.5cqw] flex justify-between text-[clamp(0.95rem,3.2cqw,1.5rem)] text-bone/85">
-              <span>{m.issue}</span>
-              <span className="text-accent">{m.vol} 01</span>
-            </p>
-          </div>
-          {/* cover lines: facts, each under a hairline in the artist's colour */}
-          <ul className="absolute top-[42%] left-[4cqw] grid max-w-[46%] gap-[2.4cqw]">
-            {coverLines.slice(0, 4).map((line, i) => (
-              <li key={line} data-r style={{ "--d": `${200 + i * 80}ms` } as React.CSSProperties} className="border-t border-accent pt-[1.2cqw]">
-                <span className="p-stamp block text-[clamp(0.6rem,2.6cqw,0.9rem)] leading-[1.25] text-bone">{line.toUpperCase()}</span>
-              </li>
-            ))}
-          </ul>
-          {/* RESERVE: the sign from the ring, stamped on the cover */}
-          {artist.accepting && (
-            <a
-              href={`/${artist.slug}/request`}
-              data-r
-              style={{ "--d": "520ms" } as React.CSSProperties}
-              className="p-display absolute bottom-[23%] left-[5cqw] -rotate-[8deg] border-2 border-accent px-[2.2cqw] py-[0.8cqw] text-[clamp(0.9rem,4cqw,1.9rem)] leading-none text-accent"
-            >
-              {a.deck.sign.toUpperCase()}
-            </a>
-          )}
-          {/* the volume line and the name */}
           <div className="absolute right-[4cqw] bottom-[3cqw] left-[4cqw] flex items-end justify-between gap-[3cqw]">
-            <p data-r style={{ "--d": "420ms" } as React.CSSProperties} className="p-stamp text-[clamp(0.55rem,2.2cqw,0.8rem)] leading-[1.6] text-bone/75">
-              {BRAND.name} · {year}
-              {artist.home_city ? <><br />{artist.home_city.toUpperCase()}</> : null}
+            <p data-r className="p-stamp text-[clamp(0.55rem,2.2cqw,0.8rem)] leading-[1.6] text-bone/80">
+              {m.issue}
+              <br />
+              {BRAND.name} · {m.vol} 01 · {year}
             </p>
-            <div className="min-w-0 text-right">
-              <p data-r style={{ "--d": "300ms" } as React.CSSProperties} className="p-display text-[clamp(3rem,17cqw,9rem)] leading-[0.84] text-bone @3xl:text-[16cqw]">
-                {first}
-              </p>
-              {restName.length > 0 && (
-                <p data-r style={{ "--d": "360ms" } as React.CSSProperties} className="p-display text-[clamp(1.6rem,9cqw,4.6rem)] leading-[0.9] text-bone">
-                  {restName.join(" ")}
-                </p>
-              )}
-            </div>
+            {artist.accepting && (
+              <a href={`/${artist.slug}/request`} data-r style={{ "--d": "200ms" } as React.CSSProperties} className="p-display -rotate-[6deg] border-2 border-accent px-[2cqw] py-[0.7cqw] text-[clamp(0.85rem,3.6cqw,1.6rem)] leading-none text-accent">
+                {a.deck.sign.toUpperCase()}
+              </a>
+            )}
           </div>
         </div>
       </Ch>
