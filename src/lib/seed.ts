@@ -75,8 +75,8 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
   ];
   for (const [i, [title, style, color, placement, healed, story]] of portfolio.entries()) {
     await db.query(
-      `insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, placement, is_healed, sort, featured, story) values ($1, $2, null, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [s, a, title, style, color, placement, healed, i, story !== null, story],
+      `insert into portfolio_items (studio_id, artist_id, image_path, title, style, color_mode, placement, is_healed, sort, featured, story) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [s, a, demoImage(`tattoo-${String(i + 1).padStart(2, "0")}.webp`), title, style, color, placement, healed, i, story !== null, story],
     );
   }
 
