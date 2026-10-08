@@ -3,7 +3,7 @@ import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 
 import type { Email } from "./email";
 import { env } from "./env";
-import { cmLabel, dateLong, money, moneyRange, placeLine, sessionTime } from "./format";
+import { cmLabel, dateLong, dateRange, money, moneyRange, placeLine, sessionTime } from "./format";
 import { colorLabel, styleLabel } from "./catalog";
 
 export const placementLabel = (slug: string, locale: Locale) => PLACEMENT_BY_SLUG.get(slug)?.label[locale] ?? slug;
@@ -167,6 +167,52 @@ export function waitlistOpen(to: string, a: { artist: string; slug: string; city
     to,
     subject: fill(t.subject, { artist: a.artist, city: a.city }),
     blocks: [{ paragraphs: [fill(t.intro, { artist: a.artist, city: a.city })], cta: { label: fill(t.cta, { artist: a.artist }), href: `${env.appUrl}/${a.slug}/request` } }],
+    footer: footer(a.artist, a.locale),
+  };
+}
+
+/* ------------------------------------------------------------ follower alerts */
+
+export interface FollowerArtist {
+  artist: string;
+  slug: string;
+  locale: Locale;
+}
+
+export function spotToFollower(to: string, a: FollowerArtist & { city: string; startsOn: string | null; endsOn: string | null }): Email {
+  const t = dict(a.locale).email.spot;
+  const dates = dateRange(a.startsOn, a.endsOn, a.locale);
+  return {
+    to,
+    subject: fill(t.subject, { artist: a.artist, city: a.city }),
+    blocks: [
+      {
+        paragraphs: [fill(t.intro, { artist: a.artist, city: a.city })],
+        rows: dates ? [[t.dates, dates]] : undefined,
+        cta: { label: t.cta, href: `${env.appUrl}/${a.slug}#spots` },
+        note: fill(t.why, { artist: a.artist, city: a.city }),
+      },
+    ],
+    footer: footer(a.artist, a.locale),
+  };
+}
+
+export function booksOpenToFollower(to: string, a: FollowerArtist): Email {
+  const t = dict(a.locale).email.booksOpen;
+  return {
+    to,
+    subject: fill(t.subject, { artist: a.artist }),
+    blocks: [{ paragraphs: [fill(t.intro, { artist: a.artist })], cta: { label: t.cta, href: `${env.appUrl}/${a.slug}/request` } }],
+    footer: footer(a.artist, a.locale),
+  };
+}
+
+export function newWorkToFollower(to: string, a: FollowerArtist): Email {
+  const t = dict(a.locale).email.newWork;
+  return {
+    to,
+    subject: fill(t.subject, { artist: a.artist }),
+    blocks: [{ paragraphs: [fill(t.intro, { artist: a.artist })], cta: { label: t.cta, href: `${env.appUrl}/${a.slug}#work` } }],
     footer: footer(a.artist, a.locale),
   };
 }

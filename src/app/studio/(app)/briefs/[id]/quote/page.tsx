@@ -5,8 +5,9 @@ import { dict, fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { requireMember } from "@/lib/auth";
 import { colorLabel, styleLabel } from "@/lib/catalog";
-import { live } from "@/lib/env";
+import { env, live } from "@/lib/env";
 import { cmLabel, dateRange, moneyRange } from "@/lib/format";
+import { feeBpsFor } from "@/lib/plan";
 import { getArtistById, getBrief, listStops } from "@/lib/queries";
 import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 
@@ -27,6 +28,7 @@ export default async function QuotePage({ params }: PageProps<"/studio/briefs/[i
   const symbol = new Intl.NumberFormat("en-US", { style: "currency", currency: artist.currency.toUpperCase() }).formatToParts(0).find((p) => p.type === "currency")?.value ?? "$";
   const suggested = brief.budget_min_cents ? Math.round(brief.budget_min_cents / 100) : null;
   const placement = PLACEMENT_BY_SLUG.get(brief.placement)?.label[locale];
+  const feeBps = feeBpsFor(member.plan, env.platformFeeBps);
 
   return (
     <main className="px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
@@ -39,6 +41,14 @@ export default async function QuotePage({ params }: PageProps<"/studio/briefs/[i
           <p className="mt-2 mb-8 text-ash">{f.lead}</p>
           {!live.payments || !artist.stripe_charges_enabled ? (
             <p className="mb-8 rounded-[var(--radius-md)] border border-ember/40 px-4 py-3 text-[0.92rem] text-ember">{f.stripeMissing}</p>
+          ) : null}
+          {feeBps > 0 ? (
+            <p className="-mt-4 mb-8 text-[0.92rem] text-ash">
+              {fill(t.studio.plan.feeNote, { fee: String(feeBps / 100) })}{" "}
+              <Link href="/studio/settings#plan" className="link">
+                {t.studio.plan.upgrade}
+              </Link>
+            </p>
           ) : null}
           {open.length === 0 ? (
             <p className="text-ash">{t.studio.cities.empty}</p>

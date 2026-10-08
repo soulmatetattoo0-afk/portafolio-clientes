@@ -8,13 +8,16 @@ import { z } from "zod";
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { requireMember, type Member } from "@/lib/auth";
-import { STYLE_BY_SLUG, TIMEZONES } from "@/lib/catalog";
+import { newWorkSentRecently, notifyFollowers } from "@/lib/alerts";
+import { isTrade, STYLE_BY_SLUG, TIMEZONES, TRADE_BY_SLUG } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { env, live } from "@/lib/env";
 import { zonedToUtc } from "@/lib/format";
+import { placeCity } from "@/lib/geo";
 import { messageToClient, quoteToClient, waitlistOpen } from "@/lib/messages";
 import { accountReady, connectLink } from "@/lib/payments";
+import { can } from "@/lib/plan";
 import { removeFile } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, readDraftToken } from "@/lib/uploads";
 import { token } from "@/lib/util";
@@ -283,14 +286,22 @@ const PortfolioPatch = z.object({
   story: z.string().trim().max(1200),
 });
 
-export async function updatePortfolioItem(id: string, patch: z.input<typeof PortfolioPatch>) {
+export async function updatePortfolioItem(id: string, patch: z.input<typeof PortfolioPatch>): Promise<{ error?: string } | void> {
   const member = await requireMember();
   const p = PortfolioPatch.parse(patch);
   const db = await getDb();
+  const before = await db.one<{ featured: boolean }>(`select featured from portfolio_items where id = $1 and studio_id = $2`, [id, member.studioId]);
+  if (!before) return;
+  if (p.featured && !before.featured && !can(member.plan, "magazine")) return { error: dict(await getLocale()).studio.plan.locked };
   await db.query(
     `update portfolio_items set title = $3, style = $4, color_mode = $5, is_healed = $6, published = $7, featured = $8, story = $9 where id = $1 and studio_id = $2`,
     [id, member.studioId, p.title || null, p.style || null, p.color_mode || null, p.is_healed, p.published, p.featured, p.story || null],
   );
+  // A piece joining the magazine is news for followers, at most once a week per artist.
+  if (p.featured && !before.featured && !(await newWorkSentRecently(db, member.artistId))) {
+    await notifyFollowers(db, { artistId: member.artistId, kind: "new_work" });
+    flushLater();
+  }
   revalidatePath("/studio/portfolio");
 }
 
@@ -327,8 +338,9 @@ export async function removePortrait() {
 
 /* ------------------------------------------------------------------ flash designs */
 
-export async function addFlashItems(uploadToken: string, keys: string[]) {
+export async function addFlashItems(uploadToken: string, keys: string[]): Promise<{ error?: string } | void> {
   const member = await requireMember();
+  if (!can(member.plan, "flash")) return { error: dict(await getLocale()).studio.plan.locked };
   const draftId = readDraftToken(uploadToken);
   if (!draftId) return;
   const db = await getDb();
@@ -354,8 +366,9 @@ const FlashPatch = z.object({
   published: z.boolean(),
 });
 
-export async function updateFlashItem(id: string, patch: z.input<typeof FlashPatch>) {
+export async function updateFlashItem(id: string, patch: z.input<typeof FlashPatch>): Promise<{ error?: string } | void> {
   const member = await requireMember();
+  if (!can(member.plan, "flash")) return { error: dict(await getLocale()).studio.plan.locked };
   const p = FlashPatch.parse(patch);
   const db = await getDb();
   await db.query(
@@ -408,24 +421,44 @@ export async function saveStop(_prev: FormState, form: FormData): Promise<FormSt
   if (!parsed.success) return { ok: false, message: t.common.error, field: String(parsed.error.issues[0]?.path[0] ?? "") };
   const s = parsed.data;
   if (s.starts_on && s.ends_on && s.ends_on < s.starts_on) return { ok: false, message: t.common.error, field: "ends_on" };
+  if (!s.is_home && !can(member.plan, "spots")) return { ok: false, message: t.studio.plan.locked };
   const db = await getDb();
-  const values = [s.city, s.country, s.studio_name || null, s.address || null, s.timezone, s.starts_on || null, s.ends_on || null, s.status, s.is_home];
+  const place = placeCity(s.city, s.country);
+  const values = [s.city, s.country, s.studio_name || null, s.address || null, s.timezone, s.starts_on || null, s.ends_on || null, s.status, s.is_home, place.city_slug, place.lat, place.lng];
+  let stopId: string;
+  let announce = false;
   if (s.id) {
+    const before = await db.one<{ status: string; is_home: boolean }>(`select status, is_home from tour_stops where id = $1 and studio_id = $2`, [s.id, member.studioId]);
+    if (!before) return { ok: false, message: t.common.error };
     await db.query(
-      `update tour_stops set city = $3, country = $4, studio_name = $5, address = $6, timezone = $7, starts_on = $8, ends_on = $9, status = $10, is_home = $11
+      `update tour_stops set city = $3, country = $4, studio_name = $5, address = $6, timezone = $7, starts_on = $8, ends_on = $9, status = $10, is_home = $11,
+              city_slug = $12, lat = $13, lng = $14
         where id = $1 and studio_id = $2`,
       [s.id, member.studioId, ...values],
     );
+    stopId = s.id;
+    announce = !s.is_home && s.status === "booking" && before.status !== "booking";
   } else {
     const created = await db.one<{ id: string }>(
-      `insert into tour_stops (studio_id, artist_id, city, country, studio_name, address, timezone, starts_on, ends_on, status, is_home)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+      `insert into tour_stops (studio_id, artist_id, city, country, studio_name, address, timezone, starts_on, ends_on, status, is_home, city_slug, lat, lng)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
       [member.studioId, member.artistId, ...values],
     );
+    stopId = created!.id;
     // People who asked for this city move onto the new stop's waitlist, so "Email the waitlist" reaches them.
-    await db.query(`update waitlist set tour_stop_id = $3 where artist_id = $1 and tour_stop_id is null and lower(city) = lower($2)`, [member.artistId, s.city, created!.id]);
+    await db.query(`update waitlist set tour_stop_id = $3 where artist_id = $1 and tour_stop_id is null and lower(city) = lower($2)`, [member.artistId, s.city, stopId]);
+    announce = !s.is_home && s.status !== "done";
+  }
+  if (announce) {
+    await notifyFollowers(db, {
+      artistId: member.artistId,
+      kind: "spot",
+      payload: { stopId, city: s.city, citySlug: place.city_slug, startsOn: s.starts_on || null, endsOn: s.ends_on || null },
+    });
+    flushLater();
   }
   revalidatePath("/studio/cities");
+  revalidatePath("/", "layout");
   return { ok: true, message: t.common.saved };
 }
 
@@ -475,6 +508,9 @@ const Profile = z.object({
     .max(60)
     .transform((v) => v.replace(/^@/, "")),
   home_city: z.string().trim().max(80),
+  country: z.string().trim().max(80),
+  trade: z.string().refine(isTrade),
+  listed: z.boolean(),
   styles: z.array(z.string().refine((s) => STYLE_BY_SLUG.has(s))).max(10),
   accepting: z.boolean(),
   min_price: z.union([z.literal(""), z.coerce.number().min(0).max(100000)]),
@@ -494,6 +530,9 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
     bio: form.get("bio") ?? "",
     instagram: form.get("instagram") ?? "",
     home_city: form.get("home_city") ?? "",
+    country: form.get("country") ?? "",
+    trade: form.get("trade") ?? "tattoo",
+    listed: form.get("listed") === "on",
     styles: form.getAll("styles").map(String),
     accepting: form.get("accepting") === "on",
     min_price: form.get("min_price") ?? "",
@@ -506,15 +545,26 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
   if (!parsed.success) return { ok: false, message: t.common.error, field: String(parsed.error.issues[0]?.path[0] ?? "") };
   const p = parsed.data;
   const db = await getDb();
+  const before = await db.one<{ trade: string; booking_mode: string; accepting: boolean }>(`select trade, booking_mode, accepting from artists where id = $1 and studio_id = $2`, [member.artistId, member.studioId]);
+  if (!before) return { ok: false, message: t.common.error };
+  // A new trade brings its own way of booking; the artist can change it again later.
+  const bookingMode = p.trade === before.trade ? before.booking_mode : TRADE_BY_SLUG.get(p.trade)!.bookingMode;
+  const place = p.home_city ? placeCity(p.home_city, p.country) : { city_slug: null, country: p.country || null, lat: null, lng: null };
   await db.query(
     `update artists set display_name = $3, headline = $4, bio = $5, instagram = $6, home_city = $7, styles = $8, accepting = $9, min_price_cents = $10,
-            cover_word = $11, cover_quote = $12, since_year = $13, accent = $14, cover_poster = $15
+            cover_word = $11, cover_quote = $12, since_year = $13, accent = $14, cover_poster = $15,
+            trade = $16, booking_mode = $17, country = $18, city_slug = $19, lat = $20, lng = $21, listed = $22
       where id = $1 and studio_id = $2`,
     [
       member.artistId, member.studioId, p.display_name, p.headline || null, p.bio || null, p.instagram || null, p.home_city || null, p.styles, p.accepting,
       p.min_price === "" ? null : Math.round(p.min_price * 100), p.cover_word || null, p.cover_quote || null, p.since_year === "" ? null : p.since_year, p.accent || null, p.cover_poster,
+      p.trade, bookingMode, place.country, place.city_slug, place.lat, place.lng, p.listed,
     ],
   );
+  if (p.accepting && !before.accepting) {
+    await notifyFollowers(db, { artistId: member.artistId, kind: "books_open" });
+    flushLater();
+  }
   revalidatePath("/", "layout");
   return { ok: true, message: t.common.saved };
 }

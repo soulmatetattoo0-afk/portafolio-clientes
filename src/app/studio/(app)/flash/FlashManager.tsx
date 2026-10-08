@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { PlanLock } from "@/components/PlanLock";
 import type { Locale } from "@/i18n";
 import { money } from "@/lib/format";
 import type { FlashItem } from "@/lib/queries";
@@ -28,9 +29,11 @@ interface Labels {
   save: string;
   saved: string;
   error: string;
+  locked: string;
+  upgrade: string;
 }
 
-export function FlashManager({ items, locale, labels, storage }: { items: FlashItem[]; locale: Locale; labels: Labels; storage: { url: string; anonKey: string } | null }) {
+export function FlashManager({ items, locale, labels, storage, locked = false }: { items: FlashItem[]; locale: Locale; labels: Labels; storage: { url: string; anonKey: string } | null; locked?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,10 +58,11 @@ export function FlashManager({ items, locale, labels, storage }: { items: FlashI
           }
         }),
       );
-      await addFlashItems(
+      const r = await addFlashItems(
         prepared.token,
         prepared.targets.map((t) => t.key),
       );
+      if (r?.error) throw new Error(r.error);
       router.refresh();
     } catch {
       setError(labels.error);
@@ -69,13 +73,17 @@ export function FlashManager({ items, locale, labels, storage }: { items: FlashI
 
   return (
     <div className="grid gap-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <label className={`btn btn-primary cursor-pointer ${busy ? "pointer-events-none opacity-60" : ""}`} aria-busy={busy}>
-          {labels.upload}
-          <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(e) => upload(e.target.files)} disabled={busy} />
-        </label>
-        <p className="text-[0.88rem] text-ash-dim">{labels.uploadHint}</p>
-      </div>
+      {locked ? (
+        <PlanLock text={labels.locked} cta={labels.upgrade} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-4">
+          <label className={`btn btn-primary cursor-pointer ${busy ? "pointer-events-none opacity-60" : ""}`} aria-busy={busy}>
+            {labels.upload}
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(e) => upload(e.target.files)} disabled={busy} />
+          </label>
+          <p className="text-[0.88rem] text-ash-dim">{labels.uploadHint}</p>
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-oxblood">
           {error}
@@ -85,12 +93,31 @@ export function FlashManager({ items, locale, labels, storage }: { items: FlashI
         <div className="rounded-[var(--radius-lg)] border border-dashed border-line p-10 text-center text-ash">{labels.empty}</div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <Item key={item.id} item={item} locale={locale} labels={labels} />
-          ))}
+          {items.map((item) => (locked ? <Still key={item.id} item={item} locale={locale} labels={labels} /> : <Item key={item.id} item={item} locale={locale} labels={labels} />))}
         </ul>
       )}
     </div>
+  );
+}
+
+/** A design as the page shows it, with nothing to edit: the list stays, the controls wait for Full. */
+function Still({ item, locale, labels }: { item: FlashItem; locale: Locale; labels: Labels }) {
+  return (
+    <li className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-niche">
+      <div className="relative aspect-[4/4.2] bg-soot">
+        {item.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.url} alt={item.title} className={`h-full w-full object-cover ${item.published ? "" : "opacity-40"}`} loading="lazy" />
+        ) : (
+          <div className="grid h-full place-items-center p-6 text-center font-serif text-[1.3rem] italic">{item.title}</div>
+        )}
+        <span className={`pill absolute top-3 left-3 bg-soot/80 ${item.status === "available" ? "text-verdigris" : item.status === "reserved" ? "text-ember" : "text-ash"}`}>{labels.statuses[item.status]}</span>
+      </div>
+      <div className="grid gap-1 p-4">
+        <p className="font-serif text-[1.15rem] leading-tight">{item.title}</p>
+        <p className="t-num text-[0.88rem] text-ash">{[item.size_label, item.price_cents != null ? money(item.price_cents, item.currency, locale) : null].filter(Boolean).join(" · ")}</p>
+      </div>
+    </li>
   );
 }
 
@@ -98,6 +125,7 @@ function Item({ item, locale, labels }: { item: FlashItem; locale: Locale; label
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const [v, setV] = useState({
     title: item.title,
     description: item.description ?? "",
@@ -111,8 +139,9 @@ function Item({ item, locale, labels }: { item: FlashItem; locale: Locale; label
     setV(next);
     setSaved(false);
     start(async () => {
-      await updateFlashItem(item.id, next);
-      setSaved(true);
+      const r = await updateFlashItem(item.id, next);
+      setNote(r?.error ?? null);
+      setSaved(!r?.error);
     });
   };
   const field = "input min-h-10 py-1.5";
@@ -176,8 +205,8 @@ function Item({ item, locale, labels }: { item: FlashItem; locale: Locale; label
           <button type="submit" className="btn btn-secondary btn-sm" disabled={pending}>
             {labels.save}
           </button>
-          <span className="text-[0.85rem] text-verdigris" role="status">
-            {saved && !pending ? labels.saved : ""}
+          <span className={`text-[0.85rem] ${note ? "text-oxblood" : "text-verdigris"}`} role="status">
+            {note ?? (saved && !pending ? labels.saved : "")}
           </span>
         </div>
         {confirming ? (

@@ -2,6 +2,7 @@ import { getDict } from "@/i18n/server";
 import { requireMember } from "@/lib/auth";
 import { COLOR_MODES } from "@/lib/catalog";
 import { env, live } from "@/lib/env";
+import { can } from "@/lib/plan";
 import { listPortfolio } from "@/lib/queries";
 
 import { PortfolioManager } from "./PortfolioManager";
@@ -17,6 +18,7 @@ export default async function PortfolioPage() {
       <PortfolioManager
         items={items}
         locale={locale}
+        locked={!can(member.plan, "magazine")}
         storage={live.storage ? { url: env.supabaseUrl!, anonKey: env.supabaseAnonKey! } : null}
         labels={{
           upload: p.upload,
@@ -38,6 +40,8 @@ export default async function PortfolioPage() {
           colour: COLOR_MODES[1].label[locale],
           none: "—",
           error: t.brief.errors.upload,
+          locked: t.studio.plan.locked,
+          upgrade: t.studio.plan.upgrade,
         }}
       />
     </main>

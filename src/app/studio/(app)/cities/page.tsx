@@ -1,8 +1,10 @@
+import { PlanLock } from "@/components/PlanLock";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { requireMember } from "@/lib/auth";
 import { TIMEZONES } from "@/lib/catalog";
 import { dateRange } from "@/lib/format";
+import { can } from "@/lib/plan";
 import { listCityDemand, listStops } from "@/lib/queries";
 
 import { AddCity, CityRow } from "./CityForm";
@@ -12,6 +14,9 @@ export default async function CitiesPage({ searchParams }: PageProps<"/studio/ci
   const [{ t, locale }, stops, demand, sp] = await Promise.all([getDict(), listStops(member.artistId), listCityDemand(member.artistId), searchParams]);
   const prefill = typeof sp.city === "string" ? sp.city : undefined;
   const c = t.studio.cities;
+  // Basic keeps the home studio; guest spots away from home wait for Full.
+  const locked = !can(member.plan, "spots");
+  const hasHome = stops.some((s) => s.is_home);
   const labels = {
     add: c.add,
     city: c.city,
@@ -51,7 +56,8 @@ export default async function CitiesPage({ searchParams }: PageProps<"/studio/ci
           ))}
         </div>
       )}
-      <AddCity labels={labels} timezones={TIMEZONES} initialCity={prefill} />
+      {locked && <PlanLock text={t.studio.plan.locked} cta={t.studio.plan.upgrade} className={hasHome ? "" : "mb-4"} />}
+      {!(locked && hasHome) && <AddCity labels={labels} timezones={TIMEZONES} initialCity={prefill} />}
 
       {demand.length > 0 && (
         <section className="mt-12 border-t border-line pt-8" aria-labelledby="demand">

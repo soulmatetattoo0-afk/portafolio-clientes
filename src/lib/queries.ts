@@ -33,6 +33,14 @@ export interface Artist {
   /** The photo is a finished poster: show it whole, write nothing over it. */
   cover_poster: boolean;
   portrait_url: string | null;
+  /** Discovery: the trade, where the map pins the home city, and whether search lists the page. */
+  trade: "tattoo" | "barber" | "graffiti";
+  booking_mode: "brief_quote" | "slots" | "project";
+  country: string | null;
+  city_slug: string | null;
+  lat: number | null;
+  lng: number | null;
+  listed: boolean;
 }
 
 export interface TourStop {
@@ -79,7 +87,8 @@ export interface PortfolioItem {
 
 const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bio, a.instagram, a.home_city, a.styles, a.accepting,
   a.min_price_cents, a.currency, a.deposit_policy, a.stripe_account_id, a.stripe_charges_enabled,
-  a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path`;
+  a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path,
+  a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed`;
 
 type ArtistRow = Omit<Artist, "portrait_url"> & { portrait_path: string | null };
 

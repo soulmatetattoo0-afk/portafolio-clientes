@@ -4,7 +4,7 @@ import { useActionState } from "react";
 
 import { useSubmit } from "@/components/useSubmit";
 import type { Locale } from "@/i18n";
-import { STYLES } from "@/lib/catalog";
+import { STYLES, TRADES } from "@/lib/catalog";
 import type { Artist } from "@/lib/queries";
 
 import { saveProfile, saveRules, type FormState } from "../actions";
@@ -49,7 +49,7 @@ function Text(props: { name: string; label: string; defaultValue?: string | null
 /* A short palette of accents that read well on ink. */
 const ACCENTS = ["#d8552f", "#e0b23a", "#c9a35f", "#8fb39a", "#6fa8dc", "#b57edc", "#e85d75", "#e9e2d4"];
 
-export function ProfileForm({ artist, labels, locale, cover }: { artist: Artist; labels: L; locale: Locale; cover?: React.ReactNode }) {
+export function ProfileForm({ artist, labels, locale, cover, mapLine, checklist }: { artist: Artist; labels: L; locale: Locale; cover?: React.ReactNode; mapLine?: React.ReactNode; checklist?: React.ReactNode }) {
   const [state, action, pending] = useActionState(saveProfile, { ok: false, message: null });
   const submit = useSubmit(action);
   return (
@@ -121,8 +121,43 @@ export function ProfileForm({ artist, labels, locale, cover }: { artist: Artist;
         </div>
       </fieldset>
 
+      <fieldset id="discovery" className="grid scroll-mt-8 gap-5 border-t border-line pt-8">
+        <legend className="t-heading float-left mb-1 w-full">{labels.discoveryTitle}</legend>
+        <p className="-mt-3 max-w-[60ch] text-ash">{labels.discoveryLead}</p>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid content-start gap-1.5">
+            <label htmlFor="set-trade" className="t-label">
+              {labels.trade}
+            </label>
+            <select id="set-trade" name="trade" className="input" defaultValue={artist.trade} aria-describedby="set-trade-hint">
+              {TRADES.map((tr) => (
+                <option key={tr.slug} value={tr.slug}>
+                  {tr.label[locale]}
+                </option>
+              ))}
+            </select>
+            <p id="set-trade-hint" className="text-[0.85rem] text-ash-dim">
+              {labels.tradeHint}
+            </p>
+          </div>
+          <Text name="country" label={labels.country} defaultValue={artist.country} max={80} optional={labels.optional} />
+        </div>
+        <div className="grid gap-1.5">
+          <p className="t-label">{labels.mapTitle}</p>
+          {mapLine}
+        </div>
+        <label className="flex items-start gap-2.5">
+          <input type="checkbox" name="listed" className="mt-1 h-4 w-4" defaultChecked={artist.listed} />
+          <span>
+            {labels.listed}
+            <span className="block text-[0.85rem] text-ash-dim">{labels.listedHint}</span>
+          </span>
+        </label>
+        {checklist}
+      </fieldset>
+
       <Status state={state} />
-      <button type="submit" className="btn btn-primary w-fit" disabled={pending}>
+      <button type="submit" className="btn btn-primary w-fit" aria-busy={pending}>
         {labels.save}
       </button>
     </form>

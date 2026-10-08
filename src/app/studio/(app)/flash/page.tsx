@@ -1,6 +1,7 @@
 import { getDict } from "@/i18n/server";
 import { requireMember } from "@/lib/auth";
 import { env, live } from "@/lib/env";
+import { can } from "@/lib/plan";
 import { listFlash } from "@/lib/queries";
 
 import { FlashManager } from "./FlashManager";
@@ -16,6 +17,7 @@ export default async function FlashPage() {
       <FlashManager
         items={items}
         locale={locale}
+        locked={!can(member.plan, "flash")}
         storage={live.storage ? { url: env.supabaseUrl!, anonKey: env.supabaseAnonKey! } : null}
         labels={{
           upload: f.upload,
@@ -36,6 +38,8 @@ export default async function FlashPage() {
           save: t.common.save,
           saved: t.common.saved,
           error: t.brief.errors.upload,
+          locked: t.studio.plan.locked,
+          upgrade: t.studio.plan.upgrade,
         }}
       />
     </main>

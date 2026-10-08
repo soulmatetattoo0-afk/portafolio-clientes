@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { PlanLock } from "@/components/PlanLock";
 import type { Locale } from "@/i18n";
 import { STYLES } from "@/lib/catalog";
 import type { PortfolioItem } from "@/lib/queries";
@@ -29,9 +30,11 @@ interface Labels {
   colour: string;
   none: string;
   error: string;
+  locked: string;
+  upgrade: string;
 }
 
-export function PortfolioManager({ items, locale, labels, storage }: { items: PortfolioItem[]; locale: Locale; labels: Labels; storage: { url: string; anonKey: string } | null }) {
+export function PortfolioManager({ items, locale, labels, storage, locked = false }: { items: PortfolioItem[]; locale: Locale; labels: Labels; storage: { url: string; anonKey: string } | null; locked?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export function PortfolioManager({ items, locale, labels, storage }: { items: Po
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <Item key={item.id} item={item} locale={locale} labels={labels} />
+            <Item key={item.id} item={item} locale={locale} labels={labels} locked={locked} />
           ))}
         </ul>
       )}
@@ -95,7 +98,7 @@ export function PortfolioManager({ items, locale, labels, storage }: { items: Po
   );
 }
 
-function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; labels: Labels }) {
+function Item({ item, locale, labels, locked }: { item: PortfolioItem; locale: Locale; labels: Labels; locked: boolean }) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const [v, setV] = useState({
@@ -108,11 +111,18 @@ function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; l
     story: item.story ?? "",
   });
   // Text fields save when the artist leaves them, not on every keystroke.
+  const [note, setNote] = useState<string | null>(null);
   const edit = (next: typeof v) => setV(next);
-  const commit = () => start(() => updatePortfolioItem(item.id, v));
+  const push = async (next: typeof v) => {
+    const r = await updatePortfolioItem(item.id, next);
+    setNote(r?.error ?? null);
+    // A refused change (a Full-only toggle) goes back to what the server kept.
+    if (r?.error) setV({ ...next, featured: item.featured });
+  };
+  const commit = () => start(() => push(v));
   const save = (next: typeof v) => {
     setV(next);
-    start(() => updatePortfolioItem(item.id, next));
+    start(() => push(next));
   };
   return (
     <li className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-niche" aria-busy={pending}>
@@ -159,11 +169,23 @@ function Item({ item, locale, labels }: { item: PortfolioItem; locale: Locale; l
           {labels.published}
         </label>
         <div className="grid gap-2 rounded-[var(--radius-sm)] border border-line p-3">
-          <label className="flex items-center gap-2.5">
-            <input type="checkbox" className="h-4 w-4" checked={v.featured} onChange={(e) => save({ ...v, featured: e.target.checked })} />
-            {labels.featured}
-          </label>
+          {locked && !v.featured ? (
+            <>
+              <p className="text-[0.92rem]">{labels.featured}</p>
+              <PlanLock text={labels.locked} cta={labels.upgrade} className="text-[0.85rem]" />
+            </>
+          ) : (
+            <label className="flex items-center gap-2.5">
+              <input type="checkbox" className="h-4 w-4" checked={v.featured} onChange={(e) => save({ ...v, featured: e.target.checked })} />
+              {labels.featured}
+            </label>
+          )}
           <p className="text-[0.82rem] text-ash-dim">{labels.featuredHint}</p>
+          {note && (
+            <p role="alert" className="text-[0.85rem] text-oxblood">
+              {note}
+            </p>
+          )}
           {v.featured && (
             <label className="grid gap-1">
               <span className="t-label">{labels.story}</span>
