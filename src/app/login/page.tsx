@@ -28,7 +28,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <main className="grid flex-1 place-items-center px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-10 flex items-center justify-between">
-            <Link href="/" className="py-2">
+            <Link href="/artists" className="py-2">
               <Wordmark />
             </Link>
             <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />

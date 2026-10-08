@@ -12,3 +12,6 @@ export const BRAND = {
   /** The house accent for every world page; an artist's own accent only ever colours one lead element. */
   accent: "#d8552f",
 } as const;
+
+/** The cookie that remembers the city picked for "near you". A slug, never coordinates. */
+export const CITY_COOKIE = "city";

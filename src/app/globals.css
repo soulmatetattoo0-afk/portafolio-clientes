@@ -35,13 +35,17 @@
   --color-ink-2: #141312;
   --color-bone: #e9e2d4;
   --color-bone-dim: #a8a194;
-  --color-accent: var(--accent, #d8552f);
 
   --radius-sm: 3px;
   --radius-md: 5px;
   --radius-lg: 8px;
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* The accent must resolve where it is set (an artist's page, a lead card), not once at :root, so it is inlined. */
+@theme inline {
+  --color-accent: var(--accent, #d8552f);
 }
 
 @layer base {
@@ -344,14 +348,14 @@
     --color-niche: var(--color-ink-2);
     --color-vellum: var(--color-bone);
     --color-ash: var(--color-bone-dim);
-    --color-gilt: var(--color-accent);
-    --color-gilt-bright: color-mix(in oklab, var(--color-accent) 80%, white);
-    --color-gilt-deep: color-mix(in oklab, var(--color-accent) 70%, black);
+    --color-gilt: var(--accent, #d8552f);
+    --color-gilt-bright: color-mix(in oklab, var(--accent, #d8552f) 80%, white);
+    --color-gilt-deep: color-mix(in oklab, var(--accent, #d8552f) 70%, black);
     --color-line: #262321;
     --color-line-strong: #3a3633;
   }
   .poster ::selection {
-    background: color-mix(in oklab, var(--color-accent) 55%, transparent);
+    background: color-mix(in oklab, var(--accent, #d8552f) 55%, transparent);
   }
   .poster .btn-primary {
     background: var(--color-bone);
@@ -365,7 +369,7 @@
     background: white;
   }
   .poster .btn-accent {
-    background: var(--color-accent);
+    background: var(--accent, #d8552f);
     color: var(--color-ink);
     border-radius: 999px;
     text-transform: uppercase;

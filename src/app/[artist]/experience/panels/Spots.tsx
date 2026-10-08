@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
+import { citySlug } from "@/lib/geo";
 
 import { CityRequest } from "../../CityRequest";
 import { Waitlist } from "../../Waitlist";
@@ -164,6 +165,12 @@ export function Spots({ data }: { data: ExperienceData }) {
                     </span>
                   </span>
                 </button>
+
+                {!s.is_home && (
+                  <Link href={`/city/${citySlug(s.city)}`} className="p-stamp mt-2 inline-flex min-h-11 items-center text-bone-dim underline decoration-bone/30 underline-offset-4 hover:text-bone">
+                    {fill(p.othersIn, { city: s.city })} →
+                  </Link>
+                )}
 
                 {/* The detail, growing out of the stop. */}
                 <div id={`stop-${s.id}`} className="grid transition-[grid-template-rows] duration-500 ease-[var(--ease-out-quart)]" style={{ gridTemplateRows: open ? "1fr" : "0fr" }}>

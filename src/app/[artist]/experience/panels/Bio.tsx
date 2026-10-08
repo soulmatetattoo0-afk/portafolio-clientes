@@ -8,6 +8,7 @@ import { money } from "@/lib/format";
 import type { PortfolioItem } from "@/lib/queries";
 import { PLACEMENT_BY_SLUG, ZONE_BY_SLUG } from "@/mannequin/catalog";
 
+import { ArtistCard } from "@/components/world/ArtistCard";
 import { BRAND } from "@/lib/brand";
 
 import type { ExperienceData } from "../types";
@@ -36,7 +37,7 @@ export function Bio({ data }: { data: ExperienceData }) {
   const place = (slug: string) => (PLACEMENT_BY_SLUG.get(slug) ?? ZONE_BY_SLUG.get(slug))?.label[locale] ?? slug;
   const styleOf = (piece: PortfolioItem) => (piece.style ? (STYLE_BY_SLUG.get(piece.style)?.label[locale] ?? piece.style) : null);
   const portrait = artist.portrait_url ? { src: artist.portrait_url, grey: !artist.cover_poster } : null;
-  const folio = `${BRAND.name} · ${m.vol} 01`;
+  const folio = `${BRAND.name} · ${artist.display_name} · ${m.vol} 01`;
   const num = (k: number) => String(k + 1).padStart(2, "0");
   /** The one line under a title: style and placement. */
   const line = (piece: PortfolioItem) => [styleOf(piece), piece.placement ? place(piece.placement) : null].filter(Boolean).join(" · ");
@@ -262,6 +263,18 @@ export function Bio({ data }: { data: ExperienceData }) {
             <p data-r style={{ "--d": "240ms" } as React.CSSProperties} className="p-stamp mt-[3cqw] max-w-[40ch] text-ink/70">
               {BRAND.editor[locale]} · {BRAND.name} {m.vol} 01{artist.home_city ? ` · ${artist.home_city}` : ""}
             </p>
+            {data.related.length > 0 && (
+              <div data-r style={{ "--d": "300ms" } as React.CSSProperties} className="mt-[3cqw]">
+                <p className="p-stamp text-ink/70">{fill(t.world.card.more, { artist: artist.display_name.split(" ")[0] })}</p>
+                <ul className="-mx-[6cqw] mt-2 flex snap-x gap-2 overflow-x-auto px-[6cqw] pb-1 [scrollbar-width:none] @3xl:-mx-[5cqw] @3xl:px-[5cqw]">
+                  {data.related.slice(0, 6).map((r) => (
+                    <li key={r.id} className="shrink-0 snap-start">
+                      <ArtistCard artist={r} locale={locale} compact />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <div data-r style={{ "--d": "260ms" } as React.CSSProperties} className="flex flex-wrap items-center justify-between gap-4 border-t border-ink/25 pt-[2.5cqw]">
             {artist.instagram ? (
