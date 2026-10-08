@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
+import { getSession } from "@/lib/auth";
 import { STYLE_BY_SLUG } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
@@ -120,16 +121,20 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
 
   const placement = PLACEMENT_BY_SLUG.get(b.placement)!;
   const full = placement.fullCoverage;
+  // A signed-in person sending under their own email owns the client record the brief lands on.
+  const session = await getSession();
+  const userId = session && session.email.toLowerCase() === b.email ? session.userId : null;
 
   const result = await db.tx(async (tx) => {
     const client = await tx.one<{ id: string }>(
-      `insert into clients (studio_id, name, email, phone, instagram, locale) values ($1, $2, $3, $4, $5, $6)
+      `insert into clients (studio_id, name, email, phone, instagram, locale, user_id) values ($1, $2, $3, $4, $5, $6, $7)
        on conflict (studio_id, lower(email)) do update set name = excluded.name,
          phone = coalesce(nullif(excluded.phone, ''), clients.phone),
          instagram = coalesce(nullif(excluded.instagram, ''), clients.instagram),
-         locale = excluded.locale
+         locale = excluded.locale,
+         user_id = coalesce(clients.user_id, excluded.user_id)
        returning id`,
-      [artist.studio_id, b.name, b.email, b.phone || null, b.instagram || null, locale],
+      [artist.studio_id, b.name, b.email, b.phone || null, b.instagram || null, locale, userId],
     );
     let ref = briefRef();
     for (let i = 0; i < 4; i++) {

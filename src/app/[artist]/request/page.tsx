@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { DemoBanner } from "@/components/Chrome";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
+import { getClientUser, getMyContact } from "@/lib/client";
 import { env, live } from "@/lib/env";
 import { getArtistBySlug, listFlash, listStops } from "@/lib/queries";
 
@@ -20,7 +21,10 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
   if (!artist.accepting) redirect(`/${artist.slug}#spots`);
-  const [{ t, locale }, stops, flashAll] = await Promise.all([getDict(), listStops(artist.id, { publicOnly: true }), typeof sp.flash === "string" ? listFlash(artist.id, { publishedOnly: true }) : []]);
+  const [{ t, locale }, stops, flashAll, user] = await Promise.all([getDict(), listStops(artist.id, { publicOnly: true }), typeof sp.flash === "string" ? listFlash(artist.id, { publishedOnly: true }) : [], getClientUser()]);
+  // A signed-in client starts from the details they last gave a studio, else their account.
+  const contact = user ? await getMyContact(user.userId) : null;
+  const me = user ? { name: contact?.name ?? user.name, email: user.email, phone: contact?.phone ?? null, instagram: contact?.instagram ?? null } : null;
   const picked = flashAll.find((f) => f.id === sp.flash && f.status === "available") ?? null;
   return (
     <>
@@ -34,6 +38,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
           .filter((s) => s.status === "booking" || s.status === "announced")
           .map((s) => ({ id: s.id, city: s.city, studio: s.studio_name, startsOn: s.starts_on, endsOn: s.ends_on, home: s.is_home }))}
         storage={live.storage ? { url: env.supabaseUrl!, anonKey: env.supabaseAnonKey! } : null}
+        me={me}
       />
     </>
   );

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { DemoBanner, PublicBar } from "@/components/Chrome";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
+import { getClientUser } from "@/lib/client";
+import { getDb } from "@/lib/db";
 import { getArtistBySlug } from "@/lib/queries";
 
 export const metadata = { robots: { index: false } };
@@ -15,6 +17,9 @@ export default async function SentPage({ params, searchParams }: PageProps<"/[ar
   const { t } = await getDict();
   const s = t.brief.sent;
   const ref = typeof sp.ref === "string" && /^B-[A-Z0-9]{5}$/.test(sp.ref) ? sp.ref : null;
+  // Signed in: the brief under this reference, if it is theirs, is the thing to follow.
+  const me = await getClientUser();
+  const mine = me && ref ? await (await getDb()).one<{ id: string }>(`select b.id from briefs b join clients c on c.id = b.client_id where b.ref = $1 and c.user_id = $2`, [ref, me.userId]) : null;
   return (
     <>
       <DemoBanner />
@@ -42,9 +47,20 @@ export default async function SentPage({ params, searchParams }: PageProps<"/[ar
             ))}
           </ol>
         </section>
-        <Link href={`/${artist.slug}#deck`} className="btn btn-primary w-fit">
-          {fill(s.backToArtist, { artist: artist.display_name })}
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          {mine ? (
+            <Link href={`/me/briefs/${mine.id}`} className="btn btn-primary">
+              {s.track}
+            </Link>
+          ) : me ? null : (
+            <Link href="/me/signin?next=%2Fme%2Fbriefs" className="btn btn-primary">
+              {s.createAccount}
+            </Link>
+          )}
+          <Link href={`/${artist.slug}#deck`} className={mine || !me ? "btn btn-secondary" : "btn btn-primary"}>
+            {fill(s.backToArtist, { artist: artist.display_name })}
+          </Link>
+        </div>
       </main>
       </div>
     </>

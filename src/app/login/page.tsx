@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { DemoBanner, Wordmark } from "@/components/Chrome";
 import { LangToggle } from "@/components/LangToggle";
 import { getDict } from "@/i18n/server";
-import { getSession } from "@/lib/auth";
+import { getMember, getSession } from "@/lib/auth";
+import { getClientUser } from "@/lib/client";
 import { live } from "@/lib/env";
 
 import { enterDemo } from "./actions";
@@ -13,7 +14,12 @@ import { LoginForm } from "./LoginForm";
 export const metadata = { title: "Sign in", robots: { index: false } };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if (await getSession()) redirect("/studio");
+  const session = await getSession();
+  if (session) {
+    // A signed-in client without a studio of their own belongs in their space, not the onboarding.
+    if (!(await getMember(session)) && (await getClientUser(session))) redirect("/me");
+    redirect("/studio");
+  }
   const [{ t, locale }, sp] = await Promise.all([getDict(), searchParams]);
   const l = t.studio.login;
   return (
