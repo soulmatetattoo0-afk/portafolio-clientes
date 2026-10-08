@@ -12,6 +12,8 @@ import { dateRange, money } from "@/lib/format";
 import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, sizeBand, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
 import type { DesignPlacement } from "@/mannequin/engine";
 
+import { signOutClient } from "@/app/me/actions";
+
 import { prepareUploads, submitBrief } from "./actions";
 
 type Shape = "tall" | "square" | "wide";
@@ -85,6 +87,8 @@ interface Props {
   flash: { id: string; title: string; description: string | null; sizeLabel: string | null; url: string | null } | null;
   stops: { id: string; city: string; studio: string | null; startsOn: string | null; endsOn: string | null; home: boolean }[];
   storage: { url: string; anonKey: string } | null;
+  /** The signed-in client, to prefill the contact step; the email is theirs and stays theirs. */
+  me: { name: string | null; email: string; phone: string | null; instagram: string | null } | null;
 }
 
 interface PickedFile {
@@ -120,7 +124,7 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
-export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props) {
+export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Props) {
   const b = t.brief;
   const router = useRouter();
   const draftKey = `brief-draft:${artist.slug}`;
@@ -167,6 +171,15 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
     setD((prev) => {
       const next = { ...prev, ...(saved ?? {}) };
       next.attribution = { ...(saved?.attribution ?? {}), ...attribution };
+      // A signed-in client starts with the details they last gave; a draft in progress wins.
+      if (!saved && me) {
+        next.name = me.name ?? "";
+        next.email = me.email;
+        next.phone = me.phone ?? "";
+        next.instagram = me.instagram ?? "";
+      }
+      // The account's email is the one the brief is filed under.
+      if (me) next.email = me.email;
       // A chosen flash design seeds the idea and travels with the brief.
       if (flash && next.flashId !== flash.id) {
         next.flashId = flash.id;
@@ -176,7 +189,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
       return next;
     });
     if (saved && (saved.step ?? 0) > 0) setRestored(true);
-  }, [draftKey, flash, b.flash.prefix]);
+  }, [draftKey, flash, b.flash.prefix, me]);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -884,6 +897,11 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
           {step === "contact" && (
             <div className="grid gap-6">
               <StepHead id={`${uid}-title`} title={fill(b.contact.title, { artist: artist.name })} lead={b.contact.lead} />
+              {me && (
+                <form id={`${uid}-signout`} action={signOutClient} className="hidden">
+                  <input type="hidden" name="next" value={`/${artist.slug}/request`} />
+                </form>
+              )}
               <Field id={`${uid}-name`} label={b.contact.name} error={show("name")}>
                 <input
                   id={`${uid}-name`}
@@ -897,21 +915,33 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash }: Props)
                   aria-describedby={`${uid}-name-err`}
                 />
               </Field>
-              <Field id={`${uid}-email`} label={b.contact.email} error={show("email")}>
-                <input
-                  id={`${uid}-email`}
-                  className="input"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  value={d.email}
-                  maxLength={200}
-                  onChange={(e) => set("email", e.target.value)}
-                  onBlur={() => setTouched((p) => ({ ...p, email: d.email.length > 0 }))}
-                  aria-invalid={Boolean(show("email"))}
-                  aria-describedby={`${uid}-email-err`}
-                />
-              </Field>
+              {me ? (
+                <Field id={`${uid}-email`} label={b.contact.email}>
+                  <input id={`${uid}-email`} className="input opacity-70" type="email" value={me.email} readOnly aria-describedby={`${uid}-email-me`} />
+                  <p id={`${uid}-email-me`} className="mt-2 text-[0.88rem] text-bone-dim">
+                    {b.contact.signedInAs} {me.name ?? me.email}.{" "}
+                    <button type="submit" form={`${uid}-signout`} className="text-bone underline underline-offset-4">
+                      {b.contact.notYou}
+                    </button>
+                  </p>
+                </Field>
+              ) : (
+                <Field id={`${uid}-email`} label={b.contact.email} error={show("email")}>
+                  <input
+                    id={`${uid}-email`}
+                    className="input"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={d.email}
+                    maxLength={200}
+                    onChange={(e) => set("email", e.target.value)}
+                    onBlur={() => setTouched((p) => ({ ...p, email: d.email.length > 0 }))}
+                    aria-invalid={Boolean(show("email"))}
+                    aria-describedby={`${uid}-email-err`}
+                  />
+                </Field>
+              )}
               <div className="grid gap-6 sm:grid-cols-2">
                 <Field id={`${uid}-phone`} label={b.contact.phone} optional={t.common.optional}>
                   <input id={`${uid}-phone`} className="input" type="tel" autoComplete="tel" value={d.phone} maxLength={40} onChange={(e) => set("phone", e.target.value)} />

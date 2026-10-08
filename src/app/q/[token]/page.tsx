@@ -6,6 +6,7 @@ import { PolicyList } from "@/components/Policy";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { colorLabel, styleLabel } from "@/lib/catalog";
+import { getClientUser, ownsBrief } from "@/lib/client";
 import { getDb } from "@/lib/db";
 import { live } from "@/lib/env";
 import { cmLabel, dateLong, money, moneyRange, placeLine, requestTime, sessionTime } from "@/lib/format";
@@ -29,11 +30,19 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
   const now = requestTime();
   const expired = quote.status !== "paid" && new Date(quote.expires_at).getTime() < now;
   const placement = placementLabel(quote.placement, locale);
+  // The token is the key; a signed-in owner also gets the way back to their space.
+  const me = await getClientUser();
+  const mine = me ? await ownsBrief(me.userId, quote.brief_id) : false;
   const header = (
     <PublicBar>
       <Link href={`/${quote.artist_slug}`} className="t-inscription truncate py-2 text-[0.8rem] tracking-[0.24em] text-gilt">
         {quote.artist_name.toUpperCase()}
       </Link>
+      {mine && (
+        <Link href="/me/briefs" className="btn btn-ghost btn-sm shrink-0">
+          {q.myRequests}
+        </Link>
+      )}
     </PublicBar>
   );
 
@@ -65,9 +74,16 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
               <span className="t-num">{money(quote.paid_cents ?? quote.deposit_cents, quote.currency, locale)}</span>
             </Row>
           </dl>
-          <a href={`/q/${token}/ics`} className="btn btn-secondary w-fit">
-            {t.booked.addToCalendar}
-          </a>
+          <div className="flex flex-wrap gap-3">
+            <a href={`/q/${token}/ics`} className="btn btn-secondary">
+              {t.booked.addToCalendar}
+            </a>
+            {mine && (
+              <Link href="/me/appointments" className="btn btn-secondary">
+                {q.seeAppointments}
+              </Link>
+            )}
+          </div>
           <section>
             <h2 className="t-heading mb-4">{t.booked.prepTitle}</h2>
             <ul className="grid gap-2">
