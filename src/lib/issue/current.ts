@@ -39,9 +39,9 @@ interface PieceRow {
 /** Where to crop a photograph when it has to lose something: faces and backs keep the top. */
 const posOf = (placement: string | null) => (/back|chest|neck|head|face|sleeve|arm|forearm|shoulder/.test(placement ?? "") ? "top" : "center") as "top" | "center";
 
-/** The spreads take turns: tall split, mirrored split, pull quote, then a full-bleed photograph when there is one. */
+/** The spreads take turns: tall split, a full-bleed photograph when there is one, pull quote, mirrored split. */
 const templateFor = (i: number, hasImage: boolean): Template => {
-  const cycle: Template[] = ["split", "quote", "split-r", "bleed"];
+  const cycle: Template[] = ["split", "bleed", "quote", "split-r"];
   const t = cycle[i % cycle.length];
   return t === "bleed" && !hasImage ? "split" : t;
 };
