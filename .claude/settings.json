@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run build*)",
+      "Bash(npm run start*)",
+      "Bash(npm run dev*)",
+      "Bash(npm install*)",
+      "Bash(npm i *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(python3 *)",
+      "Bash(ffmpeg *)",
+      "Bash(ffprobe *)",
+      "Bash(curl *)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git fetch*)",
+      "Bash(git pull*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git rev-parse*)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(rm -rf .data*)",
+      "Bash(pkill *)",
+      "mcp__Vercel__*",
+      "mcp__Figma__*",
+      "mcp__github__*"
+    ]
+  }
+}
