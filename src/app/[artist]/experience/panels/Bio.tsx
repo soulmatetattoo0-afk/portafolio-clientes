@@ -67,7 +67,7 @@ export function Bio({ data }: { data: ExperienceData }) {
             </dl>
           </div>
           <div className="relative order-1 min-h-0 @3xl:order-2">
-            <Fig src={portrait?.src} grey={portrait?.grey} title={artist.display_name} className="absolute inset-y-[5%] right-[5%] left-[22%] @3xl:inset-y-[7%] @3xl:right-[7%] @3xl:left-[12%]" />
+            <Fig src={portrait?.src} grey={portrait?.grey} title={artist.display_name} className="absolute inset-y-[5%] right-[5%] left-[22%] @3xl:inset-y-[7%] @3xl:right-[7%] @3xl:left-[18%]" />
             {data.portfolio[0] && <Fig src={data.portfolio[0].url} title={data.portfolio[0].title ?? ""} delay="320ms" className="absolute bottom-[3%] left-[5%] aspect-square w-[34%] ring-[0.6cqw] ring-ink @3xl:bottom-[2%] @3xl:left-[3%] @3xl:w-[30%]" />}
             <span aria-hidden data-r style={{ "--d": "400ms" } as React.CSSProperties} className="p-display absolute top-[6%] left-[4%] [writing-mode:vertical-rl] text-[clamp(1.2rem,4cqw,2.4rem)] text-accent @3xl:top-[8%] @3xl:left-[2%]">
               {word}
@@ -141,7 +141,7 @@ export function Bio({ data }: { data: ExperienceData }) {
         <Ch tone="ink">
           <div className="absolute inset-0 grid grid-rows-[56%_1fr] @3xl:grid-cols-[58%_1fr] @3xl:grid-rows-1">
             <Fig src={piece.url} title={piece.title ?? m.work} className={`relative h-full w-full ${flip ? "@3xl:order-2" : ""}`} />
-            <div className={`relative flex min-h-0 flex-col justify-end px-[5cqw] pt-[6cqw] pb-[5cqw] @3xl:justify-center @3xl:p-[4cqw] ${flip ? "@3xl:order-1" : ""}`}>
+            <div className={`relative z-10 flex min-h-0 flex-col justify-end px-[5cqw] pt-[6cqw] pb-[5cqw] @3xl:justify-center @3xl:p-[4cqw] ${flip ? "@3xl:order-1" : ""}`}>
               <span aria-hidden data-r className={`p-display pointer-events-none absolute top-0 -translate-y-1/2 text-[clamp(5rem,22cqw,9rem)] leading-none text-accent @3xl:top-[8%] @3xl:translate-y-0 @3xl:text-[14cqw] ${flip ? "right-[5cqw] @3xl:right-[-0.28em]" : "left-[5cqw] @3xl:left-[-0.28em]"}`}>
                 {num}
               </span>
@@ -405,8 +405,10 @@ function Ch({ tone, children }: { tone: "ink" | "bone" | "accent"; children: Rea
 
 /** A photograph, or the striped plate with its title until there is one. */
 function Fig({ src, grey, title, caption, sub, delay, className = "" }: { src?: string | null; grey?: boolean; title: string; caption?: string; sub?: string; delay?: string; className?: string }) {
+  // Callers that place the figure themselves pass `absolute`; everyone else gets a positioned box for the caption.
+  const pos = /\babsolute\b/.test(className) ? "" : "relative";
   return (
-    <figure data-img style={{ "--d": delay ?? "0ms" } as React.CSSProperties} className={`relative overflow-hidden bg-[#161412] [container-type:inline-size] ${className}`}>
+    <figure data-img style={{ "--d": delay ?? "0ms" } as React.CSSProperties} className={`${pos} overflow-hidden bg-[#161412] [container-type:inline-size] ${className}`}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={title} draggable={false} loading="lazy" className={`block h-full w-full object-cover ${grey ? "grayscale" : ""}`} />
