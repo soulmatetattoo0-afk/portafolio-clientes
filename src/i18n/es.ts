@@ -180,6 +180,10 @@ const es: Dict = {
         mapLabel: "Mapa de la gira. Cada ciudad abre sus fechas.",
         hint: "Toca una ciudad para ver sus fechas y los días libres.",
         later: "Después",
+        mode: { label: "Estilo del mapa", paper: "Papel", ink: "Tinta" },
+        zoomIn: "Acercar",
+        zoomOut: "Alejar",
+        world: "Ver el mundo",
         detail: {
           studio: "Estudio",
           address: "Dirección",

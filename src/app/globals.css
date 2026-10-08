@@ -459,6 +459,147 @@
     border-top: 2px solid var(--color-bone);
   }
 
+  /* The guest-spot map. Two ways to draw it: ink on paper, by hand, or the deck's gold world.
+     The map's own pieces read these tokens; the card around it takes the same data-mode. */
+  .wm[data-mode="paper"] {
+    --wm-paper: #efe6d1;
+    --wm-ink: #2b2420;
+    --wm-pencil: #6b6156;
+    --wm-wash: #e6dbc1;
+  }
+  .wm[data-mode="ink"] {
+    --wm-paper: #0a0a0a;
+    --wm-ink: #e9e2d4;
+    --wm-pencil: #c9b27a;
+    --wm-wash: transparent;
+  }
+  .wm-figure[data-mode="paper"] {
+    background: radial-gradient(ellipse at 50% 40%, #f3ebd9, #e3d7bb 85%);
+    border-color: #c6b99c;
+    color: #2b2420;
+    --color-bone: #2b2420;
+    --color-bone-dim: #6b6156;
+  }
+  .wm-figure[data-mode="paper"]::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1px solid rgb(43 36 32 / 0.32);
+    border-radius: 16px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .wm-figure[data-mode="paper"] .p-grain {
+    opacity: 0.34;
+    z-index: 1;
+  }
+  .wm-figure[data-mode="ink"] {
+    background: radial-gradient(ellipse at 50% 40%, #17130f, #0a0a0a 70%);
+  }
+  .wm-figure[data-mode="paper"] .wm-dot {
+    border: 1px solid #2b2420;
+  }
+  .wm-figure[data-mode="ink"] .wm-dot {
+    box-shadow: 0 0 8px var(--accent);
+  }
+  /* Round buttons over the map: a 44px target around a 34px drawn circle. */
+  .wm-btn {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: var(--wm-ink);
+  }
+  .wm-btn > span {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--wm-paper);
+    border: 1px solid color-mix(in oklab, var(--wm-ink) 60%, transparent);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+    font-size: 1.2rem;
+    line-height: 1;
+    font-weight: 500;
+    transition: background-color 160ms var(--ease-out-quart);
+  }
+  .wm-btn:hover > span,
+  .wm-btn:focus-visible > span {
+    background: color-mix(in oklab, var(--wm-paper) 88%, var(--wm-ink));
+  }
+  .wm-btn:focus-visible {
+    outline: none;
+  }
+  .wm-btn:focus-visible > span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* A pin reached by keyboard: a drawn ring, not the browser's box. */
+  .wm [data-pin]:focus {
+    outline: none;
+  }
+  .wm [data-pin]:focus-visible > circle:first-child {
+    stroke: var(--accent);
+    stroke-width: 1.5px;
+    stroke-dasharray: 3 2;
+    vector-effect: non-scaling-stroke;
+  }
+  /* The drawing under the pins is a bitmap between paints: its own layer, moved by transform alone. */
+  .wm-base {
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  /* The picked pin's ring breathes, as an HTML element on its own layer; nothing inside the map moves on its own. */
+  .wm-halo {
+    width: 0;
+    height: 0;
+    will-change: transform;
+  }
+  @keyframes wm-pulse {
+    0% {
+      transform: translate(-50%, -50%) scale(0.7);
+      opacity: 0.95;
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(1.3);
+      opacity: 0;
+    }
+  }
+  .wm-pulse {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1.5px solid var(--accent);
+    transform: translate(-50%, -50%);
+    animation: wm-pulse 1.9s ease-out infinite;
+  }
+  .wm-pulse--paper {
+    border-style: dashed;
+    border-width: 1.2px;
+  }
+  @keyframes wm-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .wm-in {
+    animation: wm-in 320ms ease-out both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wm-pulse {
+      animation: none;
+      opacity: 0.85;
+    }
+    .wm-in {
+      animation: none;
+    }
+  }
+
   /* Motion */
   @keyframes p-rise {
     from {
