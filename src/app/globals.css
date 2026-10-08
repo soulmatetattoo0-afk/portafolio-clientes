@@ -48,6 +48,13 @@
   --color-accent: var(--accent, #d8552f);
 }
 
+/* Registered as a colour so the accent can transition where one element hands it over to the next (the front page's hero). */
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d8552f;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
@@ -461,6 +468,35 @@
   }
   .p-rule {
     border-top: 2px solid var(--color-bone);
+  }
+
+  /* The front page's hero: its accent follows the story in view, so it can glide. */
+  .p-hero {
+    transition: --accent 600ms ease;
+  }
+  /* One thin bar per story in a reel, filling for as long as the story stays. */
+  .p-fill {
+    animation: p-fill 7s linear both;
+  }
+  .p-fill[data-paused="true"] {
+    animation-play-state: paused;
+  }
+  @keyframes p-fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .p-hero {
+      transition: none;
+    }
+    .p-fill {
+      animation: none;
+      transform: none;
+    }
   }
 
   /* The guest-spot map. Two ways to draw it: ink on paper, by hand, or the deck's gold world.
