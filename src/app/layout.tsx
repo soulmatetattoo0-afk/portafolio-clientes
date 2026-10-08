@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Big_Shoulders, Cinzel, Cormorant_Garamond, Instrument_Serif, Pirata_One } from "next/font/google";
 import localFont from "next/font/local";
 
 import { getDict } from "@/i18n/server";
@@ -7,16 +6,30 @@ import { env } from "@/lib/env";
 
 import "./globals.css";
 
-const cinzel = Cinzel({ variable: "--font-cinzel", subsets: ["latin"], weight: ["500", "600"] });
-const cormorant = Cormorant_Garamond({ variable: "--font-cormorant", subsets: ["latin"], weight: ["500", "600"], style: ["normal", "italic"] });
-// The UI face ships with the app (variable, 400–600) so a build never waits on Google for it.
+// Every face ships with the app (Google's woff2 files, OFL-licensed), so a build never waits on a font server.
+const cinzel = localFont({ variable: "--font-cinzel", src: "../fonts/cinzel.woff2", weight: "400 900", display: "swap" });
+const cormorant = localFont({
+  variable: "--font-cormorant",
+  src: [
+    { path: "../fonts/cormorant.woff2", weight: "300 700", style: "normal" },
+    { path: "../fonts/cormorant-italic.woff2", weight: "300 700", style: "italic" },
+  ],
+  display: "swap",
+});
 const instrument = localFont({ variable: "--font-instrument", src: "../fonts/instrument-sans.woff2", weight: "400 600", display: "swap" });
+// The poster set for the public artist experience: a tall condensed display, a blackletter for numerals and kickers, a sharp italic for quotes.
+const shoulders = localFont({ variable: "--font-shoulders", src: "../fonts/big-shoulders.woff2", weight: "100 900", display: "swap" });
+const pirata = localFont({ variable: "--font-pirata", src: "../fonts/pirata-one.woff2", weight: "400", display: "swap" });
+const instrumentSerif = localFont({
+  variable: "--font-instrument-serif",
+  src: [
+    { path: "../fonts/instrument-serif.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/instrument-serif-italic.woff2", weight: "400", style: "italic" },
+  ],
+  display: "swap",
+});
 // Lettering for the sketchbook page: a flourished script.
 const script = localFont({ variable: "--font-script", src: "../fonts/great-vibes.woff2", weight: "400", display: "swap" });
-// The poster set for the public artist experience: a tall condensed display, a blackletter for numerals and kickers, a sharp italic for quotes.
-const shoulders = Big_Shoulders({ variable: "--font-shoulders", subsets: ["latin"], axes: ["opsz"] });
-const pirata = Pirata_One({ variable: "--font-pirata", subsets: ["latin"], weight: "400" });
-const instrumentSerif = Instrument_Serif({ variable: "--font-instrument-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDict();

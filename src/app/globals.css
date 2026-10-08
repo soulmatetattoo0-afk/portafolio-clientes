@@ -706,59 +706,90 @@
   .p-flicker {
     animation: p-flicker 4s linear infinite;
   }
-  /* The magazine: white pages, black type, the accent as the one colour, stripes as the house ornament. */
-  .mag-page {
+  /* The magazine: white pages, black type, the accent as the one colour, stripes as the house ornament.
+     Type is set in container units so a page reads the same at any size. */
+  .mag-sheet {
+    container-type: inline-size;
+  }
+  /* Only the pages lying flat cast the table shadow; the turning leaf must stay a plain 3D surface. */
+  .mag-base {
     box-shadow: 0 30px 60px -30px rgb(0 0 0 / 0.9);
   }
   .mag-h {
     font-family: var(--font-sans);
     font-weight: 600;
-    font-size: clamp(1.5rem, 6.5vw, 2.2rem);
+    font-size: 7cqw;
     line-height: 1.05;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    text-wrap: balance;
   }
   .mag-kicker {
     font-family: var(--font-quote);
     font-style: italic;
-    font-size: 1.15rem;
+    font-size: 4.6cqw;
     line-height: 1.3;
   }
   .mag-body {
     font-family: var(--font-sans);
-    font-size: 0.92rem;
-    line-height: 1.6;
+    font-size: 3.4cqw;
+    line-height: 1.55;
   }
   .mag-label {
     font-family: var(--font-sans);
     font-weight: 600;
-    font-size: 0.62rem;
+    font-size: 2.4cqw;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: color-mix(in srgb, currentColor 60%, transparent);
+    color: color-mix(in srgb, currentColor 62%, transparent);
   }
   .mag-side {
-    position: absolute;
-    left: -0.4rem;
-    top: 0;
-    transform: rotate(90deg) translateX(0);
+    transform: rotate(90deg);
     transform-origin: left top;
     font-family: var(--font-sans);
     font-weight: 600;
-    font-size: 0.62rem;
+    font-size: 2.4cqw;
     letter-spacing: 0.26em;
     text-transform: uppercase;
     white-space: nowrap;
     color: color-mix(in srgb, currentColor 55%, transparent);
   }
   .mag-stripes {
-    background-image: repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 9px);
+    background-image: repeating-linear-gradient(135deg, var(--accent) 0 0.8cqw, transparent 0.8cqw 2.4cqw);
   }
   .mag-stripes-ink {
-    background-image: repeating-linear-gradient(135deg, #0a0a0a 0 3px, transparent 3px 9px);
+    background-image: repeating-linear-gradient(135deg, #0a0a0a 0 0.8cqw, transparent 0.8cqw 2.4cqw);
   }
   .mag-stripes-bone {
-    background-image: repeating-linear-gradient(135deg, var(--color-bone) 0 3px, transparent 3px 9px);
+    background-image: repeating-linear-gradient(135deg, var(--color-bone) 0 0.8cqw, transparent 0.8cqw 2.4cqw);
+  }
+  /* Light and shadow while a page turns. --f is 0 at rest and 1 edge-on; --side flips past the spine. */
+  .mag-stage {
+    --f: 0;
+    --side: 0;
+  }
+  .mag-gutter-left {
+    pointer-events: none;
+    background: linear-gradient(to left, rgb(0 0 0 / 0.22), transparent 14%);
+  }
+  .mag-gutter-right {
+    pointer-events: none;
+    background: linear-gradient(to right, rgb(0 0 0 / 0.22), transparent 14%);
+  }
+  .mag-cast {
+    pointer-events: none;
+    background: linear-gradient(to right, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.18) 35%, transparent 70%);
+    opacity: calc(var(--f) * (1 - var(--side)));
+  }
+  .mag-shade-front {
+    pointer-events: none;
+    background: linear-gradient(to right, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.1) 40%, transparent 75%);
+    opacity: var(--f);
+  }
+  .mag-shade-back {
+    pointer-events: none;
+    background: linear-gradient(to left, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.1) 40%, transparent 75%);
+    opacity: var(--f);
   }
   /* The deck: five cards on a ring. JS sets each card's transform from its distance to the front. */
   .p-ring {
