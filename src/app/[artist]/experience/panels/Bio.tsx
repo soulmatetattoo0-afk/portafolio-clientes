@@ -14,9 +14,10 @@ import type { ExperienceData } from "../types";
 
 /**
  * The artist's digital magazine. Not paper: full-screen chapters that slide
- * sideways, each one a composition of type and photographs of different
- * sizes. Opening, the artist and the career, the pieces people ask for most
- * (one chapter each), the wide gallery in mosaics, and the sign-off.
+ * sideways, each one a spread of type and photographs. The cover, the artist
+ * and the career, then one spread per piece in rotating templates (split,
+ * full bleed, pull quote, contact sheet) so no two pages in a row look alike,
+ * and the sign-off.
  */
 export function Bio({ data }: { data: ExperienceData }) {
   const { artist, t, locale } = data;
@@ -26,6 +27,7 @@ export function Bio({ data }: { data: ExperienceData }) {
   const styles = artist.styles.map((s) => STYLE_BY_SLUG.get(s)?.label[locale] ?? s);
   const paragraphs = (artist.bio ?? "").split(/\n{2,}/).filter(Boolean);
   const featured = data.portfolio.filter((i) => i.featured);
+  const extras = data.portfolio.filter((i) => !i.featured);
   const year = new Date().getFullYear();
   const years = artist.since_year ? Math.max(1, year - artist.since_year) : null;
   const cities = Array.from(new Set(data.stops.map((s) => s.city)));
@@ -34,6 +36,18 @@ export function Bio({ data }: { data: ExperienceData }) {
   const place = (slug: string) => (PLACEMENT_BY_SLUG.get(slug) ?? ZONE_BY_SLUG.get(slug))?.label[locale] ?? slug;
   const styleOf = (piece: PortfolioItem) => (piece.style ? (STYLE_BY_SLUG.get(piece.style)?.label[locale] ?? piece.style) : null);
   const portrait = artist.portrait_url ? { src: artist.portrait_url, grey: !artist.cover_poster } : null;
+  const folio = `${BRAND.name} · ${m.vol} 01`;
+  const num = (k: number) => String(k + 1).padStart(2, "0");
+  /** The one line under a title: style and placement. */
+  const line = (piece: PortfolioItem) => [styleOf(piece), piece.placement ? place(piece.placement) : null].filter(Boolean).join(" · ");
+  const specs = (piece: PortfolioItem) => (
+    <>
+      {styleOf(piece) && <Fact label={m.style}>{styleOf(piece)}</Fact>}
+      {piece.placement && <Fact label={m.placement}>{place(piece.placement)}</Fact>}
+      {piece.color_mode && <Fact label={m.colour}>{piece.color_mode === "color" ? m.color : m.blackGrey}</Fact>}
+      <Fact label={m.status}>{piece.is_healed ? m.healed : m.fresh}</Fact>
+    </>
+  );
 
   const chapters: { key: string; label: string; node: React.ReactNode }[] = [];
 
@@ -70,50 +84,54 @@ export function Bio({ data }: { data: ExperienceData }) {
     ),
   });
 
-  // The artist and the career: words, facts, the line of years and cities, two photographs.
+  // The artist and the career: the portrait holds the right half, the facts stack on the left, the styles run along the foot.
+  const stops = [
+    ...(artist.since_year ? [{ id: "since", year: String(artist.since_year), label: m.started, first: true }] : []),
+    ...(home ? [{ id: home.id, year: m.home, label: home.city, first: false }] : []),
+    ...away.slice(0, 3).map((s) => ({ id: s.id, year: s.starts_on ? String(new Date(s.starts_on).getFullYear()) : String(year), label: s.city, first: false })),
+  ].slice(0, 4);
   chapters.push({
     key: "artist",
     label: m.artist,
     node: (
       <Ch tone="bone">
-        <div className="absolute inset-0 grid grid-rows-[auto_1fr] gap-[3cqw] p-[5cqw] @3xl:grid-cols-[1.1fr_0.9fr] @3xl:grid-rows-1 @3xl:gap-[4cqw] @3xl:p-[4cqw]">
-          <div className="min-w-0">
-            <p data-r className="p-gothic text-[clamp(1rem,2.2cqw,1.5rem)] text-accent">01 · {m.artist}</p>
-            <h3 data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-display mt-1 text-[clamp(2.4rem,11cqw,5.5rem)] text-ink @3xl:text-[7.5cqw]">
+        <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)_46cqw] grid-rows-[1fr_auto] gap-x-[4cqw] gap-y-[2cqh] p-[4cqw] pb-[3cqw] @3xl:grid-cols-[minmax(0,1fr)_38cqw] @3xl:gap-x-[5cqw] @3xl:p-[4cqw]">
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <Head kicker={`01 · ${m.artist}`} folio={folio} compact />
+            <h3 data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-display mt-[1cqh] text-[clamp(2rem,11cqw,6.5rem)] text-ink @3xl:text-[7cqw]">
               {m.career}
             </h3>
-            <p data-r style={{ "--d": "160ms" } as React.CSSProperties} className="p-col mt-[2cqw] line-clamp-4 max-w-[46ch] text-[clamp(1rem,2.5cqw,1.3rem)] text-ink/85 @3xl:line-clamp-none">
+            <p data-r style={{ "--d": "160ms" } as React.CSSProperties} className="p-col mt-[1.6cqh] line-clamp-6 max-w-[42ch] text-[clamp(0.9rem,3.6cqw,1.3rem)] leading-[1.35] text-ink/85 @3xl:line-clamp-6 @3xl:text-[clamp(1rem,1.5cqw,1.4rem)]">
               {paragraphs.length ? paragraphs.join(" ") : p.noBio}
             </p>
-            <ul data-r style={{ "--d": "240ms" } as React.CSSProperties} className="mt-[3cqw] grid grid-cols-3 gap-3 border-t border-ink/20 pt-[2.5cqw]">
+            <ul data-r style={{ "--d": "240ms" } as React.CSSProperties} className="mt-[2cqh] flex flex-1 flex-col justify-evenly border-t-2 border-ink @3xl:flex-none">
               {years !== null && <Stat n={years} label={m.years} />}
               <Stat n={data.portfolio.length} label={m.pieces} />
               <Stat n={cities.length} label={m.cities} />
             </ul>
-            <ol data-r style={{ "--d": "320ms" } as React.CSSProperties} className="mt-[3cqw] flex items-end gap-[3cqw] overflow-hidden whitespace-nowrap">
-              {artist.since_year && <Stop year={String(artist.since_year)} label={m.started} first />}
-              {home && <Stop year={m.home} label={home.city} />}
-              {away.slice(0, 3).map((s) => (
-                <Stop key={s.id} year={s.starts_on ? String(new Date(s.starts_on).getFullYear()) : year.toString()} label={s.city} />
-              ))}
-            </ol>
+            {stops.length > 0 && (
+              <ol data-r style={{ "--d": "320ms" } as React.CSSProperties} className="flex min-h-0 flex-col justify-end gap-[1.4cqh] pt-[2.4cqh] @3xl:mt-auto @3xl:flex-row @3xl:items-end @3xl:gap-[3cqw]">
+                {stops.map((s) => (
+                  <Stop key={s.id} year={s.year} label={s.label} first={s.first} />
+                ))}
+              </ol>
+            )}
           </div>
-          <div className="relative min-h-0">
-            <Fig src={portrait?.src} grey duo title={artist.display_name} className="absolute top-0 right-0 h-[84%] w-[58%] @3xl:h-[90%] @3xl:w-[60%]" />
-            {data.portfolio[1] && <Fig src={data.portfolio[1].url} title={data.portfolio[1].title ?? ""} caption={data.portfolio[1].title ?? undefined} delay="260ms" className="absolute bottom-0 left-0 h-[48%] w-[50%] ring-[0.6cqw] ring-bone" />}
+          <Fig src={portrait?.src} grey duo pos="top" title={artist.display_name} className="relative min-h-0" />
+          <div className="col-span-2 flex items-end justify-between gap-[3cqw] border-t border-ink/25 pt-[1.6cqh]">
             {styles.length > 0 && (
-              <ul data-r style={{ "--d": "380ms" } as React.CSSProperties} className="absolute top-[2%] left-0 grid gap-1.5">
+              <ul data-r style={{ "--d": "380ms" } as React.CSSProperties} className="flex min-w-0 flex-wrap gap-1.5">
                 {styles.map((s) => (
-                  <li key={s} className="p-stamp w-fit bg-ink px-2.5 py-1.5 text-bone">
+                  <li key={s} className="p-stamp bg-ink px-2.5 py-1.5 text-[clamp(0.52rem,2.4cqw,0.68rem)] text-bone">
                     {s}
                   </li>
                 ))}
               </ul>
             )}
             {artist.min_price_cents ? (
-              <p data-r style={{ "--d": "440ms" } as React.CSSProperties} className="absolute right-0 bottom-[2%] bg-accent px-3 py-2 text-right text-ink">
-                <span className="p-stamp block text-ink/70">{p.starting}</span>
-                <span className="p-display block text-[clamp(1.4rem,4cqw,2.4rem)]">{money(artist.min_price_cents, artist.currency, locale)}</span>
+              <p data-r style={{ "--d": "440ms" } as React.CSSProperties} className="shrink-0 text-right">
+                <span className="p-stamp block text-[clamp(0.52rem,2.4cqw,0.68rem)] text-ink/60">{p.starting}</span>
+                <span className="p-display block text-[clamp(1.4rem,7cqw,2.6rem)] text-accent">{money(artist.min_price_cents, artist.currency, locale)}</span>
               </p>
             ) : null}
           </div>
@@ -122,42 +140,32 @@ export function Bio({ data }: { data: ExperienceData }) {
     ),
   });
 
-  // The pieces people ask for most: one chapter each, the photograph taking most of the screen.
-  featured.forEach((piece, i) => {
-    const num = String(i + 1).padStart(2, "0");
-    const flip = i % 2 === 1;
+  /* The spreads. Every piece gets a page or a place on one, in templates that never repeat back to back.
+     Pages alternate paper: ink, bone, ink. A full-bleed photograph counts as ink. */
+  let prev: Template | null = null;
+  let tone: "ink" | "bone" = "bone";
+
+  // The pieces people ask for most: one spread each.
+  const FEATURED: Template[] = ["split", "bleed", "quote", "split-r", "bleed", "quote"];
+  for (const [i, piece] of featured.entries()) {
+    const kind = FEATURED[i % FEATURED.length];
+    const n = num(i);
+    const kicker = `02 · ${m.popular}`;
+    tone = after(tone, kind);
+    prev = kind;
     chapters.push({
       key: `pop-${piece.id}`,
-      label: `${m.popular} ${num}`,
-      node: (
-        <Ch tone="ink">
-          <div className="absolute inset-0 grid grid-rows-[56%_1fr] @3xl:grid-cols-[58%_1fr] @3xl:grid-rows-1">
-            <Fig src={piece.url} title={piece.title ?? m.work} className={`relative h-full w-full ${flip ? "@3xl:order-2" : ""}`} />
-            <div className={`relative z-10 flex min-h-0 flex-col justify-end px-[5cqw] pt-[6cqw] pb-[5cqw] @3xl:justify-center @3xl:p-[4cqw] ${flip ? "@3xl:order-1" : ""}`}>
-              <span aria-hidden data-r className={`p-display pointer-events-none absolute top-0 -translate-y-1/2 text-[clamp(5rem,22cqw,9rem)] leading-none text-accent @3xl:top-[8%] @3xl:translate-y-0 @3xl:text-[14cqw] ${flip ? "right-[5cqw] @3xl:right-[-0.28em]" : "left-[5cqw] @3xl:left-[-0.28em]"}`}>
-                {num}
-              </span>
-              <p data-r className="p-gothic text-[clamp(1rem,2.2cqw,1.5rem)] text-accent">
-                02 · {m.popular}
-              </p>
-              <h3 data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-display mt-1 text-[clamp(1.9rem,8cqw,4.2rem)] text-bone @3xl:text-[5.4cqw]">
-                {piece.title ?? m.work}
-              </h3>
-              <p data-r style={{ "--d": "160ms" } as React.CSSProperties} className="p-col mt-[1.5cqw] line-clamp-4 max-w-[40ch] text-[clamp(0.95rem,2.4cqw,1.25rem)] text-bone/85 @3xl:line-clamp-none">
-                {piece.story ?? m.noStory}
-              </p>
-              <dl data-r style={{ "--d": "240ms" } as React.CSSProperties} className="p-stamp mt-[2.5cqw] flex flex-wrap gap-x-6 gap-y-1.5 border-t border-bone/20 pt-[2cqw] text-bone/60">
-                {styleOf(piece) && <Fact label={m.style}>{styleOf(piece)}</Fact>}
-                {piece.placement && <Fact label={m.placement}>{place(piece.placement)}</Fact>}
-                {piece.color_mode && <Fact label={m.colour}>{piece.color_mode === "color" ? m.color : m.blackGrey}</Fact>}
-                <Fact label={m.status}>{piece.is_healed ? m.healed : m.fresh}</Fact>
-              </dl>
-            </div>
-          </div>
-        </Ch>
-      ),
+      label: `${m.popular} ${n}`,
+      node:
+        kind === "bleed" ? (
+          <Bleed piece={piece} n={n} kicker={kicker} line={line(piece)} title={piece.title ?? m.work} corner={i % 4 === 1 ? "bl" : "tr"} />
+        ) : kind === "quote" ? (
+          <Quote tone={tone} piece={piece} n={n} kicker={kicker} folio={folio} title={piece.title ?? m.work} story={piece.story ?? m.noStory} specs={specs(piece)} />
+        ) : (
+          <Split tone={tone} piece={piece} n={n} kicker={kicker} title={piece.title ?? m.work} story={piece.story ?? m.noStory} specs={specs(piece)} mirror={kind === "split-r"} />
+        ),
     });
-  });
+  }
   if (!featured.length)
     chapters.push({
       key: "pop-empty",
@@ -174,30 +182,62 @@ export function Bio({ data }: { data: ExperienceData }) {
       ),
     });
 
-  // The gallery: mosaics of five, every photograph a different size.
-  const all = [...featured, ...data.portfolio.filter((i) => !i.featured)];
-  for (let k = 0; k < all.length; k += 5) {
-    const slice = all.slice(k, k + 5);
-    const full = slice.length === 5;
+  // The archive: the rest of the work as contact sheets, a full page between every two sheets.
+  const rest = [...extras];
+  let k = featured.length;
+  let sheet = 0;
+  while (rest.length) {
+    const kicker = `03 · ${m.archive}`;
+    const bleedNow = rest.length === 1 ? prev !== "bleed" : sheet % 2 === 1 && rest.length > 2;
+    if (bleedNow) {
+      const piece = rest.shift()!;
+      tone = after(tone, "bleed");
+      prev = "bleed";
+      chapters.push({
+        key: `arc-${piece.id}`,
+        label: `${m.index} ${num(k)}`,
+        node: <Bleed piece={piece} n={num(k)} kicker={kicker} line={line(piece)} title={piece.title ?? m.work} corner={k % 2 === 0 ? "bl" : "tr"} />,
+      });
+      k += 1;
+      sheet = 0;
+      continue;
+    }
+    const take = rest.length === 4 ? 2 : Math.min(3, rest.length);
+    const slice = rest.splice(0, take);
+    const first = k;
+    tone = after(tone, "contact");
+    prev = "contact";
     chapters.push({
-      key: `gal-${k}`,
-      label: m.gallery,
+      key: `arc-${slice[0].id}`,
+      label: `${m.index} ${num(first)}`,
       node: (
-        <Ch tone="bone">
-          <div className="absolute inset-0 flex flex-col gap-[2cqw] p-[3cqw]">
-            <p data-r className="p-gothic flex items-baseline justify-between text-[clamp(1rem,2.2cqw,1.5rem)] text-accent">
-              <span>03 · {m.gallery}</span>
-              <span className="p-stamp text-ink/60">{fill(a.panel.work.count, { n: data.portfolio.length })}</span>
-            </p>
-            <div className={`grid min-h-0 flex-1 gap-[1.2cqw] ${full ? "grid-cols-3 grid-rows-4 @3xl:grid-cols-4 @3xl:grid-rows-3" : "grid-flow-dense grid-cols-3 grid-rows-2 @3xl:grid-cols-4"}`}>
+        <Ch tone={tone}>
+          <div className="absolute inset-0 flex flex-col p-[4cqw] @3xl:p-[4cqw]">
+            <Head kicker={kicker} folio={fill(a.panel.work.count, { n: data.portfolio.length })} />
+            <ol className={`mt-[2cqh] grid min-h-0 flex-1 gap-[2cqh] @3xl:mt-[3cqh] @3xl:gap-[3cqw] ${slice.length === 1 ? "grid-rows-1 @3xl:grid-cols-1" : slice.length === 2 ? "grid-rows-2 @3xl:grid-cols-2 @3xl:grid-rows-1" : "grid-rows-3 @3xl:grid-cols-3 @3xl:grid-rows-1"}`}>
               {slice.map((piece, j) => (
-                <Fig key={piece.id} src={piece.url} title={piece.title ?? m.work} caption={piece.title ?? undefined} sub={styleOf(piece) ?? undefined} delay={`${j * 90}ms`} className={`min-h-0 ${full ? MOSAIC[j] : j === 0 ? "col-span-2 row-span-2" : ""}`} />
+                <li key={piece.id} className={`grid min-h-0 grid-cols-[42cqw_minmax(0,1fr)] gap-[3cqw] border-t border-current/25 pt-[1.4cqh] @3xl:grid-cols-1 @3xl:grid-rows-[1fr_auto] @3xl:gap-[1.5cqh] ${j % 2 === 1 ? "@max-3xl:[&>figure]:order-2" : ""}`}>
+                  <Fig src={piece.url} pos={posOf(piece)} title={piece.title ?? m.work} delay={`${j * 120}ms`} className="relative min-h-0 h-full" />
+                  <div className={`flex min-w-0 flex-col ${j % 2 === 1 ? "@max-3xl:items-end @max-3xl:text-right" : ""}`}>
+                    <span aria-hidden data-r style={{ "--d": `${j * 120}ms` } as React.CSSProperties} className="p-display text-[clamp(1.8rem,9cqw,4rem)] leading-none text-accent @3xl:text-[4cqw]">
+                      {num(first + j)}
+                    </span>
+                    <h3 data-r style={{ "--d": `${j * 120 + 60}ms` } as React.CSSProperties} className="p-display mt-[0.6cqh] text-[clamp(1.1rem,5.6cqw,2.4rem)] @3xl:text-[2.4cqw]">
+                      {piece.title ?? m.work}
+                    </h3>
+                    <dl data-r style={{ "--d": `${j * 120 + 120}ms` } as React.CSSProperties} className="p-stamp mt-auto grid gap-[0.5cqh] pt-[1cqh] text-[clamp(0.5rem,2.4cqw,0.68rem)] tracking-[0.16em] opacity-80 @3xl:text-[0.68rem] @3xl:tracking-[0.26em]">
+                      {specs(piece)}
+                    </dl>
+                  </div>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
         </Ch>
       ),
     });
+    k += take;
+    sheet += 1;
   }
 
   // Sign-off on the artist's colour.
@@ -245,14 +285,115 @@ export function Bio({ data }: { data: ExperienceData }) {
   return <Mag chapters={chapters} labels={{ page: m.page, next: a.panel.next, prev: a.panel.prev }} />;
 }
 
-/** Where each of five tiles sits: phone 3×4, wide 4×3. */
-const MOSAIC = [
-  "[grid-area:1/1/3/3] @3xl:[grid-area:1/1/4/3]",
-  "[grid-area:1/3/3/4] @3xl:[grid-area:1/3/2/5]",
-  "[grid-area:3/1/5/2] @3xl:[grid-area:2/3/4/4]",
-  "[grid-area:3/2/4/4] @3xl:[grid-area:2/4/3/5]",
-  "[grid-area:4/2/5/4] @3xl:[grid-area:3/4/4/5]",
-];
+type Template = "split" | "split-r" | "bleed" | "quote" | "contact";
+
+/** The paper of the next page: ink after bone, bone after ink; a full-bleed photograph is ink. */
+const after = (tone: "ink" | "bone", kind: Template): "ink" | "bone" => (kind === "bleed" ? "ink" : tone === "ink" ? "bone" : "ink");
+
+/** Where to crop a photograph when it has to lose something: faces and backs keep the top. */
+function posOf(piece: PortfolioItem): "top" | "center" {
+  return /back|chest|neck|head|face|sleeve|arm|forearm|shoulder/.test(piece.placement ?? "") ? "top" : "center";
+}
+
+/* ------------------------------------------------------------------ the spreads */
+
+/** A running head: the chapter kicker on the left, the folio on the right. */
+function Head({ kicker, folio, compact = false }: { kicker: string; folio: string; compact?: boolean }) {
+  return (
+    <p data-r className="flex items-baseline justify-between gap-3">
+      <span className="p-gothic whitespace-nowrap text-[clamp(1rem,2.2cqw,1.5rem)] text-accent">{kicker}</span>
+      <span className={`p-stamp shrink-0 text-[clamp(0.5rem,2.4cqw,0.68rem)] opacity-50 ${compact ? "hidden @3xl:inline" : ""}`}>{folio}</span>
+    </p>
+  );
+}
+
+/** Split: the photograph takes the tall left (or right) column, the words stack beside it. */
+function Split({ tone, piece, n, kicker, title, story, specs, mirror }: { tone: "ink" | "bone"; piece: PortfolioItem; n: string; kicker: string; title: string; story: string; specs: React.ReactNode; mirror: boolean }) {
+  return (
+    <Ch tone={tone}>
+      <div className={`absolute inset-0 grid grid-cols-[58%_minmax(0,1fr)] ${mirror ? "[direction:rtl]" : ""}`}>
+        <Fig src={piece.url} pos={posOf(piece)} title={title} className="relative h-full w-full [direction:ltr]" />
+        <div className="relative flex min-h-0 min-w-0 flex-col px-[3cqw] py-[3cqh] [direction:ltr] @3xl:px-[4cqw]">
+          <span aria-hidden data-r className="p-display text-[clamp(3rem,16cqw,9rem)] leading-[0.85] text-accent">
+            {n}
+          </span>
+          <p data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-gothic mt-[1cqh] text-[clamp(0.9rem,4.2cqw,1.5rem)] text-accent">
+            {kicker}
+          </p>
+          <h3 data-r style={{ "--d": "140ms" } as React.CSSProperties} className="p-display mt-[1cqh] break-words text-[clamp(1.3rem,6cqw,4.5rem)] hyphens-auto @3xl:text-[5cqw]">
+            {title}
+          </h3>
+          <p data-r style={{ "--d": "220ms" } as React.CSSProperties} className="p-quote mt-[1.6cqh] line-clamp-[9] min-h-0 text-[clamp(0.9rem,4.1cqw,1.6rem)] leading-[1.28] opacity-85 @3xl:line-clamp-[7] @3xl:max-w-[34ch] @3xl:text-[clamp(1.2rem,1.9cqw,1.8rem)]">
+            {story}
+          </p>
+          <dl data-r style={{ "--d": "300ms" } as React.CSSProperties} className="p-stamp mt-auto grid gap-[0.7cqh] border-t border-current/25 pt-[1.6cqh] text-[clamp(0.5rem,2.5cqw,0.68rem)] tracking-[0.16em] opacity-80 @3xl:grid-cols-2 @3xl:gap-x-6 @3xl:text-[0.68rem] @3xl:tracking-[0.26em]">
+            {specs}
+          </dl>
+        </div>
+      </div>
+    </Ch>
+  );
+}
+
+/** Full bleed: the photograph is the page; a numeral, a title and one line sit in a corner, over a gradient. */
+function Bleed({ piece, n, kicker, title, line, corner }: { piece: PortfolioItem; n: string; kicker: string; title: string; line: string; corner: "bl" | "tr" }) {
+  const top = corner === "tr";
+  return (
+    <Ch tone="ink">
+      <Fig src={piece.url} pos={posOf(piece)} title={title} className="absolute inset-0" />
+      <div aria-hidden className={`pointer-events-none absolute inset-x-0 h-[46%] ${top ? "top-0 bg-gradient-to-b from-black/85 via-black/45 to-transparent" : "bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent"}`} />
+      <div className={`absolute inset-x-[4cqw] flex flex-col ${top ? "top-[3cqh] items-end text-right" : "bottom-[3cqh]"}`}>
+        <span aria-hidden data-r className="p-display text-[clamp(4rem,24cqw,14rem)] leading-[0.85] text-accent">
+          {n}
+        </span>
+        <p data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-gothic mt-[0.6cqh] text-[clamp(1rem,2.2cqw,1.5rem)] text-accent">
+          {kicker}
+        </p>
+        <h3 data-r style={{ "--d": "140ms" } as React.CSSProperties} className="p-display mt-[0.6cqh] max-w-[12ch] text-[clamp(1.9rem,9.5cqw,6rem)] text-bone @3xl:text-[6cqw]">
+          {title}
+        </h3>
+        {line && (
+          <p data-r style={{ "--d": "220ms" } as React.CSSProperties} className="p-stamp mt-[1.2cqh] text-[clamp(0.55rem,2.6cqw,0.72rem)] text-bone/75">
+            {line}
+          </p>
+        )}
+      </div>
+    </Ch>
+  );
+}
+
+/** Pull quote: a photograph across the top, then the story set large in italics beside the numeral. */
+function Quote({ tone, piece, n, kicker, folio, title, story, specs }: { tone: "ink" | "bone"; piece: PortfolioItem; n: string; kicker: string; folio: string; title: string; story: string; specs: React.ReactNode }) {
+  return (
+    <Ch tone={tone}>
+      <div className="absolute inset-0 grid grid-rows-[49%_1fr] @3xl:grid-cols-[46%_minmax(0,1fr)] @3xl:grid-rows-1">
+        <div className="relative min-h-0">
+          <Fig src={piece.url} pos={posOf(piece)} title={title} className="absolute inset-0" />
+          <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t ${tone === "ink" ? "from-ink" : "from-bone"} to-transparent @3xl:hidden`} />
+        </div>
+        <div className="relative flex min-h-0 flex-col px-[4cqw] pt-0 pb-[2.4cqh] @3xl:justify-center @3xl:px-[5cqw] @3xl:py-[4cqh]">
+          <div className="flex items-end gap-[3cqw]">
+            <span aria-hidden data-r className="p-display -mt-[8cqh] text-[clamp(4.5rem,24cqw,14rem)] leading-[0.8] text-accent @3xl:mt-0 @3xl:text-[12cqw]">
+              {n}
+            </span>
+            <div className="min-w-0 pb-[0.5cqh]">
+              <Head kicker={kicker} folio={folio} />
+              <h3 data-r style={{ "--d": "80ms" } as React.CSSProperties} className="p-display mt-[0.4cqh] text-[clamp(1.1rem,5.4cqw,3rem)] @3xl:text-[2.8cqw]">
+                {title}
+              </h3>
+            </div>
+          </div>
+          <p data-r style={{ "--d": "160ms" } as React.CSSProperties} className="p-quote mt-[2cqh] line-clamp-[7] min-h-0 text-[clamp(1.4rem,7cqw,3.2rem)] opacity-90 @3xl:mt-[3cqh] @3xl:line-clamp-[6] @3xl:max-w-[22ch] @3xl:text-[clamp(1.7rem,3.4cqw,3rem)]">
+            “{story}”
+          </p>
+          <dl data-r style={{ "--d": "260ms" } as React.CSSProperties} className="p-stamp mt-auto flex flex-wrap gap-x-[4cqw] gap-y-[0.6cqh] border-t border-current/25 pt-[1.4cqh] text-[clamp(0.5rem,2.5cqw,0.68rem)] tracking-[0.16em] opacity-80 @3xl:text-[0.68rem] @3xl:tracking-[0.26em]">
+            {specs}
+          </dl>
+        </div>
+      </div>
+    </Ch>
+  );
+}
 
 /* ------------------------------------------------------------------ the magazine */
 
@@ -399,14 +540,14 @@ function Ch({ tone, children }: { tone: "ink" | "bone" | "accent"; children: Rea
 }
 
 /** A photograph, or the striped plate with its title until there is one. */
-function Fig({ src, grey, duo, title, caption, sub, delay, className = "" }: { src?: string | null; grey?: boolean; duo?: boolean; title: string; caption?: string; sub?: string; delay?: string; className?: string }) {
+function Fig({ src, grey, duo, pos = "center", title, caption, sub, delay, className = "" }: { src?: string | null; grey?: boolean; duo?: boolean; pos?: "top" | "center"; title: string; caption?: string; sub?: string; delay?: string; className?: string }) {
   // Callers that place the figure themselves pass `absolute`; everyone else gets a positioned box for the caption.
-  const pos = /\babsolute\b/.test(className) ? "" : "relative";
+  const box = /\babsolute\b/.test(className) ? "" : "relative";
   return (
-    <figure data-img style={{ "--d": delay ?? "0ms" } as React.CSSProperties} className={`${pos} overflow-hidden bg-[#161412] [container-type:inline-size] ${className}`}>
+    <figure data-img style={{ "--d": delay ?? "0ms" } as React.CSSProperties} className={`${box} overflow-hidden bg-[#161412] [container-type:inline-size] ${className}`}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={title} draggable={false} loading="lazy" className={`block h-full w-full object-cover ${grey ? "grayscale contrast-[1.08]" : ""}`} />
+        <img src={src} alt={title} draggable={false} loading="lazy" className={`block h-full w-full object-cover ${pos === "top" ? "object-top" : "object-center"} ${grey ? "grayscale contrast-[1.08]" : ""}`} />
       ) : (
         <div className="grid h-full w-full place-items-center p-[6cqw]">
           <span aria-hidden className="mag-stripes absolute inset-0 opacity-25" />
@@ -426,28 +567,28 @@ function Fig({ src, grey, duo, title, caption, sub, delay, className = "" }: { s
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <dt className="opacity-60">{label}</dt>
-      <dd className="text-current opacity-100">{children}</dd>
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+      <dt className="opacity-55">{label}</dt>
+      <dd className="text-current">{children}</dd>
     </div>
   );
 }
 
 function Stat({ n, label }: { n: number; label: string }) {
   return (
-    <li>
-      <span className="p-display block text-[clamp(1.8rem,7cqw,4rem)] leading-none text-ink">{n}</span>
-      <span className="p-stamp mt-1 block text-ink/60">{label}</span>
+    <li className="flex items-baseline gap-[2.5cqw] border-b border-ink/20 py-[1.1cqh]">
+      <span className="p-display text-[clamp(1.8rem,9.5cqw,3.4rem)] leading-none text-ink @3xl:text-[3.2cqw]">{n}</span>
+      <span className="p-stamp text-[clamp(0.5rem,2.4cqw,0.68rem)] text-ink/60">{label}</span>
     </li>
   );
 }
 
 function Stop({ year, label, first = false }: { year: string; label: string; first?: boolean }) {
   return (
-    <li className="relative shrink-0 border-t-2 border-ink pt-2 pr-[3cqw]">
-      <span aria-hidden className={`absolute -top-[5px] left-0 h-2 w-2 rounded-full ${first ? "bg-accent" : "bg-ink"}`} />
-      <span className="p-stamp block text-ink/60">{year}</span>
-      <span className="p-display block text-[clamp(1rem,3cqw,1.6rem)] text-ink">{label}</span>
+    <li className="relative flex items-baseline gap-[2.5cqw] pl-[3.5cqw] @3xl:block @3xl:shrink-0 @3xl:border-t-2 @3xl:border-ink @3xl:pt-2 @3xl:pr-[3cqw] @3xl:pl-0">
+      <span aria-hidden className={`absolute top-[0.35em] left-0 h-2 w-2 rounded-full @3xl:-top-[5px] ${first ? "bg-accent" : "bg-ink"}`} />
+      <span className="p-stamp min-w-[6ch] shrink-0 text-[clamp(0.5rem,2.4cqw,0.68rem)] text-ink/60 @3xl:block @3xl:min-w-0">{year}</span>
+      <span className="p-display truncate text-[clamp(1rem,5.2cqw,1.6rem)] text-ink @3xl:block @3xl:text-[1.6cqw]">{label}</span>
     </li>
   );
 }
