@@ -697,6 +697,10 @@ const es: Dict = {
       cta: "Cuéntale tu idea a {artist}",
     },
   },
+  world: {
+    nav: { search: "Buscar", me: "Yo", signIn: "Entrar", forArtists: "Para artistas", home: "Inicio" },
+    trades: { tattoo: "Tatuaje", barber: "Barberos", graffiti: "Graffiti y murales" },
+  },
 };
 
 export default es;

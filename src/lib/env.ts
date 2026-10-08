@@ -22,7 +22,12 @@ export const env = {
   /** Platform fee on deposits, in basis points (300 = 3%). 0 while on subscriptions. */
   platformFeeBps: Number(read("PLATFORM_FEE_BPS") ?? "0"),
   resendApiKey: read("RESEND_API_KEY"),
-  emailFrom: read("EMAIL_FROM") ?? "Brief <bookings@example.com>",
+  emailFrom: read("EMAIL_FROM") ?? "Vanta <bookings@example.com>",
+  /** Comma-separated emails that may open the editor's desk (/admin). Local mode: the demo member. */
+  adminEmails: (read("ADMIN_EMAILS") ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
   cronSecret: read("CRON_SECRET"),
   /** Comma-separated emails allowed to create an artist page. Empty = open signup. */
   allowedSignups: (read("ALLOWED_SIGNUPS") ?? "")
@@ -41,6 +46,11 @@ export const live = {
 
 /** The member that local mode signs in as (seeded with the demo studio). */
 export const DEMO_USER_ID = "00000000-0000-4000-8000-000000000001";
+/** The client that local mode can sign in as (Daniel Reyes in the seed). */
+export const DEMO_CLIENT_USER_ID = "00000000-0000-4000-8000-000000000002";
+/** The demo member's address; also the local admin. */
+export const DEMO_EMAIL = "demo@vanta.local";
+export const DEMO_CLIENT_EMAIL = "daniel@example.com";
 
 /** True when anything runs on a local stand-in; the UI labels demo behaviour. */
 export const demoMode = !live.db || !live.auth || !live.payments;

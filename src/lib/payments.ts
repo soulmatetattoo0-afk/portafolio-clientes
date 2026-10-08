@@ -5,7 +5,7 @@ import { env, live } from "./env";
 let client: Stripe | null = null;
 export function stripe(): Stripe {
   if (!env.stripeSecretKey) throw new Error("Stripe is not configured");
-  client ??= new Stripe(env.stripeSecretKey, { appInfo: { name: "Brief" } });
+  client ??= new Stripe(env.stripeSecretKey, { appInfo: { name: "Vanta" } });
   return client;
 }
 
@@ -47,11 +47,13 @@ export interface DepositCheckout {
   successUrl: string;
   cancelUrl: string;
   locale: "en" | "es";
+  /** Platform fee for this artist's plan; defaults to the global setting. */
+  feeBps?: number;
 }
 
 /** A Checkout Session charged directly on the artist's account; the artist is the merchant. */
 export async function createDepositCheckout(d: DepositCheckout) {
-  const fee = Math.floor((d.amountCents * env.platformFeeBps) / 10_000);
+  const fee = Math.floor((d.amountCents * (d.feeBps ?? env.platformFeeBps)) / 10_000);
   const session = await stripe().checkout.sessions.create(
     {
       mode: "payment",

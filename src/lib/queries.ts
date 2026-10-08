@@ -182,23 +182,82 @@ export async function listCityDemand(artistId: string, limit = 12): Promise<{ ci
 }
 
 export interface ArtistCard {
+  id: string;
   slug: string;
   display_name: string;
   headline: string | null;
   home_city: string | null;
+  city_slug: string | null;
+  country: string | null;
+  trade: "tattoo" | "barber" | "graffiti";
   styles: string[];
   accent: string | null;
   cover_poster: boolean;
   portrait_url: string | null;
+  accepting: boolean;
+  price_from_cents: number | null;
+  currency: string;
+  has_color: boolean;
+  has_black_grey: boolean;
+  has_healed: boolean;
+  piece_count: number;
+  featured_count: number;
+  /** The next guest spot (not home) that is still open, if any. */
+  next_stop: { id: string; city: string; city_slug: string | null; country: string; starts_on: string | null; ends_on: string | null; status: string } | null;
+  /** Kilometres from the searcher, when the search had a location. */
+  distance_km?: number | null;
 }
 
-/** Public artist directory for Explore. */
+/** The columns and joins every artist card is built from; `a` is artists. */
+export const CARD_SQL = `
+  with facets as (
+    select artist_id,
+           bool_or(color_mode = 'color') as has_color,
+           bool_or(color_mode = 'black_grey') as has_black_grey,
+           bool_or(is_healed) as has_healed,
+           count(*)::int as piece_count,
+           count(*) filter (where featured)::int as featured_count,
+           max(published_at) as last_published
+      from portfolio_items where published group by artist_id
+  ),
+  next_stop as (
+    select distinct on (artist_id) artist_id, id, city, city_slug, country, starts_on, ends_on, status, lat, lng
+      from tour_stops
+     where not is_home and status in ('announced', 'booking') and (ends_on is null or ends_on >= current_date)
+     order by artist_id, starts_on nulls last
+  )`;
+
+export const CARD_COLS = `a.id, a.slug, a.display_name, a.headline, a.home_city, a.city_slug, a.country, a.trade, a.styles, a.accent, a.cover_poster, a.portrait_path,
+  a.accepting, a.min_price_cents as price_from_cents, a.currency,
+  coalesce(f.has_color, false) as has_color, coalesce(f.has_black_grey, false) as has_black_grey, coalesce(f.has_healed, false) as has_healed,
+  coalesce(f.piece_count, 0) as piece_count, coalesce(f.featured_count, 0) as featured_count,
+  ns.id as ns_id, ns.city as ns_city, ns.city_slug as ns_city_slug, ns.country as ns_country, ns.starts_on as ns_starts_on, ns.ends_on as ns_ends_on, ns.status as ns_status`;
+
+export const CARD_JOINS = `left join facets f on f.artist_id = a.id left join next_stop ns on ns.artist_id = a.id`;
+
+export type CardRow = Omit<ArtistCard, "portrait_url" | "next_stop"> & {
+  portrait_path: string | null;
+  ns_id: string | null; ns_city: string | null; ns_city_slug: string | null; ns_country: string | null; ns_starts_on: unknown; ns_ends_on: unknown; ns_status: string | null;
+  distance_km?: number | string | null;
+};
+
+export async function toCard(r: CardRow): Promise<ArtistCard> {
+  const { portrait_path, ns_id, ns_city, ns_city_slug, ns_country, ns_starts_on, ns_ends_on, ns_status, distance_km, ...a } = r;
+  return {
+    ...a,
+    piece_count: Number(a.piece_count),
+    featured_count: Number(a.featured_count),
+    portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null,
+    next_stop: ns_id ? { id: ns_id, city: ns_city!, city_slug: ns_city_slug, country: ns_country!, starts_on: isoDate(ns_starts_on), ends_on: isoDate(ns_ends_on), status: ns_status! } : null,
+    distance_km: distance_km == null ? null : Number(distance_km),
+  };
+}
+
+/** Public artist directory: every listed artist, newest first. Search and filters live in search.ts. */
 export async function listArtists(): Promise<ArtistCard[]> {
   const db = await getDb();
-  const rows = await db.query<Omit<ArtistCard, "portrait_url"> & { portrait_path: string | null }>(
-    `select a.slug, a.display_name, a.headline, a.home_city, a.styles, a.accent, a.cover_poster, a.portrait_path from artists a order by a.created_at`,
-  );
-  return Promise.all(rows.map(async ({ portrait_path, ...a }) => ({ ...a, portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null })));
+  const rows = await db.query<CardRow>(`${CARD_SQL} select ${CARD_COLS} from artists a ${CARD_JOINS} where a.listed order by a.created_at`);
+  return Promise.all(rows.map(toCard));
 }
 
 export async function listFlash(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<FlashItem[]> {
@@ -359,6 +418,7 @@ export interface QuoteView {
   artist_slug: string;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
+  plan: string;
   slots: QuoteSlot[];
   appointment: { starts_at: Date; timezone: string; city: string | null; studio_name: string | null; address: string | null } | null;
   paid_cents: number | null;
@@ -372,8 +432,8 @@ export async function getQuoteByToken(token: string): Promise<QuoteView | null> 
             q.deposit_cents, q.currency, q.message, q.policy, q.expires_at, q.brief_id,
             b.placement, b.full_coverage, b.size_w_cm::float as size_w_cm, b.size_h_cm::float as size_h_cm, b.style, b.color_mode,
             c.name as client_name, c.email as client_email, c.locale as client_locale,
-            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.stripe_account_id, a.stripe_charges_enabled
-       from quotes q join briefs b on b.id = q.brief_id join clients c on c.id = b.client_id join artists a on a.id = q.artist_id
+            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.stripe_account_id, a.stripe_charges_enabled, st.plan
+       from quotes q join briefs b on b.id = q.brief_id join clients c on c.id = b.client_id join artists a on a.id = q.artist_id join studios st on st.id = q.studio_id
       where q.token = $1`,
     [token],
   );

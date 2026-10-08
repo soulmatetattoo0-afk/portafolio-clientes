@@ -4,7 +4,8 @@
  * the embedded database is created for the first time.
  */
 
-import { DEMO_USER_ID } from "./env";
+import { DEMO_EMAIL, DEMO_USER_ID } from "./env";
+import { seedWorld } from "./seed-world";
 import type { Db } from "./db";
 
 const DAY = 24 * 3600 * 1000;
@@ -39,7 +40,7 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
     [s, camoCover],
   );
   const a = artist!.id;
-  await db.query(`insert into members (studio_id, user_id, email, role, locale, artist_id) values ($1, $2, 'demo@brief.local', 'owner', 'es', $3)`, [s, DEMO_USER_ID, a]);
+  await db.query(`insert into members (studio_id, user_id, email, role, locale, artist_id) values ($1, $2, $4, 'owner', 'es', $3)`, [s, DEMO_USER_ID, a, DEMO_EMAIL]);
 
   // A second artist so Explore has a neighbour: a studio of her own, no member. Her cover is a render of the statue.
   const iris = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ('iris-calderon', 'Iris Calderón Tattoo', 'solo', 'founding', 'active') returning id`);
@@ -262,4 +263,6 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
   await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, created_at) values ($1, $2, 'declined', 'artist', $3, $4)`, [
     s, kevinBrief, "Thanks Kevin! Lettering isn't my speciality, so I'd point you to a script artist for the cleanest result.", new Date(Date.now() - 8 * day).toISOString(),
   ]);
+
+  await seedWorld(db);
 }

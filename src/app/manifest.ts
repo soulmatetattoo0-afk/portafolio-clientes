@@ -3,10 +3,10 @@ import type { MetadataRoute } from "next";
 /** Installable from the artist's link: no store needed to get the app on the home screen. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Brief",
-    short_name: "Brief",
-    description: "Artists, by city. Book the ones you follow.",
-    start_url: "/explore?source=pwa",
+    name: "Vanta",
+    short_name: "Vanta",
+    description: "Find your artist. See the work, read the magazine, book the session.",
+    start_url: "/?source=pwa",
     scope: "/",
     display: "standalone",
     background_color: "#0a0a0a",

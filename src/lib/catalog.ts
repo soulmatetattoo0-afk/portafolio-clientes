@@ -57,3 +57,17 @@ export const TIMEZONES = [
   "Asia/Tokyo",
   "Australia/Sydney",
 ];
+
+/* ------------------------------------------------------------------ trades */
+
+export type Trade = "tattoo" | "barber" | "graffiti";
+export type BookingMode = "brief_quote" | "slots" | "project";
+
+/** The trades the world can hold. Only tattoo is live; the others are real categories with an empty state. */
+export const TRADES: { slug: Trade; label: L; plural: L; bookingMode: BookingMode; live: boolean }[] = [
+  { slug: "tattoo", label: { en: "Tattoo", es: "Tatuaje" }, plural: { en: "Tattoo artists", es: "Tatuadores" }, bookingMode: "brief_quote", live: true },
+  { slug: "barber", label: { en: "Barber", es: "Barbería" }, plural: { en: "Barbers", es: "Barberos" }, bookingMode: "slots", live: false },
+  { slug: "graffiti", label: { en: "Graffiti & murals", es: "Graffiti y murales" }, plural: { en: "Muralists", es: "Muralistas" }, bookingMode: "project", live: false },
+];
+export const TRADE_BY_SLUG = new Map(TRADES.map((t) => [t.slug, t]));
+export const isTrade = (s: unknown): s is Trade => typeof s === "string" && TRADE_BY_SLUG.has(s as Trade);

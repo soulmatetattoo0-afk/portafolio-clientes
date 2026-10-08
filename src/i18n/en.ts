@@ -695,6 +695,10 @@ const en = {
       cta: "Tell {artist} your idea",
     },
   },
+  world: {
+    nav: { search: "Search", me: "Me", signIn: "Sign in", forArtists: "For artists", home: "Home" },
+    trades: { tattoo: "Tattoo", barber: "Barbers", graffiti: "Graffiti & murals" },
+  },
 };
 
 export default en;

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { setDevSession, signOut, supabaseServer } from "@/lib/auth";
-import { DEMO_USER_ID, env, live } from "@/lib/env";
+import { DEMO_EMAIL, DEMO_USER_ID, env, live } from "@/lib/env";
 import { allow } from "@/lib/ratelimit";
 
 export interface LoginState {
@@ -32,7 +32,7 @@ export async function sendMagicLink(_prev: LoginState, form: FormData): Promise<
 /** Local mode only: sign in as the seeded demo artist. */
 export async function enterDemo() {
   if (live.auth) redirect("/login");
-  await setDevSession(DEMO_USER_ID, "demo@brief.local");
+  await setDevSession(DEMO_USER_ID, DEMO_EMAIL);
   redirect("/studio");
 }
 

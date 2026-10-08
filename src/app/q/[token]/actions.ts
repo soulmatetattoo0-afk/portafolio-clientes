@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
 import { env, live } from "@/lib/env";
 import { createDepositCheckout } from "@/lib/payments";
+import { feeBpsFor } from "@/lib/plan";
 import { placementLabel } from "@/lib/messages";
 import { getQuoteByToken } from "@/lib/queries";
 
@@ -73,6 +74,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
     successUrl: `${env.appUrl}/q/${token}?checkout=success`,
     cancelUrl: `${env.appUrl}/q/${token}?checkout=cancelled`,
     locale,
+    feeBps: feeBpsFor(quote.plan, env.platformFeeBps),
   });
   await db.query(
     `insert into payments (studio_id, quote_id, provider, checkout_id, amount_cents, application_fee_cents, currency, status)

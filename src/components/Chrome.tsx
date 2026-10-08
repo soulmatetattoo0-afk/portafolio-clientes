@@ -7,8 +7,8 @@ import { LangToggle } from "./LangToggle";
 
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`t-inscription text-[0.95rem] tracking-[0.3em] text-gilt ${className}`} aria-label="Brief">
-      BRIEF
+    <span className={`t-inscription text-[0.95rem] tracking-[0.3em] text-gilt ${className}`} aria-label="Vanta">
+      VANTA
     </span>
   );
 }

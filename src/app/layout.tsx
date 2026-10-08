@@ -35,7 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDict();
   return {
     metadataBase: new URL(env.appUrl),
-    title: { default: t.meta.title, template: "%s | Brief" },
+    title: { default: t.meta.title, template: "%s | Vanta" },
     description: t.meta.description,
   };
 }
