@@ -7,7 +7,6 @@ import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 import { citySlug } from "@/lib/geo";
 
-import { CityRequest } from "../../CityRequest";
 import { Waitlist } from "../../Waitlist";
 import { locate } from "../cities";
 import { frameOf, type Place } from "../frame";
@@ -28,10 +27,9 @@ const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const plusDays = (iso: string, n: number) => isoDay(new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86400000));
 
 /**
- * Tour poster: the world flies in to where the artist will be working, home
- * and guest spots pinned and named, then the itinerary as a route. Each stop
- * opens on its dates and a calendar of its days; under it all, the invitation
- * to name your city with the cities already asking.
+ * Where the artist works: the world flies in to where they are resident and
+ * the cities of their guest spots, pinned and named, then the route. Each stop
+ * opens on its dates and a calendar of its days.
  */
 export function Spots({ data }: { data: ExperienceData }) {
   const { artist, t, locale, stops } = data;
@@ -39,7 +37,7 @@ export function Spots({ data }: { data: ExperienceData }) {
   const p = a.panel.spots;
   const d = p.detail;
   const next = stops.find((s) => !s.is_home && s.status !== "done");
-  const max = Math.max(1, ...data.demand.map((x) => x.n));
+  const home = stops.find((s) => s.is_home);
   const today = isoDay(new Date());
   const [picked, setPicked] = useState<string | null>(null);
   const items = useRef<Record<string, HTMLLIElement | null>>({});
@@ -124,7 +122,7 @@ export function Spots({ data }: { data: ExperienceData }) {
         <figcaption className="relative mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2">
           <span className="flex items-center gap-2 text-[0.8rem] text-bone/80">
             <span aria-hidden className="wm-dot inline-block h-2.5 w-2.5 rounded-full bg-accent" />
-            {stops.length} {a.deck.cards.spots.title.toLowerCase()}
+            {home ? `${p.resident} · ${home.studio_name ? `${home.studio_name}, ` : ""}${home.city}` : a.deck.cards.spots.title}
           </span>
           {next && (
             <span className="p-gothic text-[1.05rem] text-accent">
@@ -152,7 +150,7 @@ export function Spots({ data }: { data: ExperienceData }) {
                 <button type="button" onClick={() => pick(s.id)} aria-expanded={open} aria-controls={`stop-${s.id}`} className="group flex w-full items-start justify-between gap-4 text-left">
                   <div className="min-w-0">
                     <p className="p-gothic text-[1.15rem] text-bone-dim">
-                      {String(i + 1).padStart(2, "0")} · {s.is_home ? a.home : s.country}
+                      {String(i + 1).padStart(2, "0")} · {s.is_home ? p.resident : `${p.guest} · ${s.country}`}
                     </p>
                     <p className={`p-display mt-1 text-[clamp(2.8rem,13vw,5rem)] leading-[0.88] transition-colors duration-300 ${open ? "text-accent" : "group-hover:text-bone/80"}`}>{s.city}</p>
                     <p className="p-quote mt-2 text-[1.25rem] text-bone/85">{s.is_home ? s.studio_name : dateRange(s.starts_on, s.ends_on, locale)}</p>
@@ -245,30 +243,8 @@ export function Spots({ data }: { data: ExperienceData }) {
         </ol>
       )}
 
-      {/* Ask me to come: the public names its city; the artist sees where the demand is. */}
-      <section className="relative mx-5 mt-14 overflow-hidden rounded-[22px] border border-line bg-ink-2 p-5" aria-labelledby="your-city">
-        <span aria-hidden className="p-gothic pointer-events-none absolute -top-4 -right-2 text-[7rem] leading-none text-bone/[0.06]">✈</span>
-        <p className="p-gothic text-[1.2rem] text-accent">{p.demandTitle}</p>
-        <h3 id="your-city" className="p-display mt-1 text-[clamp(2.6rem,12vw,4rem)] leading-[0.9]">
-          {p.yourCity}
-        </h3>
-        <p className="mt-3 mb-5 max-w-[44ch] text-[0.95rem] text-bone/80">{p.requestLead}</p>
-        <CityRequest artistId={artist.id} labels={{ city: p.requestCity, email: p.requestEmail, send: p.requestSend }} />
-        {data.demand.length > 0 && (
-          <ol className="mt-6 grid gap-2.5 border-t border-line pt-5">
-            {data.demand.map((x, i) => (
-              <li key={x.city} className="grid grid-cols-[1.6rem_minmax(0,1fr)_auto] items-center gap-3 text-[0.95rem]">
-                <span className="p-gothic text-[1.05rem] text-bone-dim">{String(i + 1).padStart(2, "0")}</span>
-                <span className="relative min-w-0">
-                  <span aria-hidden className="absolute inset-y-0 left-0 rounded-sm bg-[linear-gradient(90deg,rgb(212_168_75/0.55),rgb(212_168_75/0.08))]" style={{ width: `${Math.max(8, (x.n / max) * 100)}%` }} />
-                  <span className="relative block truncate px-2 py-0.5">{x.city}</span>
-                </span>
-                <span className="t-num shrink-0 text-bone-dim">{fill(x.n === 1 ? p.demandOne : p.demandMany, { n: x.n })}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      {stops.length > 0 && !stops.some((s) => !s.is_home) && <p className="mx-5 mt-8 max-w-[44ch] text-[0.95rem] text-bone/80">{p.noGuest}</p>}
+
     </div>
   );
 }

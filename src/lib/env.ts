@@ -29,6 +29,10 @@ export const env = {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
   cronSecret: read("CRON_SECRET"),
+  /** Web push (notifications with the app closed). Local mode makes its own pair in .data. */
+  vapidPublicKey: read("NEXT_PUBLIC_VAPID_PUBLIC_KEY"),
+  vapidPrivateKey: read("VAPID_PRIVATE_KEY"),
+  vapidSubject: read("VAPID_SUBJECT") ?? "mailto:hello@vanta.app",
   /** Comma-separated emails allowed to create an artist page. Empty = open signup. */
   allowedSignups: (read("ALLOWED_SIGNUPS") ?? "")
     .split(",")
@@ -51,6 +55,9 @@ export const DEMO_CLIENT_USER_ID = "00000000-0000-4000-8000-000000000002";
 /** The demo member's address; also the local admin. */
 export const DEMO_EMAIL = "demo@vanta.local";
 export const DEMO_CLIENT_EMAIL = "daniel@example.com";
+/** TATTOO BY SOVA, the first artist account; local mode can sign in as her too. */
+export const SOVA_USER_ID = "00000000-0000-4000-8000-000000000003";
+export const SOVA_EMAIL = "sova@vanta.local";
 
 /** True when anything runs on a local stand-in; the UI labels demo behaviour. */
 export const demoMode = !live.db || !live.auth || !live.payments;

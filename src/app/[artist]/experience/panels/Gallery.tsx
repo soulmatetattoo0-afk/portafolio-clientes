@@ -128,7 +128,7 @@ export function Gallery({ data }: { data: ExperienceData }) {
           </ul>
         </section>
       )}
-      {open !== null && flat[open] && <Lightbox items={flat} index={open} locale={locale} close={t.common.close} piece={p.piece} onChange={setOpen} />}
+      {open !== null && flat[open] && <Lightbox items={flat} index={open} locale={locale} close={t.common.close} piece={p.piece} hint={t.magazine.ph.caption} onChange={setOpen} />}
     </div>
   );
 }
@@ -200,7 +200,7 @@ function Tile({ item, index, locale, healed, label, onOpen }: { item: PortfolioI
   );
 }
 
-function Lightbox({ items, index, locale, close, piece, onChange }: { items: PortfolioItem[]; index: number; locale: "en" | "es"; close: string; piece: string; onChange: (i: number | null) => void }) {
+function Lightbox({ items, index, locale, close, piece, hint, onChange }: { items: PortfolioItem[]; index: number; locale: "en" | "es"; close: string; piece: string; hint: string; onChange: (i: number | null) => void }) {
   const item = items[index];
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -247,7 +247,9 @@ function Lightbox({ items, index, locale, close, piece, onChange }: { items: Por
         )}
       </div>
       <div className="px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-        <p className="p-quote text-[1.6rem] text-bone">{item.title}</p>
+        {item.title && <p className="p-quote text-[1.6rem] text-bone">{item.title}</p>}
+        {/* Until the artist writes about the piece, the line that says what goes here. */}
+        {item.story ? <p className="mt-1 max-w-[60ch] text-[0.95rem] text-bone/85">{item.story}</p> : !item.title && <p className="p-quote text-[1.2rem] text-bone/55">{hint}</p>}
         <p className="mt-1 text-[0.85rem] text-bone-dim">{[styleLabel(item.style, locale), colorLabel(item.color_mode, locale), placement].filter(Boolean).join(" · ")}</p>
       </div>
     </div>

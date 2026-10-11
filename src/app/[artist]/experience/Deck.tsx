@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LangToggle } from "@/components/LangToggle";
+import { VantaHome } from "@/components/brand/VantaHome";
+import { CoverSheet } from "@/components/magazine/Sheet";
 import { SaveButton } from "@/components/world/SaveButton";
 import { fill } from "@/i18n";
 import { dateRange } from "@/lib/format";
 
-import { GalleryFrame, Portrait, ReserveSign, Sketchbook, WorldObject, type ObjectHandle } from "./objects";
-import { pinsOf } from "./pins";
+import { GalleryFrame, Portrait, ReserveSign, Signpost, Sketchbook, type ObjectHandle } from "./objects";
 import { PANELS, type ExperienceData, type PanelId } from "./types";
 
 const N = PANELS.length;
@@ -113,6 +113,7 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
   const photos = data.portfolio.map((p) => p.url).filter((u): u is string => !!u).slice(0, 6);
   const openCount = data.flash.filter((f) => f.status === "available").length;
   const front = a.deck.cards[PANELS[current]];
+  const homeStop = data.stops.find((s) => s.is_home);
 
   const object = (id: PanelId, i: number) => {
     const set = (el: ObjectHandle | null) => {
@@ -120,7 +121,11 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
     };
     switch (id) {
       case "bio":
-        return <Portrait ref={set} src={artist.portrait_url} name={artist.display_name} grey={!artist.cover_poster} />;
+        return (
+          <Portrait ref={set}>
+            <CoverSheet cover={data.magazine.doc.cover} name={artist.display_name} urls={data.magazine.urls} ph={t.magazine.ph} className="h-full" />
+          </Portrait>
+        );
       case "work":
         return <GalleryFrame ref={set} photos={photos} count={data.portfolio.length} />;
       case "flash":
@@ -128,7 +133,15 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
       case "book":
         return <ReserveSign ref={set} label={a.deck.sign.toUpperCase()} />;
       case "spots":
-        return <WorldObject ref={set} pins={pinsOf(data)} />;
+        return (
+          <Signpost
+            ref={set}
+            home={homeStop?.city ?? artist.home_city ?? ""}
+            area={homeStop?.studio_name ?? null}
+            resident={a.panel.spots.resident}
+            guests={Array.from(new Set(data.stops.filter((s) => !s.is_home).map((s) => s.city)))}
+          />
+        );
     }
   };
 
@@ -136,12 +149,9 @@ export function Deck({ data, initial, active, onOpen }: { data: ExperienceData; 
     <div className="p-immerse relative flex h-dvh flex-col overflow-hidden">
       <div className="p-grain" aria-hidden />
       <header className="relative z-10 flex items-center justify-between gap-3 px-5 pt-[max(env(safe-area-inset-top),0.9rem)]">
-        <span className="p-stamp text-bone">{artist.display_name.toUpperCase()}</span>
+        {/* The way home: VANTA itself, with a small hop now and then. */}
+        <VantaHome label={t.artist.backToVanta} />
         <div className="flex items-center gap-1">
-          <Link href={`/explore?from=${artist.slug}`} className="btn btn-ghost btn-sm gap-1.5 text-bone" aria-label={t.explore.title}>
-            <span aria-hidden className="text-[1.1rem] leading-none">⌕</span>
-            <span className="p-stamp">{t.explore.title}</span>
-          </Link>
           <SaveButton
             artistId={artist.id}
             following={data.following}

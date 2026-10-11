@@ -6,6 +6,7 @@ import { getClientUser, safeNext } from "@/lib/client";
 import { live } from "@/lib/env";
 
 import { enterDemoClient } from "./actions";
+import { AccountForm } from "./AccountForm";
 import { SignInForm } from "./SignInForm";
 
 export const metadata = { title: "Sign in", robots: { index: false } };
@@ -28,6 +29,23 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
             {s.invalid}
           </p>
         )}
+        <AccountForm
+          next={next}
+          initial={sp.mode === "enter" ? "enter" : "create"}
+          labels={{
+            create: t.me.account.create,
+            enter: t.me.account.enter,
+            username: t.me.account.username,
+            usernameHint: t.me.account.usernameHint,
+            email: t.me.account.email,
+            password: t.me.account.password,
+            passwordHint: t.me.account.passwordHint,
+            who: t.me.account.who,
+            submitCreate: t.me.account.submitCreate,
+            submitEnter: t.me.account.submitEnter,
+          }}
+        />
+        <p className="p-stamp -mb-3 text-bone-dim">{s.or}</p>
         {live.auth ? (
           <SignInForm next={next} labels={{ email: s.email, send: s.send, google: s.google, apple: s.apple, or: s.or }} />
         ) : (

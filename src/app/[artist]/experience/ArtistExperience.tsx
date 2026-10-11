@@ -97,8 +97,8 @@ export function ArtistExperience({ data }: { data: ExperienceData }) {
         <Deck data={data} initial={last} active={!isPanel(view)} onOpen={open} />
       )}
       {isPanel(view) && (
-        <Panel id={view} data={data} from={from} onBack={back} onGo={go}>
-          {view === "bio" && <Bio data={data} />}
+        <Panel id={view} data={data} from={from} onBack={back} onGo={go} morph={view === "bio"}>
+          {view === "bio" && <Bio data={data} from={from} />}
           {view === "work" && <Gallery data={data} />}
           {view === "flash" && <Flash data={data} />}
           {view === "book" && <Book data={data} onGo={go} />}

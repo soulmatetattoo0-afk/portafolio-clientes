@@ -3,12 +3,14 @@ import Link from "next/link";
 import { getDict } from "@/i18n/server";
 import { demoMode } from "@/lib/env";
 
+import { VantaMark, VantaWord } from "./brand/VantaLogo";
 import { LangToggle } from "./LangToggle";
 
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`t-inscription text-[0.95rem] tracking-[0.3em] text-gilt ${className}`} aria-label="Vanta">
-      VANTA
+    <span className={`inline-flex items-center gap-2 text-gilt ${className}`} aria-label="Vanta">
+      <VantaMark className="h-5 w-auto" />
+      <VantaWord className="h-[0.55rem] w-auto" />
     </span>
   );
 }

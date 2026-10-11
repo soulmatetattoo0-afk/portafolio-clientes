@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import Link from "next/link";
 
 import { askDetails, declineBrief, setBriefStatus, type FormState } from "./actions";
 import { useSubmit } from "@/components/useSubmit";
@@ -30,16 +29,6 @@ export function BriefActions({ briefId, status, labels, templates }: { briefId: 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap gap-2">
-        {!closed && !booked && (
-          <Link href={`/studio/briefs/${briefId}/quote`} className="btn btn-primary">
-            {labels.quote}
-          </Link>
-        )}
-        {!closed && !booked && (
-          <button type="button" className="btn btn-secondary" aria-expanded={open === "ask"} onClick={() => setOpen(open === "ask" ? null : "ask")}>
-            {labels.ask}
-          </button>
-        )}
         {!closed && !booked && (
           <button type="button" className="btn btn-ghost" aria-expanded={open === "decline"} onClick={() => setOpen(open === "decline" ? null : "decline")}>
             {labels.decline}

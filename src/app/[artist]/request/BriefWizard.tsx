@@ -1,5 +1,6 @@
 "use client";
 
+import gsap from "gsap";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -7,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { LangToggle } from "@/components/LangToggle";
 import { Mannequin, type MannequinHandle } from "@/components/Mannequin";
 import { fill, type Dict, type Locale } from "@/i18n";
-import { BUDGETS, COLOR_MODES, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
+import { BUDGETS, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
 import { dateRange, money } from "@/lib/format";
 import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, sizeBand, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
 import type { DesignPlacement } from "@/mannequin/engine";
@@ -15,10 +16,11 @@ import type { DesignPlacement } from "@/mannequin/engine";
 import { signOutClient } from "@/app/me/actions";
 
 import { prepareUploads, submitBrief } from "./actions";
+import { StylePicker } from "./StylePicker";
 
 type Shape = "tall" | "square" | "wide";
-type StepId = "style" | "placement" | "size" | "idea" | "timing" | "contact" | "review";
-const STEPS: StepId[] = ["style", "placement", "size", "idea", "timing", "contact", "review"];
+type StepId = "style" | "placement" | "size" | "idea" | "timing" | "review";
+const STEPS: StepId[] = ["style", "placement", "size", "idea", "timing", "review"];
 const REVIEW_STEP = STEPS.indexOf("review");
 
 interface Draft {
@@ -83,6 +85,8 @@ interface Props {
   t: Dict;
   locale: Locale;
   artist: { slug: string; name: string; styles: string[]; minPriceCents: number | null; currency: string; accent: string | null };
+  /** One of the artist's own pieces per style, to show on the style tiles. */
+  styleImages: Record<string, string>;
   /** A flash design the client picked on the artist's page; the brief starts from it. */
   flash: { id: string; title: string; description: string | null; sizeLabel: string | null; url: string | null } | null;
   stops: { id: string; city: string; studio: string | null; startsOn: string | null; endsOn: string | null; home: boolean }[];
@@ -97,7 +101,6 @@ interface PickedFile {
   preview: string;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_REFS = 8;
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -124,7 +127,7 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
-export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Props) {
+export function BriefWizard({ t, locale, artist, styleImages, stops, storage, flash, me }: Props) {
   const b = t.brief;
   const router = useRouter();
   const draftKey = `brief-draft:${artist.slug}`;
@@ -142,7 +145,13 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
   // Set when the client steps back from the review to change one thing; the next step returns there.
   const [fromReview, setFromReview] = useState(false);
   const viewer = useRef<MannequinHandle>(null);
-  const panelTop = useRef<HTMLDivElement>(null);
+  const figurePane = useRef<HTMLDivElement>(null);
+  const shell = useRef<HTMLElement | null>(null);
+  // One part of the body open at a time, so the list stays short.
+  // null follows the chosen area; "" means the client closed every group.
+  const [openGroup, setOpenGroup] = useState<PlacementGroup | "" | null>(null);
+  const lastStep = useRef<StepId | null>(null);
+  const panelTop = useRef<HTMLElement>(null);
   const uid = useId();
 
   const set = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => setD((prev) => ({ ...prev, [key]: value })), []);
@@ -210,6 +219,17 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
     [],
   );
 
+  // Out of the style screen the figure rises from the dark.
+  useEffect(() => {
+    const was = lastStep.current;
+    lastStep.current = step;
+    if (shell.current) gsap.set(shell.current, { opacity: 1 });
+    if (step !== "placement" || was !== "style" || !figurePane.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    gsap.fromTo(figurePane.current, { opacity: 0, filter: "brightness(0)" }, { opacity: 1, filter: "brightness(1)", duration: 1.3, ease: "power2.out", clearProps: "filter,opacity" });
+    if (shell.current) gsap.fromTo(shell.current, { opacity: 0 }, { opacity: 1, duration: 0.9, delay: 0.25, ease: "power2.out" });
+  }, [step]);
+
   /* ------------------------------------------------------------ validation */
 
   const errors = useMemo(() => {
@@ -220,11 +240,10 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
     if (d.description.trim().length < 10) e.description = b.idea.descriptionShort;
     if (!d.timing) e.timing = b.timing.whenRequired;
     if (d.budget === null) e.budget = b.timing.budgetRequired;
-    if (d.name.trim().length < 2) e.name = b.contact.nameRequired;
-    if (!EMAIL_RE.test(d.email.trim())) e.email = b.contact.emailInvalid;
     if (!d.adult) e.adult = b.contact.adultRequired;
+    if (!me) e.account = b.contact.accountRequired;
     return e;
-  }, [d, b]);
+  }, [d, b, me]);
 
   const fieldsByStep: Record<StepId, string[]> = {
     style: ["style", "color"],
@@ -232,8 +251,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
     size: [],
     idea: ["description"],
     timing: ["timing", "budget"],
-    contact: ["name", "email", "adult"],
-    review: [],
+    review: ["account", "adult"],
   };
   const show = (field: string) => (tried[step] || touched[field] ? errors[field] : undefined);
 
@@ -396,8 +414,9 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
         dates: d.dates,
         budgetMin: bmin,
         budgetMax: bmax,
-        name: d.name,
-        email: d.email,
+        // The account sends it; the server takes the name and email from the session.
+        name: me?.name ?? "",
+        email: me?.email ?? "",
         phone: d.phone,
         instagram: d.instagram,
         adult: true,
@@ -410,7 +429,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
       try {
         localStorage.removeItem(draftKey);
       } catch {}
-      router.push(`/${artist.slug}/request/sent?ref=${encodeURIComponent(result.ref)}`);
+      router.push(`/c/${result.chat}`);
     } catch (e) {
       setSendError(e instanceof Error && e.message ? e.message : b.errors.generic);
       setSending(false);
@@ -422,7 +441,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
   const review = step === "review";
   const figureStep = step === "placement" || step === "size" || review;
   const viewerMode = step === "placement" ? "zone" : step === "size" && !placement?.fullCoverage ? "place" : "view";
-  const figureLabel = `${d.body === "f" ? b.placement.female : b.placement.male} · ${d.height} cm`;
+  const figureLabel = d.body === "f" ? b.placement.female : b.placement.male;
   const chosenStop = stops.find((s) => s.id === (d.stopId ?? stops[0]?.id));
   const budgetLabel =
     d.budget !== null && budgets[d.budget]
@@ -474,7 +493,7 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
           <span>{fill(b.stepOf, { n: d.step + 1, total })}</span>
           <span>{stepNames[step]}</span>
         </p>
-        <ol className="mt-2 grid grid-cols-7 gap-1" aria-hidden>
+        <ol className="mt-2 grid grid-cols-6 gap-1" aria-hidden>
           {STEPS.map((s, i) => (
             <li key={s} className={`h-[3px] rounded-full ${i <= d.step ? "bg-accent" : "bg-line"}`} />
           ))}
@@ -498,9 +517,9 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
         </div>
       )}
 
-      <div className={`mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 ${review ? "pt-6 lg:pt-8" : "pt-4 lg:pt-8"}`}>
+      <div className={`mx-auto grid w-full max-w-6xl flex-1 gap-0 px-4 sm:px-6 ${step === "style" ? "" : "lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]"} lg:gap-12 ${review ? "pt-6 lg:pt-8" : "pt-4 lg:pt-8"}`}>
         {/* The figure: sticky on phones while placing, a still above the brief on review, always beside the form on desktop. */}
-        <div className={`${figureStep && !noWebgl ? "block" : "hidden"} ${review ? "" : "sticky top-0 z-10"} -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
+        <div ref={figurePane} className={`${step === "style" ? "hidden!" : ""} ${figureStep && !noWebgl ? "block" : "hidden"} ${review ? "" : "sticky top-0 z-10"} -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
           <div
             className={`relative overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 ${review ? "h-[58dvh] min-h-[380px] lg:h-[min(72dvh,720px)]" : "h-[46dvh] min-h-[300px] lg:h-[min(80dvh,760px)]"}`}
           >
@@ -516,11 +535,22 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                 design={designMemo}
                 savedPoint={savedPoint}
                 readOnly={review}
+                painMap={step === "placement"}
                 onZoneTap={onZoneTap}
                 onPlace={onPlace}
                 onUnsupported={() => setNoWebgl(true)}
                 label={placement ? placement.label[locale] : b.placement.title}
               />
+            )}
+            {step === "placement" && (
+              <ul className="pointer-events-none absolute top-3 left-3 grid gap-1 rounded-[10px] bg-soot/70 px-2.5 py-2 text-[0.72rem] backdrop-blur" aria-label={b.placement.painLegend}>
+                {PAIN_LEVELS.map((level) => (
+                  <li key={level} className="flex items-center gap-1.5">
+                    <PainDot pain={level} />
+                    {PAIN_LABELS[level][locale]}
+                  </li>
+                ))}
+              </ul>
             )}
             <div className="absolute bottom-3 left-3 flex gap-1.5">
               <button type="button" className="btn btn-secondary btn-sm bg-soot/70 backdrop-blur" onClick={() => viewer.current?.engine?.rotateTo("front")}>
@@ -562,7 +592,12 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
           </div>
         </div>
 
-        <section ref={panelTop} className="min-w-0 scroll-mt-4 pt-4 pb-32 lg:pt-0" aria-labelledby={`${uid}-title`}>
+        <section
+          ref={(el) => {
+            panelTop.current = el;
+            shell.current = el;
+          }}
+          className="min-w-0 scroll-mt-4 pt-4 pb-32 lg:pt-0" aria-labelledby={`${uid}-title`}>
           {restored && d.step > 0 && (
             <p className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-line px-4 py-3 text-[0.9rem] text-ash" role="status">
               {b.draftRestored}
@@ -573,38 +608,36 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
           )}
 
           {step === "style" && (
-            <div className="grid gap-8">
-              <StepHead id={`${uid}-title`} title={b.style.title} lead={b.style.lead} />
-              <fieldset className="grid gap-3">
-                <legend className="t-label mb-3">{fill(b.style.artistStyles, { artist: artist.name })}</legend>
-                <FieldError id={`${uid}-style-err`} message={show("style")} />
-                <div id={`${uid}-style`} tabIndex={-1} role="radiogroup" aria-invalid={Boolean(show("style"))} aria-describedby={`${uid}-style-err`} className="grid gap-2 sm:grid-cols-2">
-                  {[...artist.styles.map((s) => STYLES.find((x) => x.slug === s)).filter(Boolean), ...STYLES.filter((s) => !artist.styles.includes(s.slug))].map((s, i) => (
-                    <button
-                      key={s!.slug}
-                      type="button"
-                      role="radio"
-                      aria-checked={d.style === s!.slug}
-                      onClick={() => set("style", s!.slug)}
-                      className={`chip h-auto flex-col items-start gap-0.5 py-3 text-left ${i === artist.styles.length && artist.styles.length ? "sm:col-start-1" : ""}`}
-                    >
-                      <span className="font-semibold">{s!.label[locale]}</span>
-                      <span className="text-[0.82rem] text-ash">{s!.hint[locale]}</span>
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-              <fieldset className="grid gap-3">
-                <legend className="t-label mb-3">{b.style.colorTitle}</legend>
-                <div id={`${uid}-color`} tabIndex={-1} role="radiogroup" className="flex flex-wrap gap-2" aria-describedby={`${uid}-color-err`}>
-                  {COLOR_MODES.map((c) => (
-                    <button key={c.slug} type="button" role="radio" aria-checked={d.color === c.slug} className="chip" onClick={() => set("color", c.slug)}>
-                      {c.label[locale]}
-                    </button>
-                  ))}
-                </div>
-                <FieldError id={`${uid}-color-err`} message={show("color")} />
-              </fieldset>
+            <div id={`${uid}-title`}>
+              <StylePicker
+                // Only the styles this artist takes requests for; an artist who hasn't chosen yet shows them all.
+                styles={(artist.styles.length ? STYLES.filter((x) => artist.styles.includes(x.slug)) : STYLES.filter((x) => x.slug !== "other")).map((x) => ({
+                  slug: x.slug,
+                  label: x.label[locale],
+                  image: styleImages[x.slug] ?? null,
+                }))}
+                value={d.style}
+                color={d.color}
+                onPick={(slug) => setD((p) => ({ ...p, style: slug }))}
+                onColor={(c) => {
+                  setD((p) => ({ ...p, color: c }));
+                  // The style screen fades out; the figure rises in its place.
+                  const el = shell.current;
+                  const go = () => goTo(fromReview ? REVIEW_STEP : 1);
+                  if (fromReview) setFromReview(false);
+                  if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+                  gsap.to(el, { opacity: 0, duration: 0.45, ease: "power2.in", onComplete: go });
+                }}
+                labels={{
+                  title: b.style.title,
+                  lead: fill(b.style.leadArtist, { artist: artist.name }),
+                  chosen: b.style.chosen,
+                  change: b.style.change,
+                  colorTitle: b.style.colorTitle,
+                  colors: { black_grey: b.style.blackGrey, color: b.style.color, undecided: b.style.undecided },
+                }}
+              />
+              <FieldError id={`${uid}-style-err`} message={show("style") ?? show("color")} />
             </div>
           )}
 
@@ -627,23 +660,6 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                     </button>
                   ))}
                 </div>
-                <label htmlFor={`${uid}-height`} className="t-label">
-                  {b.placement.height}
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id={`${uid}-height`}
-                    type="range"
-                    min={145}
-                    max={205}
-                    value={d.height}
-                    onChange={(e) => setD((p) => ({ ...p, height: Number(e.target.value), point: null, normal: null }))}
-                    className="w-full"
-                  />
-                  <output htmlFor={`${uid}-height`} className="t-num w-16 shrink-0 text-right">
-                    {d.height} cm
-                  </output>
-                </div>
               </div>
               <div>
                 <p className="t-label">{b.placement.chosen}</p>
@@ -658,11 +674,16 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                 )}
                 <FieldError id={`${uid}-placement-err`} message={show("placement")} />
               </div>
-              <PainLegend title={b.placement.painLegend} hint={b.placement.painHint} locale={locale} />
               <div id={`${uid}-placement`} tabIndex={-1} className="border-t border-line">
                 {(Object.keys(GROUP_LABELS) as PlacementGroup[]).map((g) => (
-                  <details key={g} className="group border-b border-line" open={placement?.group === g}>
-                    <summary className="flex cursor-pointer list-none items-center justify-between py-3.5 [&::-webkit-details-marker]:hidden">
+                  <details key={g} className="group border-b border-line" open={(openGroup ?? placement?.group ?? null) === g}>
+                    <summary
+                      className="flex cursor-pointer list-none items-center justify-between py-3.5 [&::-webkit-details-marker]:hidden"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenGroup((cur) => ((cur ?? placement?.group ?? null) === g ? "" : g));
+                      }}
+                    >
                       <span>{GROUP_LABELS[g][locale]}</span>
                       <span aria-hidden className="text-gilt transition-transform group-open:rotate-45">
                         +
@@ -732,6 +753,31 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                       <output htmlFor={`${uid}-rot`} className="t-num w-12 shrink-0 text-right">
                         {d.rotation}°
                       </output>
+                    </div>
+                  </div>
+                  {/* Fine moves, a few millimetres at a time, for the exact spot. */}
+                  <div className="grid gap-2">
+                    <span className="t-label">{b.size.nudge}</span>
+                    <div className="grid w-fit grid-cols-3 gap-1.5" role="group" aria-label={b.size.nudge}>
+                      {(
+                        [
+                          ["up", "↑", "col-start-2", b.size.up],
+                          ["left", "←", "col-start-1 row-start-2", b.size.left],
+                          ["right", "→", "col-start-3 row-start-2", b.size.right],
+                          ["down", "↓", "col-start-2 row-start-3", b.size.down],
+                        ] as const
+                      ).map(([dir, arrow, cls, label]) => (
+                        <button
+                          key={dir}
+                          type="button"
+                          className={`chip h-11 w-11 justify-center p-0 text-[1.1rem] ${cls}`}
+                          aria-label={label}
+                          title={label}
+                          onClick={() => viewer.current?.engine?.nudge(dir)}
+                        >
+                          <span aria-hidden>{arrow}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <p className="text-[0.9rem] text-ash">{b.size.tapToMove}</p>
@@ -846,7 +892,8 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
               {stops.length > 0 && (
                 <fieldset className="grid gap-2">
                   <legend className="t-label mb-2">{b.timing.city}</legend>
-                  {[...stops, null].map((s) => {
+                  {/* "Another city" only makes sense for an artist who travels. */}
+                  {(stops.length > 1 ? [...stops, null] : stops).map((s) => {
                     const value = s ? s.id : "any";
                     const selected = (d.stopId ?? stops[0]?.id) === value;
                     return (
@@ -891,69 +938,6 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                 </div>
                 <FieldError message={show("budget")} />
               </fieldset>
-            </div>
-          )}
-
-          {step === "contact" && (
-            <div className="grid gap-6">
-              <StepHead id={`${uid}-title`} title={fill(b.contact.title, { artist: artist.name })} lead={b.contact.lead} />
-              {me && (
-                <form id={`${uid}-signout`} action={signOutClient} className="hidden">
-                  <input type="hidden" name="next" value={`/${artist.slug}/request`} />
-                </form>
-              )}
-              <Field id={`${uid}-name`} label={b.contact.name} error={show("name")}>
-                <input
-                  id={`${uid}-name`}
-                  className="input"
-                  autoComplete="name"
-                  value={d.name}
-                  maxLength={120}
-                  onChange={(e) => set("name", e.target.value)}
-                  onBlur={() => setTouched((p) => ({ ...p, name: d.name.length > 0 }))}
-                  aria-invalid={Boolean(show("name"))}
-                  aria-describedby={`${uid}-name-err`}
-                />
-              </Field>
-              {me ? (
-                <Field id={`${uid}-email`} label={b.contact.email}>
-                  <input id={`${uid}-email`} className="input opacity-70" type="email" value={me.email} readOnly aria-describedby={`${uid}-email-me`} />
-                  <p id={`${uid}-email-me`} className="mt-2 text-[0.88rem] text-bone-dim">
-                    {b.contact.signedInAs} {me.name ?? me.email}.{" "}
-                    <button type="submit" form={`${uid}-signout`} className="text-bone underline underline-offset-4">
-                      {b.contact.notYou}
-                    </button>
-                  </p>
-                </Field>
-              ) : (
-                <Field id={`${uid}-email`} label={b.contact.email} error={show("email")}>
-                  <input
-                    id={`${uid}-email`}
-                    className="input"
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    value={d.email}
-                    maxLength={200}
-                    onChange={(e) => set("email", e.target.value)}
-                    onBlur={() => setTouched((p) => ({ ...p, email: d.email.length > 0 }))}
-                    aria-invalid={Boolean(show("email"))}
-                    aria-describedby={`${uid}-email-err`}
-                  />
-                </Field>
-              )}
-              <div className="grid gap-6 sm:grid-cols-2">
-                <Field id={`${uid}-phone`} label={b.contact.phone} optional={t.common.optional}>
-                  <input id={`${uid}-phone`} className="input" type="tel" autoComplete="tel" value={d.phone} maxLength={40} onChange={(e) => set("phone", e.target.value)} />
-                </Field>
-                <Field id={`${uid}-instagram`} label={b.contact.instagram} optional={t.common.optional} hint={fill(b.contact.instagramHint, { artist: artist.name })}>
-                  <input id={`${uid}-instagram`} className="input" autoComplete="off" placeholder="@" value={d.instagram} maxLength={60} onChange={(e) => set("instagram", e.target.value)} aria-describedby={`${uid}-instagram-hint`} />
-                </Field>
-              </div>
-              <div>
-                <Check id={`${uid}-adult`} checked={d.adult} onChange={(v) => set("adult", v)} label={b.contact.adult} invalid={Boolean(show("adult"))} />
-                <FieldError message={show("adult")} />
-              </div>
             </div>
           )}
 
@@ -1063,18 +1047,41 @@ export function BriefWizard({ t, locale, artist, stops, storage, flash, me }: Pr
                       </Spec>
                     </div>
                   </ReviewRow>
-                  <ReviewRow label={stepNames.contact} edit={() => editFrom(5)} editLabel={t.common.edit}>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Spec label={b.contact.name}>{d.name.trim()}</Spec>
-                      <Spec label={b.contact.email}>
-                        <span className="break-all">{d.email.trim()}</span>
-                      </Spec>
-                      {d.phone.trim() && <Spec label={b.contact.phone}>{d.phone.trim()}</Spec>}
-                      {d.instagram.trim() && <Spec label={b.contact.instagram}>@{d.instagram.trim().replace(/^@/, "")}</Spec>}
-                    </div>
-                  </ReviewRow>
                 </dl>
               </article>
+            {/* Who sends it: the account. Signed in, only the age is asked; otherwise create one or sign in, the answers wait here. */}
+            <section className="grid gap-4 rounded-[18px] border border-line p-5" aria-labelledby={`${uid}-you`}>
+              {me ? (
+                <>
+                  <form id={`${uid}-signout`} action={signOutClient} className="hidden">
+                    <input type="hidden" name="next" value={`/${artist.slug}/request`} />
+                  </form>
+                  <p id={`${uid}-you`} className="text-[0.92rem] text-bone-dim">
+                    {b.contact.signedInAs} <span className="text-bone">{me.name ?? me.email}</span>.{" "}
+                    <button type="submit" form={`${uid}-signout`} className="text-bone underline underline-offset-4">
+                      {b.contact.notYou}
+                    </button>
+                  </p>
+                  <div>
+                    <Check id={`${uid}-adult`} checked={d.adult} onChange={(v) => set("adult", v)} label={b.contact.adult} invalid={Boolean(show("adult"))} />
+                    <FieldError message={show("adult")} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 id={`${uid}-you`} className="p-display text-[1.6rem]">{b.contact.accountTitle}</h3>
+                  <p className="-mt-2 text-[0.92rem] text-bone-dim">{fill(b.contact.accountLead, { artist: artist.name })}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/me/signin?next=${encodeURIComponent(`/${artist.slug}/request`)}`} className="btn btn-primary">
+                      {b.contact.createAccount}
+                    </Link>
+                    <Link href={`/me/signin?mode=enter&next=${encodeURIComponent(`/${artist.slug}/request`)}`} className="btn btn-secondary">
+                      {b.contact.signIn}
+                    </Link>
+                  </div>
+                </>
+              )}
+            </section>
               <p className="text-[0.88rem] text-ash">{fill(b.review.sendHint, { artist: artist.name })}</p>
               <FieldError message={sendError ?? undefined} />
             </div>

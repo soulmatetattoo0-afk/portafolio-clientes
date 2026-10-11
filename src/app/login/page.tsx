@@ -8,7 +8,7 @@ import { getMember, getSession } from "@/lib/auth";
 import { getClientUser } from "@/lib/client";
 import { live } from "@/lib/env";
 
-import { enterDemo } from "./actions";
+import { enterDemo, enterSova } from "./actions";
 import { LoginForm } from "./LoginForm";
 
 export const metadata = { title: "Sign in", robots: { index: false } };
@@ -17,7 +17,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const session = await getSession();
   if (session) {
     // A signed-in client without a studio of their own belongs in their space, not the onboarding.
-    if (!(await getMember(session)) && (await getClientUser(session))) redirect("/me");
+    if (!(await getMember(session)) && (await getClientUser(session)))
+      redirect("/me");
     redirect("/studio");
   }
   const [{ t, locale }, sp] = await Promise.all([getDict(), searchParams]);
@@ -31,7 +32,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <Link href="/artists" className="py-2">
               <Wordmark />
             </Link>
-            <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
+            <LangToggle
+              locale={locale}
+              label={t.common.language}
+              title={t.common.languageLabel}
+            />
           </div>
           <h1 className="t-title">{l.title}</h1>
           {sp.error === "link" && (
@@ -52,6 +57,14 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
                   {l.demo}
                 </button>
               </form>
+              {/* Sasha's own studio: only on a laptop, never on the shared demo. */}
+              {!process.env.VERCEL && (
+                <form action={enterSova} className="mt-3">
+                  <button type="submit" className="btn btn-secondary w-full">
+                    {l.demoSova}
+                  </button>
+                </form>
+              )}
             </>
           )}
         </div>

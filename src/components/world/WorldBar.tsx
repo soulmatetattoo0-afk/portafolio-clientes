@@ -2,15 +2,16 @@ import Link from "next/link";
 
 import { LangToggle } from "@/components/LangToggle";
 import { getDict } from "@/i18n/server";
-import { BRAND } from "@/lib/brand";
+import { VantaMark, VantaWord } from "@/components/brand/VantaLogo";
 import { getClientUser } from "@/lib/client";
 
 /**
- * The bar every world page shares: the masthead home (or a way back),
- * search, the person's own space (or a way in), and the language. The
+ * The bar every world page shares: the VANTA logo home (or a way back), a
+ * way in when signed out, and the language. Search, chats and the person's
+ * space live in the tab bar at the bottom. The
  * artist's experience and the studio keep their own chrome.
  */
-export async function WorldBar({ back, next, search = true }: { back?: { href: string; label: string } | null; next?: string; search?: boolean } = {}) {
+export async function WorldBar({ back, next }: { back?: { href: string; label: string } | null; next?: string; search?: boolean } = {}) {
   const [{ t, locale }, me] = await Promise.all([getDict(), getClientUser()]);
   const n = t.world.nav;
   return (
@@ -21,22 +22,17 @@ export async function WorldBar({ back, next, search = true }: { back?: { href: s
           <span className="truncate">{back.label.toUpperCase()}</span>
         </Link>
       ) : (
-        <Link href="/" className="p-display flex min-h-11 items-center text-[1.5rem] leading-none text-bone" aria-label={n.home}>
-          {BRAND.name}
+        <Link href="/" className="flex min-h-11 items-center gap-2.5 text-bone" aria-label={n.home}>
+          <VantaMark className="h-7 w-auto" />
+          <VantaWord className="h-[0.62rem] w-auto" />
         </Link>
       )}
       <nav className="flex items-center" aria-label={n.home}>
-        {search && (
-          <Link href="/explore" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-bone hover:bg-ink-2" aria-label={n.search} title={n.search}>
-            <svg aria-hidden viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <circle cx="8.5" cy="8.5" r="5.5" />
-              <path d="m13 13 4.5 4.5" />
-            </svg>
+        {!me && (
+          <Link href={`/me/signin${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="p-stamp inline-flex min-h-11 items-center px-2 text-bone">
+            {n.signIn}
           </Link>
         )}
-        <Link href={me ? "/me" : `/me/signin${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="p-stamp inline-flex min-h-11 items-center px-2 text-bone">
-          {me ? (me.name?.split(" ")[0] ?? n.me) : n.signIn}
-        </Link>
         <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
       </nav>
     </header>

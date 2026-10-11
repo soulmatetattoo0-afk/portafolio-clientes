@@ -1,8 +1,9 @@
-import type { Locale } from "@/i18n";
+import { dict, fill, type Locale } from "@/i18n";
 
 import type { Db } from "./db";
 import { enqueueEmail } from "./email";
 import { bookedToArtist, bookedToClient, reminderToClient, type BookingInfo } from "./messages";
+import { notify } from "./push";
 
 export class SlotTakenError extends Error {
   constructor() {
@@ -123,12 +124,14 @@ async function queueBookingEmails(db: Db, appointmentId: string) {
     amount_cents: number;
     currency: string;
     token: string;
+    client_user: string | null;
+    chat_token: string | null;
   }>(
     `select ap.studio_id, ap.brief_id, ap.starts_at, ap.timezone, ap.city, t.studio_name, t.address,
             ar.display_name as artist, c.name as client, c.email as client_email, c.locale as client_locale,
             (select m.email from members m where m.studio_id = ap.studio_id order by (m.role = 'owner') desc limit 1) as artist_email,
             (select m.locale from members m where m.studio_id = ap.studio_id order by (m.role = 'owner') desc limit 1) as artist_locale,
-            p.amount_cents, p.currency, q.token
+            p.amount_cents, p.currency, q.token, c.user_id as client_user, (select chat_token from briefs where id = ap.brief_id) as chat_token
        from appointments ap
        join artists ar on ar.id = ap.artist_id
        join clients c on c.id = ap.client_id
@@ -156,6 +159,11 @@ async function queueBookingEmails(db: Db, appointmentId: string) {
   if (r.artist_email) {
     await enqueueEmail(db, bookedToArtist(r.artist_email, info, r.brief_id, r.artist_locale ?? "en"), { studioId: r.studio_id, template: "booked_artist", dedupeKey: `booked-artist:${appointmentId}` });
   }
+  // Both sides hear it on their phones.
+  const members = await db.query<{ user_id: string }>(`select user_id from members where studio_id = $1`, [r.studio_id]);
+  const when = info.startsAt.toISOString().slice(0, 10);
+  await notify([r.client_user], { title: fill(dict(r.client_locale).push.booked, { name: r.artist }), body: when, url: r.chat_token ? `/c/${r.chat_token}` : "/me/appointments", tag: `booked:${appointmentId}` });
+  await notify(members.map((m) => m.user_id), { title: fill(dict(r.artist_locale ?? "en").push.booked, { name: r.client }), body: when, url: "/studio/agenda", tag: `booked:${appointmentId}` });
   for (const days of [3, 1] as const) {
     const at = new Date(info.startsAt.getTime() - days * 24 * 3600 * 1000);
     if (at.getTime() > Date.now()) {

@@ -28,6 +28,7 @@ import {
   SRGBColorSpace,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
   type BufferGeometry as BG,
   type Intersection,
@@ -106,6 +107,11 @@ uniform vec2 uDesignHalf;
 uniform float uDesignDepth;
 uniform float uDesignMask[${MAX_ZONES}];
 uniform vec3 uAccent;
+uniform float uPainMap;
+uniform sampler2D uInkFront;
+uniform sampler2D uInkBack;
+uniform vec4 uInkBox;
+uniform float uInkOn;
 varying float vZone;
 varying float vEdge;
 flat varying float vOther;
@@ -119,14 +125,25 @@ float wNoise(vec3 p) {
   float b = mix(mix(wHash(i + vec3(0,0,1)), wHash(i + vec3(1,0,1)), f.x), mix(wHash(i + vec3(0,1,1)), wHash(i + vec3(1,1,1)), f.x), f.y);
   return mix(a, b, f.z);
 }
-// Cast wax: ivory with a warm bone drift over a hand's width, and a fine
-// even grain like a matte surface, never lines.
+// Glazed porcelain: a cool white with the faintest drift where the glaze
+// pooled, and no grain: the glaze is glass.
 vec3 wax(vec3 p) {
-  float drift = wNoise(p * 7.0) * 0.6 + wNoise(p * 19.0) * 0.4;
-  float fine = (wNoise(p * 260.0) - 0.5) * 0.045 + (wNoise(p * 90.0) - 0.5) * 0.03;
-  vec3 ivory = vec3(0.955, 0.915, 0.835);
-  vec3 bone = vec3(0.90, 0.835, 0.72);
-  return mix(ivory, bone, drift * 0.8) + fine;
+  float drift = wNoise(p * 6.0) * 0.6 + wNoise(p * 17.0) * 0.4;
+  vec3 glaze = vec3(0.985, 0.985, 0.99);
+  vec3 pool = vec3(0.93, 0.945, 0.97);
+  return mix(glaze, pool, drift * 0.55);
+}
+// The flash painted on the porcelain: a front sheet and a back sheet seen
+// straight on, faded out where the surface turns sideways to them.
+float ink(vec3 p, vec3 n) {
+  if (uInkOn < 0.5) return 0.0;
+  float u = (p.x - uInkBox.x) / (uInkBox.y - uInkBox.x);
+  float v = (uInkBox.w - p.y) / (uInkBox.w - uInkBox.z);
+  vec4 f = texture2D(uInkFront, vec2(u, v));
+  vec4 b = texture2D(uInkBack, vec2(1.0 - u, v));
+  float inkF = f.a * (1.0 - dot(f.rgb, vec3(0.3333)));
+  float inkB = b.a * (1.0 - dot(b.rgb, vec3(0.3333)));
+  return inkF * smoothstep(0.12, 0.45, n.z) + inkB * smoothstep(0.12, 0.45, -n.z);
 }
 `;
 
@@ -237,12 +254,16 @@ function makeMatcap(): CanvasTexture {
       const fresnel = Math.pow(1 - n.z, 2.0);
       const rim = Math.max(n.dot(back) * 0.5 + 0.5, 0) * fresnel * 0.55; // light through the edge of the wax
       const sheen = Math.pow(Math.max(n.dot(half), 0), 9) * 0.2; // satin, wide and faint
-      const shade = 0.2 + diffuse * 0.8;
-      // Shadows go warm and a little rosy (light scattered inside the wax), the light stays neutral.
-      const warmth = 1 - diffuse;
-      const r = shade + warmFill * 1.08 + rim * 1.0 + sheen;
-      const g = shade * (1 - 0.06 * warmth) + warmFill * 0.94 + rim * 0.82 + sheen;
-      const b = shade * (1 - 0.16 * warmth) + warmFill * 0.76 + rim * 0.6 + sheen;
+      const shade = 0.26 + diffuse * 0.74;
+      // Glazed porcelain: cool, clean shadows, a hard window highlight from the key
+      // and a second small one from the fill, the way a glaze mirrors a studio.
+      const gloss = Math.pow(Math.max(n.dot(half), 0), 70) * 0.95;
+      const half2 = new Vector3().copy(fill).add(new Vector3(0, 0, 1)).normalize();
+      const gloss2 = Math.pow(Math.max(n.dot(half2), 0), 120) * 0.45;
+      const cool = 1 - diffuse;
+      const r = shade * (1 - 0.05 * cool) + warmFill * 0.5 + rim * 0.8 + sheen + gloss + gloss2;
+      const g = shade * (1 - 0.03 * cool) + warmFill * 0.5 + rim * 0.85 + sheen + gloss + gloss2;
+      const b = shade + warmFill * 0.55 + rim * 0.95 + sheen + gloss + gloss2;
       img.data[i] = Math.min(255, r * 255);
       img.data[i + 1] = Math.min(255, g * 255);
       img.data[i + 2] = Math.min(255, b * 255);
@@ -293,6 +314,7 @@ export class MannequinEngine {
   private designMask = new Float32Array(MAX_ZONES);
   private hoverZone = 0;
   private mode: ViewerMode = "view";
+  private painMap = false;
   private placement: string | null = null;
   private design = { point: null as Vector3 | null, normal: null as Vector3 | null, widthCm: 10, heightCm: 10, rotationDeg: 0 };
   /** Tangent frame of the design in figure space, kept for hit tests. */
@@ -303,6 +325,7 @@ export class MannequinEngine {
   private pointers = new Map<number, { x: number; y: number }>();
   private gesture: Gesture | null = null;
   private downAt: { x: number; y: number; t: number } | null = null;
+  private holdTimer = 0;
   private frameId = 0;
   private dirty = true;
   private flight: { from: [Vector3, Vector3]; to: [Vector3, Vector3]; start: number; dur: number } | null = null;
@@ -313,6 +336,14 @@ export class MannequinEngine {
   private io: IntersectionObserver;
   private loader: GLTFLoader;
   private cache = new Map<BodyType, BG>();
+  /** The painted flash per body: front and back sheets, drawn once from their SVGs. */
+  private inkCache = new Map<BodyType, Promise<{ front: CanvasTexture; back: CanvasTexture } | null>>();
+  private ink: { front: CanvasTexture | null; back: CanvasTexture | null; box: Vector4 } = { front: null, back: null, box: new Vector4(-1, 1, -1, 1) };
+  private inkBlank = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 1;
+    return new CanvasTexture(c);
+  })();
   private startTime = performance.now();
   private accent: string;
 
@@ -352,6 +383,11 @@ export class MannequinEngine {
       shader.uniforms.uDesignDepth = { value: 0.05 };
       shader.uniforms.uDesignMask = { value: this.designMask };
       shader.uniforms.uAccent = { value: srgb(this.accent) };
+      shader.uniforms.uPainMap = { value: this.painMap ? 1 : 0 };
+      shader.uniforms.uInkFront = { value: this.ink.front ?? this.inkBlank };
+      shader.uniforms.uInkBack = { value: this.ink.back ?? this.inkBlank };
+      shader.uniforms.uInkBox = { value: this.ink.box };
+      shader.uniforms.uInkOn = { value: this.ink.front ? 1 : 0 };
       this.uniforms = shader.uniforms;
       this.syncDesignUniforms();
       shader.vertexShader =
@@ -376,18 +412,35 @@ export class MannequinEngine {
   float sel = step(1.5, st) * step(st, 2.5);
   float dim = step(2.5, st) * step(st, 3.5);
   float area = step(3.5, st);
-  float pulse = 0.86 + 0.14 * sin(uTime * 2.2);
+  // Zones nobody has touched show their usual pain as a quiet wash when the pain map is on.
+  float idle = (1.0 - step(0.5, st)) * uPainMap;
   // Zone borders are feathered: the tint eases in over the first centimetres
   // from a border, but only where the zone across it is drawn differently, so
   // two dimmed zones never show a seam.
   float feather = smoothstep(0.0, 1.0, vEdge);
   float wash = mix(0.12 + 0.88 * feather, 1.0, step(abs(st - so), 0.5));
-  // Cast wax: the matcap carries the light, the wax function the colour.
-  gl_FragColor.rgb = wax(vObj) * gl_FragColor.rgb * 1.12;
+  // Porcelain: the matcap carries the light and the glaze's highlights, the glaze function the colour.
+  gl_FragColor.rgb = wax(vObj) * gl_FragColor.rgb * 1.08;
   float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+  // Cobalt under the glaze: the ink takes the light like the porcelain around it.
+  // The chosen area shows no painting: it reads clean, the selection over everything.
+  float inked = ink(vObj, normalize(vNrm)) * (1.0 - sel) * (1.0 - area);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.10, 0.22, 0.52) * (0.55 + lum * 0.55), inked * 0.95);
   // The pain colour is laid on like paint: it keeps the wax's shading.
   vec3 paint = zc * (0.5 + lum * 0.62);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, (hover * 0.45 + sel * 0.84 * pulse + area * 0.4) * wash);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, (hover * 0.5 + area * 0.4 + idle * 0.24) * wash);
+  // The selection reads like a laser scan: the whole area filled edge to edge,
+  // a bright rim along its border, fine scan lines and a band that sweeps up it.
+  if (sel > 0.5) {
+    float rim = (1.0 - feather) * step(0.5, abs(st - so));
+    float lines = smoothstep(0.55, 1.0, sin(vObj.y * 900.0)) * 0.22;
+    float band = exp(-pow((fract(vObj.y * 1.4 - uTime * 0.45) - 0.5) * 9.0, 2.0)) * 0.55;
+    // the grid and the scan take the area's pain colour
+    vec3 laser = min(zc * 1.35 + 0.08, vec3(1.0));
+    float grid = smoothstep(0.82, 1.0, sin(vObj.x * 520.0)) * 0.5 + smoothstep(0.82, 1.0, sin(vObj.y * 520.0)) * 0.5;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, 0.42);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, laser, clamp(grid * 0.75 + lines + band * 0.55 + rim * 0.9, 0.0, 1.0));
+  }
   gl_FragColor.rgb *= 1.0 - dim * 0.38 * wash;
   // The design footprint: a feathered ink patch projected onto the skin,
   // outlined in the accent. Only skin facing the patch and within its depth
@@ -483,6 +536,58 @@ export class MannequinEngine {
       this.clearDesign();
     }
     this.frameAll(false);
+  }
+
+  private loadInk(body: BodyType) {
+    let pending = this.inkCache.get(body);
+    if (!pending) {
+      const sheet = async (side: "front" | "back") => {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = `${this.opts.assetBase}/ink-${body}-${side}.svg`;
+        await img.decode();
+        const canvas = document.createElement("canvas");
+        const w = 1536;
+        canvas.width = w;
+        canvas.height = Math.round((w * img.naturalHeight) / img.naturalWidth);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const tex = new CanvasTexture(canvas);
+        tex.flipY = false;
+        tex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+        return tex;
+      };
+      pending = Promise.all([sheet("front"), sheet("back")])
+        .then(([front, back]) => ({ front, back }))
+        .catch(() => null);
+      this.inkCache.set(body, pending);
+    }
+    return pending;
+  }
+
+  /** Lay the body's painted sheets over it, framed on its own bounding box. */
+  private async applyInk(body: BodyType, geometry: BG) {
+    const ink = await this.loadInk(body);
+    if (this.disposed || this.bodyType !== body) return;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    const bb = geometry.boundingBox!;
+    // Kept on the engine too: the shader may compile after the sheets arrive.
+    this.ink.front = ink?.front ?? null;
+    this.ink.back = ink?.back ?? null;
+    this.ink.box.set(bb.min.x, bb.max.x, bb.min.y, bb.max.y);
+    const u = this.uniforms;
+    if (u) {
+      u.uInkFront.value = this.ink.front ?? this.inkBlank;
+      u.uInkBack.value = this.ink.back ?? this.inkBlank;
+      u.uInkOn.value = this.ink.front ? 1 : 0;
+    }
+    this.invalidate();
+  }
+
+  /** Show every zone's usual pain while the client chooses. */
+  setPainMap(on: boolean) {
+    this.painMap = on;
+    if (this.uniforms) this.uniforms.uPainMap.value = on ? 1 : 0;
+    this.invalidate();
   }
 
   setMode(mode: ViewerMode) {
@@ -665,6 +770,31 @@ export class MannequinEngine {
     this.refreshZoneState();
   }
 
+  /**
+   * Move the design a step across the skin, in the direction it looks to go on
+   * screen: up and down follow the camera's up, left and right its right,
+   * both laid flat on the skin under the patch. It never leaves the area.
+   */
+  nudge(dir: "up" | "down" | "left" | "right", cm = 0.5) {
+    if (!this.body || !this.design.point || !this.design.normal) return;
+    const n = this.design.normal;
+    const cam = new Vector3();
+    if (dir === "up" || dir === "down") cam.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    else cam.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    if (dir === "down" || dir === "left") cam.negate();
+    // Figure space only scales the world, so a direction carries over as is; then flatten it onto the skin.
+    const along = cam.addScaledVector(n, -cam.dot(n));
+    if (along.lengthSq() < 1e-8) return;
+    along.normalize();
+    const step = cm / 100 / this.root.scale.x;
+    const settled = this.settle(this.design.point.clone().addScaledVector(along, step), n);
+    if (!settled || !this.zoneAllowed(settled.zone)) return;
+    this.design.point = settled.point;
+    this.design.normal.lerp(settled.normal, 0.6).normalize();
+    this.updateDesign();
+    this.opts.onPlace?.(this.getPlacement());
+  }
+
   getPlacement(): DesignPlacement {
     const round = (v: Vector3 | null, k: number) => (v ? (v.toArray().map((n) => Math.round(n * k) / k) as [number, number, number]) : null);
     return {
@@ -749,6 +879,7 @@ export class MannequinEngine {
       if (this.body) this.root.remove(this.body);
       this.body = new Mesh(geometry, this.material);
       this.root.add(this.body);
+      void this.applyInk(body, geometry);
       this.applyScale();
       this.refreshZoneState();
       if (first) {
@@ -780,15 +911,26 @@ export class MannequinEngine {
     if (this.pointers.size === 1) {
       const hit = this.pick(e);
       if (hit && this.onPatch(hit)) {
-        // Grab the patch: the orbit never starts.
-        e.stopImmediatePropagation();
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {}
-        this.gesture = { kind: "drag", ids: [e.pointerId], last: this.toFigure(hit.point), moved: false };
-        el.style.cursor = "grabbing";
+        // One finger turns the figure, even over the patch. Holding still on the
+        // patch for a moment picks it up instead, and only then the orbit stops.
+        const id = e.pointerId;
+        const start = { x: e.clientX, y: e.clientY };
+        const point = this.toFigure(hit.point);
+        clearTimeout(this.holdTimer);
+        this.holdTimer = window.setTimeout(() => {
+          const now = this.pointers.get(id);
+          if (!now || this.pointers.size !== 1 || Math.hypot(now.x - start.x, now.y - start.y) > 8) return;
+          this.controls.enabled = false;
+          try {
+            el.setPointerCapture(id);
+          } catch {}
+          this.gesture = { kind: "drag", ids: [id], last: point, moved: false };
+          el.style.cursor = "grabbing";
+          this.downAt = null;
+        }, 260);
       }
     } else if (this.pointers.size === 2) {
+      clearTimeout(this.holdTimer);
       // A second finger: pinch to scale, turn to rotate. Freeze the orbit for
       // as long as any finger stays down.
       e.stopImmediatePropagation();
@@ -841,6 +983,7 @@ export class MannequinEngine {
 
   private onPointerUp = (e: PointerEvent) => {
     this.pointers.delete(e.pointerId);
+    clearTimeout(this.holdTimer);
     const g = this.gesture;
     if (g && g.ids.includes(e.pointerId)) {
       // A pinch ends when either finger lifts; the remaining finger does not

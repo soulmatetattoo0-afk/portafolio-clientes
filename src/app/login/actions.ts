@@ -6,7 +6,7 @@ import { z } from "zod";
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { setDevSession, signOut, supabaseServer } from "@/lib/auth";
-import { DEMO_EMAIL, DEMO_USER_ID, env, live } from "@/lib/env";
+import { DEMO_EMAIL, DEMO_USER_ID, env, live, SOVA_EMAIL, SOVA_USER_ID } from "@/lib/env";
 import { allow } from "@/lib/ratelimit";
 
 export interface LoginState {
@@ -34,6 +34,13 @@ export async function enterDemo() {
   if (live.auth) redirect("/login");
   await setDevSession(DEMO_USER_ID, DEMO_EMAIL);
   redirect("/studio");
+}
+
+/** Local mode only: sign in as TATTOO BY SOVA. */
+export async function enterSova() {
+  if (live.auth || process.env.VERCEL) redirect("/login");
+  await setDevSession(SOVA_USER_ID, SOVA_EMAIL);
+  redirect("/studio/magazine");
 }
 
 export async function logout() {

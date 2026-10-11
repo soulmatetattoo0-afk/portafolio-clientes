@@ -45,12 +45,16 @@ export function newBriefToArtist(a: { to: string; artist: string; client: string
   };
 }
 
-export function briefReceivedToClient(a: { to: string; artist: string; client: string; brief: BriefSummary; locale: Locale }): Email {
+export function briefReceivedToClient(a: { to: string; artist: string; client: string; brief: BriefSummary; locale: Locale; chatToken?: string }): Email {
   const t = dict(a.locale).email.briefReceived;
+  const chat = dict(a.locale).chat.email;
   return {
     to: a.to,
     subject: fill(t.subject, { artist: a.artist, ref: a.brief.ref }),
-    blocks: [{ paragraphs: [fill(t.intro, { name: a.client.split(" ")[0], artist: a.artist })] }, { heading: t.summary, rows: briefRows(a.brief, a.locale) }],
+    blocks: [
+      { paragraphs: [fill(t.intro, { name: a.client.split(" ")[0], artist: a.artist })], cta: a.chatToken ? { label: chat.open, href: `${env.appUrl}/c/${a.chatToken}` } : undefined },
+      { heading: t.summary, rows: briefRows(a.brief, a.locale) },
+    ],
     footer: footer(a.artist, a.locale),
   };
 }
@@ -213,6 +217,30 @@ export function newWorkToFollower(to: string, a: FollowerArtist): Email {
     to,
     subject: fill(t.subject, { artist: a.artist }),
     blocks: [{ paragraphs: [fill(t.intro, { artist: a.artist })], cta: { label: t.cta, href: `${env.appUrl}/${a.slug}#work` } }],
+    footer: footer(a.artist, a.locale),
+  };
+}
+
+/* ------------------------------------------------------------------ chat */
+
+/** A new message from the client, for the artist: the words and the way back to the conversation. */
+export function chatToArtist(a: { to: string; client: string; artist: string; message: string; briefId: string; locale: Locale }): Email {
+  const t = dict(a.locale).chat.email;
+  return {
+    to: a.to,
+    subject: fill(t.toArtistSubject, { name: a.client }),
+    blocks: [{ paragraphs: [a.message], cta: { label: t.open, href: `${env.appUrl}/studio?brief=${a.briefId}` } }],
+    footer: footer(a.artist, a.locale),
+  };
+}
+
+/** A new message or offer from the artist, for the client: the link into their conversation. */
+export function chatToClient(a: { to: string; artist: string; message: string; chatToken: string; locale: Locale; offer?: boolean }): Email {
+  const t = dict(a.locale).chat.email;
+  return {
+    to: a.to,
+    subject: fill(a.offer ? t.offerSubject : t.toClientSubject, { artist: a.artist }),
+    blocks: [{ paragraphs: [a.message].filter(Boolean), cta: { label: t.open, href: `${env.appUrl}/c/${a.chatToken}` } }],
     footer: footer(a.artist, a.locale),
   };
 }

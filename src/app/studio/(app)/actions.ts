@@ -17,8 +17,10 @@ import { zonedToUtc } from "@/lib/format";
 import { placeCity } from "@/lib/geo";
 import { messageToClient, quoteToClient, waitlistOpen } from "@/lib/messages";
 import { accountReady, connectLink } from "@/lib/payments";
-import { can } from "@/lib/plan";
-import { removeFile } from "@/lib/storage";
+import { can, isFull, lockedSql } from "@/lib/plan";
+import { notify } from "@/lib/push";
+import { clampBox, DocSchema, keysOf } from "@/lib/magazine";
+import { fileUrl, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, removeFile, VIDEO_TYPES } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, readDraftToken } from "@/lib/uploads";
 import { token } from "@/lib/util";
 
@@ -617,4 +619,190 @@ export async function calendarFeedUrl() {
   const member = await requireMember();
   const { sign } = await import("@/lib/util");
   return `${env.appUrl}/api/calendar/${member.studioId}.${sign(`cal:${member.studioId}`)}.ics`;
+}
+
+/* ------------------------------------------------------------------ magazine */
+
+/** Upload targets for the magazine's frames: photos up to 10 MB, videos up to 60 MB. */
+export async function prepareMagazineUploads(files: { type: string; size: number }[]) {
+  await requireMember();
+  const photo = ["image/jpeg", "image/png", "image/webp"];
+  const video = Object.keys(VIDEO_TYPES);
+  const ok =
+    files.length > 0 &&
+    files.length <= 10 &&
+    files.every((f) => f.size > 0 && ((photo.includes(f.type) && f.size <= MAX_IMAGE_BYTES) || (video.includes(f.type) && f.size <= MAX_VIDEO_BYTES)));
+  if (!ok) return null;
+  return createUploadTargets(files.map((f) => ({ kind: "media" as const, type: f.type, size: f.size })));
+}
+
+/** Move uploaded magazine media into the public bucket; returns each new key with the URL to show it. */
+export async function addMagazineMedia(uploadToken: string, keys: string[]): Promise<{ key: string; url: string }[]> {
+  const member = await requireMember();
+  const draftId = readDraftToken(uploadToken);
+  if (!draftId) return [];
+  const { moveDraftToPublic } = await import("@/lib/storage-move");
+  const out: { key: string; url: string }[] = [];
+  for (const key of keys.slice(0, 10)) {
+    if (!(await inspectUpload(draftId, key, { video: true }))) continue;
+    const publicKey = await moveDraftToPublic(key, `magazine/${member.artistId}`);
+    out.push({ key: publicKey, url: await fileUrl("public", publicKey) });
+  }
+  return out;
+}
+
+/**
+ * Save the artist's magazine. Every box is pulled back inside the printable
+ * area, and every file it shows must be the artist's own: their uploads,
+ * their portfolio, their cover photo.
+ */
+export async function saveMagazine(input: unknown): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  const t = dict(await getLocale());
+  if (!can(member.plan, "magazine")) return { error: t.studio.plan.locked };
+  const parsed = DocSchema.safeParse(input);
+  if (!parsed.success) return { error: t.magazine.editor.error };
+  const doc = parsed.data;
+  doc.cover.boxes = doc.cover.boxes.map((b) => clampBox(b, true));
+  doc.pages = doc.pages.map((p) => ({ ...p, boxes: p.boxes.map((b) => clampBox(b)) }));
+  const db = await getDb();
+  const own = await db.query<{ k: string }>(
+    `select image_path as k from portfolio_items where artist_id = $1 and image_path is not null
+     union select portrait_path from artists where id = $1 and portrait_path is not null`,
+    [member.artistId],
+  );
+  const mine = new Set(own.map((r) => r.k));
+  // Files the saved magazine already shows stay allowed (the starter layout places photos outside the portfolio too).
+  const saved = await db.one<{ magazine: unknown }>(`select magazine from artists where id = $1`, [member.artistId]);
+  const before = saved?.magazine ? DocSchema.safeParse(typeof saved.magazine === "string" ? JSON.parse(saved.magazine) : saved.magazine) : null;
+  if (before?.success) keysOf(before.data).forEach((k) => mine.add(k));
+  const prefixes = [`magazine/${member.artistId}/`, `portfolio/${member.artistId}/`, `portrait/${member.artistId}/`];
+  if (!keysOf(doc).every((k) => mine.has(k) || (prefixes.some((p) => k.startsWith(p)) && !k.includes("..")))) return { error: t.magazine.editor.error };
+  const row = await db.one<{ slug: string }>(`update artists set magazine = $3::jsonb where id = $1 and studio_id = $2 returning slug`, [member.artistId, member.studioId, JSON.stringify(doc)]);
+  if (row) revalidatePath(`/${row.slug}`);
+  revalidatePath("/studio/magazine");
+}
+
+/** Throw the layout away; the next open builds the starter magazine from the portfolio again. */
+export async function resetMagazine() {
+  const member = await requireMember();
+  const db = await getDb();
+  const row = await db.one<{ slug: string }>(`update artists set magazine = null where id = $1 and studio_id = $2 returning slug`, [member.artistId, member.studioId]);
+  if (row) revalidatePath(`/${row.slug}`);
+  revalidatePath("/studio/magazine");
+}
+
+/* ------------------------------------------------------------------ chat */
+
+async function chatBrief(member: Member, briefId: string) {
+  const db = await getDb();
+  const brief = await db.one<{ id: string; status: string; chat_token: string; client_email: string; client_locale: "en" | "es"; client_user: string | null; artist_name: string; currency: string }>(
+    `select b.id, b.status, b.chat_token, c.email as client_email, c.locale as client_locale, c.user_id as client_user, a.display_name as artist_name, a.currency
+       from briefs b join clients c on c.id = b.client_id join artists a on a.id = b.artist_id
+      where b.id = $1 and b.studio_id = $2`,
+    [briefId, member.studioId],
+  );
+  // A basic studio past its daily allowance can't answer a locked request.
+  const locked = brief && !isFull(member.plan) ? await db.one(`${lockedSql("$1")} and b.id = $2`, [member.studioId, briefId]) : null;
+  return { db, brief: locked ? null : brief };
+}
+
+/** The artist writes in the conversation; the client hears by email, with the link back in. */
+export async function sendArtistMessage(briefId: string, text: string): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  const t = dict(await getLocale());
+  const body = z.string().trim().min(1).max(3000).safeParse(text);
+  if (!body.success) return { error: t.common.error };
+  const { db, brief } = await chatBrief(member, briefId);
+  if (!brief || brief.status === "archived") return { error: t.common.error };
+  await db.tx(async (tx) => {
+    await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor, body) values ($1, $2, 'message', 'artist', $3)`, [member.studioId, briefId, body.data]);
+    await tx.query(`update briefs set artist_read_at = now(), seen_at = coalesce(seen_at, now()), updated_at = now() where id = $1`, [briefId]);
+  });
+  // The client hears in the app: a notification on their phone, the chat badge and the "New" mark.
+  after(() => notify([brief.client_user], { title: brief.artist_name, body: body.data, url: `/c/${brief.chat_token}`, tag: `chat:${briefId}` }));
+  revalidatePath("/studio", "layout");
+}
+
+const Offer = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().regex(/^\d{2}:\d{2}$/),
+  hours: z.coerce.number().positive().max(14),
+  stopId: z.string().uuid(),
+  price: z.coerce.number().positive().max(100000),
+  deposit: z.coerce.number().positive().max(100000),
+  message: z.string().trim().max(1000),
+});
+
+/**
+ * Offer the client a date: the agreed day and hour, the estimate, and the
+ * first payment the artist asks to hold it. It lands in the conversation as a
+ * card the client can take; once paid it is in both calendars.
+ */
+export async function offerReservation(briefId: string, input: z.input<typeof Offer>): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  const t = dict(await getLocale());
+  const f = t.chat.offerForm;
+  const parsed = Offer.safeParse(input);
+  if (!parsed.success) return { error: f.invalid };
+  const o = parsed.data;
+  if (o.deposit > o.price) return { error: f.depositTooHigh };
+  const { db, brief } = await chatBrief(member, briefId);
+  if (!brief || ["booked", "declined", "archived"].includes(brief.status)) return { error: t.common.error };
+  const stop = await db.one<{ id: string; timezone: string }>(`select id, timezone from tour_stops where id = $1 and artist_id = $2`, [o.stopId, member.artistId]);
+  if (!stop) return { error: t.common.error };
+  const start = zonedToUtc(o.date, o.time, stop.timezone);
+  if (start.getTime() < Date.now()) return { error: f.past };
+  const end = new Date(start.getTime() + o.hours * 3600_000);
+  const off = await db.one(`select 1 from days_off where artist_id = $1 and day = $2::date`, [member.artistId, o.date]);
+  if (off) return { error: f.dayOff };
+  const clash = await db.one(
+    `select 1 from appointments where artist_id = $1 and status = 'confirmed' and tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz)`,
+    [member.artistId, start.toISOString(), end.toISOString()],
+  );
+  if (clash) return { error: f.taken };
+
+  const artist = await db.one<{ deposit_policy: unknown }>(`select deposit_policy from artists where id = $1`, [member.artistId]);
+  const cents = (n: number) => Math.round(n * 100);
+  const quoteToken = token();
+  await db.tx(async (tx) => {
+    // A new offer replaces any open one in the same conversation.
+    await tx.query(`update quotes set status = 'withdrawn' where brief_id = $1 and status in ('sent', 'viewed')`, [briefId]);
+    const row = await tx.one<{ id: string }>(
+      `insert into quotes (studio_id, brief_id, artist_id, token, price_min_cents, sessions, hours_per_session, deposit_cents, currency, message, policy, expires_at)
+       values ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11) returning id`,
+      [member.studioId, briefId, member.artistId, quoteToken, cents(o.price), o.hours, cents(o.deposit), brief.currency, o.message || null, JSON.stringify(artist!.deposit_policy), new Date(Math.min(start.getTime(), Date.now() + 7 * 86400_000)).toISOString()],
+    );
+    await tx.query(`insert into quote_slots (studio_id, quote_id, starts_at, ends_at, timezone, tour_stop_id) values ($1, $2, $3, $4, $5, $6)`, [
+      member.studioId, row!.id, start.toISOString(), end.toISOString(), stop.timezone, stop.id,
+    ]);
+    await tx.query(`update briefs set status = 'quoted', artist_read_at = now(), seen_at = coalesce(seen_at, now()), updated_at = now() where id = $1`, [briefId]);
+    await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, data) values ($1, $2, 'offer', 'artist', $3, $4)`, [
+      member.studioId, briefId, o.message || null, JSON.stringify({ quote_id: row!.id }),
+    ]);
+  });
+  const pt = dict(brief.client_locale).push;
+  after(() => notify([brief.client_user], { title: fill(pt.offerFrom, { artist: brief.artist_name }), body: o.message || `${o.date} · ${o.time}`, url: `/c/${brief.chat_token}`, tag: `chat:${briefId}` }));
+  revalidatePath("/studio", "layout");
+}
+
+/** Opening a conversation marks it read for the artist. */
+export async function markArtistRead(briefId: string) {
+  const member = await requireMember();
+  const db = await getDb();
+  await db.query(`update briefs set artist_read_at = now(), seen_at = coalesce(seen_at, now()) where id = $1 and studio_id = $2`, [briefId, member.studioId]);
+}
+
+/* ------------------------------------------------------------------ agenda */
+
+/** Close or reopen a whole day in the artist's agenda. */
+export async function toggleDayOff(day: string): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+  const db = await getDb();
+  const gone = await db.one(`delete from days_off where artist_id = $1 and day = $2::date returning day`, [member.artistId, day]);
+  if (!gone) await db.query(`insert into days_off (artist_id, studio_id, day) values ($1, $2, $3::date) on conflict do nothing`, [member.artistId, member.studioId, day]);
+  revalidatePath("/studio/agenda");
+  const row = await db.one<{ slug: string }>(`select slug from artists where id = $1`, [member.artistId]);
+  if (row) revalidatePath(`/${row.slug}`);
 }

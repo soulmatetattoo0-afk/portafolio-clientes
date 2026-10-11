@@ -6,14 +6,15 @@ import { ArtistCard } from "@/components/world/ArtistCard";
 import { Filters } from "@/components/world/Filters";
 import { FollowCity } from "@/components/world/FollowCity";
 import { SortChips } from "@/components/world/SortChips";
+import { BottomTabs } from "@/components/world/BottomTabs";
 import { WorldBar } from "@/components/world/WorldBar";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { BRAND, CITY_COOKIE } from "@/lib/brand";
-import { STYLES, STYLE_BY_SLUG, TRADES, TRADE_BY_SLUG } from "@/lib/catalog";
+import { COUNTRIES, STYLES, STYLE_BY_SLUG, TRADES, TRADE_BY_SLUG } from "@/lib/catalog";
 import { followedCities, followedIds, getClientUser } from "@/lib/client";
 import { money, requestTime } from "@/lib/format";
-import { cityName } from "@/lib/geo";
+import { cityName, citySlug } from "@/lib/geo";
 import { getArtistBySlug } from "@/lib/queries";
 import { listCities, parseSearch, searchArtists, type SearchParams } from "@/lib/search";
 
@@ -118,6 +119,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
               trades: TRADES.map((tr) => ({ slug: tr.slug, label: tr.plural[locale], live: tr.live })),
               styles: STYLES.filter((s) => s.slug !== "other").map((s) => ({ slug: s.slug, label: s.label[locale] })),
               cities: cities.map((c) => ({ slug: c.slug, city: c.city })),
+              countries: COUNTRIES.map((c) => ({ code: c.code, label: c.label[locale], cities: c.cities.map((city) => ({ slug: citySlug(city), city })) })),
               prices: PRICES.map((cents) => ({ cents, label: fill(x.filters.upTo, { price: money(cents, "usd", locale) }) })),
             }}
             labels={{ ...x.filters, any: t.explore.all }}
@@ -203,6 +205,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
           </>
         )}
       </main>
+      <BottomTabs />
     </div>
   );
 }

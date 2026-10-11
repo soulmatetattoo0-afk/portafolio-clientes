@@ -83,6 +83,26 @@ const IMAGE_TYPES: Record<string, string> = {
 };
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+/** Short videos for the magazine's frames. */
+export const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+export const VIDEO_TYPES: Record<string, string> = { "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" };
+export const isVideoKey = (key: string) => /\.(mp4|mov|webm)$/i.test(key);
+
+/** A video, by its magic bytes: an ISO media box (MP4 or QuickTime) or Matroska (WebM). */
+export function videoKind(data: Buffer): { mime: string; ext: string } | null {
+  if (data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return { mime: "video/webm", ext: "webm" };
+  if (data.subarray(4, 8).toString() === "ftyp") {
+    const brand = data.subarray(8, 12).toString();
+    if (/heic|heix|mif1|msf1|hevc|avif/.test(brand)) return null;
+    return brand === "qt  " ? { mime: "video/quicktime", ext: "mov" } : { mime: "video/mp4", ext: "mp4" };
+  }
+  return null;
+}
+
+/** An image or, where allowed, a video. */
+export function mediaKind(data: Buffer, claimed = "") {
+  return imageKind(data, claimed) ?? videoKind(data);
+}
 
 /** Validate an uploaded image by its magic bytes, not just the browser's claim. */
 export function imageKind(data: Buffer, claimed: string): { mime: string; ext: string } | null {

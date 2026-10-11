@@ -5,11 +5,12 @@ import { z } from "zod";
 
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
-import { getSession } from "@/lib/auth";
+import { getClientUser } from "@/lib/client";
 import { STYLE_BY_SLUG } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { briefReceivedToClient, newBriefToArtist } from "@/lib/messages";
+import { notify } from "@/lib/push";
 import { allow } from "@/lib/ratelimit";
 import { MAX_IMAGE_BYTES } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, MAX_REFERENCES, readDraftToken, type UploadTarget } from "@/lib/uploads";
@@ -28,7 +29,7 @@ const UploadReq = z
   .refine((files) => files.filter((f) => f.kind === "reference").length <= MAX_REFERENCES)
   .refine((files) => files.filter((f) => f.kind !== "reference").length <= 2);
 
-export async function prepareUploads(artistSlug: string, files: unknown): Promise<{ token: string; targets: UploadTarget[] } | { error: string }> {
+export async function prepareUploads(artistSlug: string, files: unknown): Promise<{ token: string; targets: UploadTarget<"reference" | "skin" | "placement">[] } | { error: string }> {
   const parsed = UploadReq.safeParse(files);
   const t = dict(await getLocale());
   if (!parsed.success) return { error: t.brief.errors.upload };
@@ -63,8 +64,9 @@ const Brief = z
     dates: z.string().trim().max(500),
     budgetMin: z.number().int().min(0).max(10_000_000),
     budgetMax: z.number().int().min(0).max(10_000_000).nullable(),
-    name: z.string().trim().min(2).max(120),
-    email: z.string().trim().toLowerCase().email().max(200),
+    // Filled from the account on the server; whatever the browser sends here is ignored.
+    name: z.string().trim().max(120),
+    email: z.string().trim().max(200),
     phone: z.string().trim().max(40),
     instagram: z
       .string()
@@ -79,7 +81,7 @@ const Brief = z
   .refine((b) => b.budgetMax === null || b.budgetMax >= b.budgetMin);
 
 export type BriefInput = z.input<typeof Brief>;
-export type SubmitResult = { ok: true; ref: string } | { ok: false; error: string };
+export type SubmitResult = { ok: true; ref: string; chat: string } | { ok: false; error: string };
 
 export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   const locale = await getLocale();
@@ -88,6 +90,11 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   if (!parsed.success) return { ok: false, error: t.brief.errors.generic };
   if (!(await allow("brief", 6, 3600))) return { ok: false, error: t.common.error };
   const b = parsed.data;
+  // Every request comes from an account: its chat lives in the person's space.
+  const me = await getClientUser();
+  if (!me) return { ok: false, error: t.brief.contact.accountRequired };
+  b.email = me.email.toLowerCase();
+  b.name = me.name?.trim() || me.email.split("@")[0];
   const db = await getDb();
 
   const artist = await db.one<{ id: string; studio_id: string; display_name: string; accepting: boolean; currency: string; owner_email: string | null; owner_locale: "en" | "es" | null }>(
@@ -122,8 +129,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   const placement = PLACEMENT_BY_SLUG.get(b.placement)!;
   const full = placement.fullCoverage;
   // A signed-in person sending under their own email owns the client record the brief lands on.
-  const session = await getSession();
-  const userId = session && session.email.toLowerCase() === b.email ? session.userId : null;
+  const userId = me.userId;
 
   const result = await db.tx(async (tx) => {
     const client = await tx.one<{ id: string }>(
@@ -142,12 +148,12 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
       if (!clash) break;
       ref = briefRef();
     }
-    const brief = await tx.one<{ id: string }>(
+    const brief = await tx.one<{ id: string; chat_token: string }>(
       `insert into briefs (studio_id, artist_id, client_id, ref, style, color_mode, placement, full_coverage, body, body_height_cm,
           size_w_cm, size_h_cm, placement_detail, description, avoid, is_coverup, is_first_tattoo,
           budget_min_cents, budget_max_cents, currency, timing, preferred_dates, tour_stop_id, attribution, flash_id)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-       returning id`,
+       returning id, chat_token`,
       [
         artist.studio_id, artist.id, client!.id, ref, b.style, b.color, b.placement, full, b.body, b.height,
         full ? null : b.widthCm, full ? null : b.heightCm,
@@ -163,7 +169,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
       ]);
     }
     await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor) values ($1, $2, 'created', 'client')`, [artist.studio_id, brief!.id]);
-    return { briefId: brief!.id, ref };
+    return { briefId: brief!.id, ref, chat: brief!.chat_token };
   });
 
   const summary = {
@@ -178,7 +184,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
     budget_max_cents: b.budgetMax,
     currency: artist.currency,
   };
-  await enqueueEmail(db, briefReceivedToClient({ to: b.email, artist: artist.display_name, client: b.name, brief: summary, locale }), {
+  await enqueueEmail(db, briefReceivedToClient({ to: b.email, artist: artist.display_name, client: b.name, brief: summary, locale, chatToken: result.chat }), {
     studioId: artist.studio_id,
     template: "brief_received",
     dedupeKey: `brief-received:${result.briefId}`,
@@ -190,8 +196,15 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
       { studioId: artist.studio_id, template: "new_brief", dedupeKey: `new-brief:${result.briefId}` },
     );
   }
+  const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [artist.studio_id]);
   after(async () => {
     await flushOutbox(await getDb());
+    await notify(members.map((m) => m.user_id), {
+      title: fill(dict(members[0]?.locale ?? "en").push.newRequest, { name: b.name }),
+      body: b.description,
+      url: `/studio?brief=${result.briefId}`,
+      tag: `chat:${result.briefId}`,
+    });
   });
-  return { ok: true, ref: result.ref };
+  return { ok: true, ref: result.ref, chat: result.chat };
 }

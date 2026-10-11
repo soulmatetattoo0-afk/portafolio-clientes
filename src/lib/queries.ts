@@ -165,6 +165,12 @@ export async function listTakenDays(artistId: string, stops: TourStop[]): Promis
     if (!stop) continue;
     (taken[stop.id] ??= new Set()).add(dayIn(at, stop.timezone));
   }
+  // Days the artist closed in their agenda read as taken wherever they fall.
+  const off = await db.query<{ day: string }>(`select to_char(day, 'YYYY-MM-DD') as day from days_off where artist_id = $1 and day >= current_date`, [artistId]);
+  for (const { day } of off) {
+    const stop = stops.find((s) => !s.is_home && s.starts_on && s.ends_on && day >= s.starts_on && day <= s.ends_on) ?? home;
+    if (stop) (taken[stop.id] ??= new Set()).add(day);
+  }
   return Object.fromEntries(Object.entries(taken).map(([id, days]) => [id, [...days].sort()]));
 }
 

@@ -5,6 +5,7 @@
  */
 
 import { DEMO_EMAIL, DEMO_USER_ID } from "./env";
+import { seedSova } from "./seed-sova";
 import { seedWorld } from "./seed-world";
 import type { Db } from "./db";
 
@@ -265,4 +266,5 @@ Based in New York, with guest spots in Europe every year. Every piece starts wit
   ]);
 
   await seedWorld(db);
+  await seedSova(db);
 }

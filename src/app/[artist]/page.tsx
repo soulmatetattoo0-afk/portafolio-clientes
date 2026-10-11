@@ -6,6 +6,7 @@ import { getDict } from "@/i18n/server";
 import { getClientUser, isFollowing } from "@/lib/client";
 import { relatedArtists } from "@/lib/search";
 import { demoMode } from "@/lib/env";
+import { getMagazine } from "@/lib/magazine-server";
 import { getArtistBySlug, listCityDemand, listFlash, listPortfolio, listStops, listTakenDays } from "@/lib/queries";
 
 import { ArtistExperience } from "./experience/ArtistExperience";
@@ -30,7 +31,7 @@ export default async function ArtistPage({ params }: PageProps<"/[artist]">) {
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
   const stops = await listStops(artist.id, { publicOnly: true });
-  const [{ t, locale }, portfolio, flash, demand, taken, me, related] = await Promise.all([
+  const [{ t, locale }, portfolio, flash, demand, taken, me, related, magazine] = await Promise.all([
     getDict(),
     listPortfolio(artist.id, { publishedOnly: true }),
     listFlash(artist.id, { publishedOnly: true }),
@@ -38,7 +39,8 @@ export default async function ArtistPage({ params }: PageProps<"/[artist]">) {
     listTakenDays(artist.id, stops),
     getClientUser(),
     relatedArtists(artist.id, 6),
+    getMagazine(artist.id),
   ]);
   const following = me ? await isFollowing(me.userId, artist.id) : null;
-  return <ArtistExperience data={{ artist, stops, portfolio, flash, demand, taken, following, related, locale, t, demo: demoMode }} />;
+  return <ArtistExperience data={{ artist, stops, portfolio, flash, demand, taken, following, related, magazine, locale, t, demo: demoMode }} />;
 }

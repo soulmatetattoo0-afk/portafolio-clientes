@@ -6,7 +6,9 @@ import { requireMember } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { cmLabel, moneyRange, relativeTime } from "@/lib/format";
-import { getArtistById, getBrief, inboxCounts, listBriefs, type InboxTab } from "@/lib/queries";
+import { getChat } from "@/lib/chat";
+import { FREE_DAILY_REQUESTS, isFull, lockedSql } from "@/lib/plan";
+import { getArtistById, getBrief, inboxCounts, listBriefs, listStops, type InboxTab } from "@/lib/queries";
 import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 
 import { BriefView, STATUS_TONE, statusLabel } from "./BriefView";
@@ -22,9 +24,23 @@ export default async function RequestsPage({ searchParams }: PageProps<"/studio"
   const selectedId = typeof sp.brief === "string" && /^[0-9a-f-]{36}$/.test(sp.brief) ? sp.brief : null;
 
   const [{ t, locale }, counts, items, artist] = await Promise.all([getDict(), inboxCounts(member.studioId), listBriefs(member.studioId, tab, q), getArtistById(member.artistId)]);
-  const selected = selectedId ? await getBrief(member.studioId, selectedId) : null;
+  const db = await getDb();
+  // A basic page reads a few new requests a day; the rest wait, blurred, behind the upgrade.
+  const locked = new Set(isFull(member.plan) ? [] : (await db.query<{ id: string }>(lockedSql("$1"), [member.studioId])).map((r) => r.id));
+  const selectedLocked = selectedId ? locked.has(selectedId) : false;
+  // Conversations where the client wrote after the artist last looked.
+  const unread = new Set(
+    (
+      await db.query<{ id: string }>(
+        `select b.id from briefs b where b.studio_id = $1 and exists (
+           select 1 from brief_events e where e.brief_id = b.id and e.actor = 'client' and e.kind = 'message' and e.created_at > coalesce(b.artist_read_at, b.created_at))`,
+        [member.studioId],
+      )
+    ).map((r) => r.id),
+  );
+  const selected = selectedId && !selectedLocked ? await getBrief(member.studioId, selectedId) : null;
+  const [chat, stops] = selected ? await Promise.all([getChat(member.studioId, selected.id), listStops(member.artistId, { publicOnly: true })]) : [null, []];
   if (selected && !selected.seen_at) {
-    const db = await getDb();
     await db.query(`update briefs set seen_at = now() where id = $1 and studio_id = $2`, [selected.id, member.studioId]);
   }
   const r = t.studio.requests;
@@ -84,7 +100,20 @@ export default async function RequestsPage({ searchParams }: PageProps<"/studio"
             ) : (
               <ul className="divide-y divide-line">
                 {items.map((b) => {
-                  const active = b.id === selected?.id;
+                  const active = b.id === (selected?.id ?? selectedId);
+                  if (locked.has(b.id))
+                    return (
+                      <li key={b.id}>
+                        <Link href={href({ brief: b.id })} aria-current={active ? "true" : undefined} className="relative grid gap-1 px-4 py-3.5 hover:bg-niche-2 aria-[current=true]:bg-niche-2">
+                          <span className="flex items-baseline justify-between gap-3">
+                            <span aria-hidden className="truncate font-medium blur-[5px] select-none">{b.client_name}</span>
+                            <span className="t-meta shrink-0">{relativeTime(b.created_at, locale)}</span>
+                          </span>
+                          <span aria-hidden className="truncate text-[0.9rem] blur-[5px] select-none">{PLACEMENT_BY_SLUG.get(b.placement)?.label[locale]}</span>
+                          <span className="text-[0.8rem] text-gilt">{r.locked.row}</span>
+                        </Link>
+                      </li>
+                    );
                   const placement = PLACEMENT_BY_SLUG.get(b.placement)?.label[locale] ?? b.placement;
                   return (
                     <li key={b.id}>
@@ -96,8 +125,9 @@ export default async function RequestsPage({ searchParams }: PageProps<"/studio"
                         {active && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-gilt" />}
                         <span className="flex items-baseline justify-between gap-3">
                           <span className="flex min-w-0 items-center gap-2 font-medium">
-                            {!b.seen_at && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gilt" aria-label={r.unseen} />}
+                            {(!b.seen_at || unread.has(b.id)) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gilt" aria-label={r.unseen} />}
                             <span className="truncate">{b.client_name}</span>
+                            {unread.has(b.id) && <span className="shrink-0 rounded-full bg-gilt px-1.5 text-[0.68rem] font-semibold text-soot">{t.chat.newMessage}</span>}
                           </span>
                           <span className="t-meta shrink-0">{relativeTime(b.created_at, locale)}</span>
                         </span>
@@ -120,12 +150,35 @@ export default async function RequestsPage({ searchParams }: PageProps<"/studio"
         </div>
 
         <div className={`min-w-0 ${selected ? "" : "hidden lg:block"}`}>
-          {selected ? (
+          {selectedLocked ? (
+            <div className="relative grid min-h-64 place-items-center overflow-hidden rounded-[var(--radius-lg)] border border-gilt/40 bg-niche p-8 text-center">
+              <div aria-hidden className="pointer-events-none absolute inset-0 grid content-start gap-3 p-8 opacity-60 blur-[7px] select-none">
+                <span className="h-6 w-1/2 rounded bg-vellum/30" />
+                <span className="h-4 w-3/4 rounded bg-vellum/20" />
+                <span className="h-24 w-full rounded bg-vellum/10" />
+                <span className="h-4 w-2/3 rounded bg-vellum/20" />
+              </div>
+              <div className="relative grid max-w-sm gap-3">
+                <p className="font-serif text-[1.6rem] leading-tight">{r.locked.title}</p>
+                <p className="text-[0.95rem] text-ash">{fill(r.locked.body, { n: FREE_DAILY_REQUESTS })}</p>
+                <Link href="/studio/settings#plan" className="btn btn-primary justify-self-center">
+                  {r.locked.cta}
+                </Link>
+              </div>
+            </div>
+          ) : selected ? (
             <>
               <Link href={href({ brief: null })} className="btn btn-ghost btn-sm mb-4 -ml-2 lg:hidden">
                 {t.common.back}
               </Link>
-              <BriefView brief={selected} t={t} locale={locale} />
+              <BriefView
+                brief={selected}
+                t={t}
+                locale={locale}
+                chat={chat}
+                stops={stops.map((s) => ({ id: s.id, label: s.is_home ? [s.studio_name, s.city].filter(Boolean).join(", ") : `${s.city}${s.starts_on ? ` · ${s.starts_on}` : ""}` }))}
+                artistName={artist?.display_name ?? ""}
+              />
             </>
           ) : (
             <div className="grid h-full min-h-64 place-items-center rounded-[var(--radius-lg)] border border-dashed border-line p-8 text-center text-ash">{r.selectOne}</div>

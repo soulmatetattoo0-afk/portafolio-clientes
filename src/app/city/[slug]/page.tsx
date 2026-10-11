@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArtistCard } from "@/components/world/ArtistCard";
 import { CoverPlate } from "@/components/world/CoverPlate";
 import { FollowCity } from "@/components/world/FollowCity";
+import { BottomTabs } from "@/components/world/BottomTabs";
 import { WorldBar } from "@/components/world/WorldBar";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
@@ -155,6 +156,7 @@ export default async function CityPage({ params }: PageProps<"/city/[slug]">) {
           )}
         </section>
       </main>
+      <BottomTabs />
     </div>
   );
 }

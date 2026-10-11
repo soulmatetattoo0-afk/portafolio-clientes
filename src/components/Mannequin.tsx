@@ -22,6 +22,8 @@ export interface MannequinProps {
   onUnsupported?: () => void;
   /** A still, framed on the placement: no orbit, no taps. Front/back stay available through the handle. */
   readOnly?: boolean;
+  /** Tint every zone with its usual pain (while the client chooses an area). */
+  painMap?: boolean;
   className?: string;
   label: string;
 }
@@ -84,7 +86,10 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
     };
   }, []);
 
-  const { body, heightCm, mode, placement, design, savedPoint, readOnly = false } = props;
+  const { body, heightCm, mode, placement, design, savedPoint, readOnly = false, painMap = false } = props;
+  useEffect(() => {
+    if (ready) engineRef.current?.setPainMap(painMap);
+  }, [ready, painMap]);
   // Apply only what changed since the last sync, in order, so a new tap never re-frames the camera.
   const applied = useRef<{ body?: BodyType; height?: number; mode?: ViewerMode; placement?: string | null; design?: string; readOnly?: boolean }>({});
   const chain = useRef<Promise<void>>(Promise.resolve());

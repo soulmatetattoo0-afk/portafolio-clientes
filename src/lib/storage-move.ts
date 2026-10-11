@@ -2,7 +2,7 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 import { env, live } from "./env";
-import { imageKind, putFile, readLocalFile, removeFile } from "./storage";
+import { mediaKind, putFile, readLocalFile, removeFile } from "./storage";
 import { sign } from "./util";
 
 /** Move an uploaded draft (private bucket) into the public portfolio bucket. Returns the new key. */
@@ -20,7 +20,7 @@ export async function moveDraftToPublic(draftKey: string, prefix: string): Promi
     data = await readLocalFile("private", draftKey, exp, sign(`private/${draftKey}:${exp}`));
   }
   if (!data) throw new Error("Move failed: missing draft");
-  await putFile("public", key, data, imageKind(data, "")?.mime ?? "image/jpeg");
+  await putFile("public", key, data, mediaKind(data)?.mime ?? "image/jpeg");
   await removeFile("private", draftKey).catch(() => undefined);
   return key;
 }

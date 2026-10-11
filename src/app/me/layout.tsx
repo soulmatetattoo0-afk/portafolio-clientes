@@ -1,4 +1,5 @@
 import { DemoBanner } from "@/components/Chrome";
+import { BottomTabs } from "@/components/world/BottomTabs";
 import { WorldBar } from "@/components/world/WorldBar";
 import { getDict } from "@/i18n/server";
 import { BRAND } from "@/lib/brand";
@@ -21,14 +22,15 @@ export default async function MeLayout({ children }: LayoutProps<"/me">) {
         label={n.label}
         tabs={[
           { href: "/me", label: n.overview },
-          { href: "/me/saved", label: n.saved },
           { href: "/me/briefs", label: n.briefs },
+          { href: "/me/saved", label: n.saved },
           { href: "/me/appointments", label: n.appointments },
           { href: "/me/alerts", label: n.alerts },
           { href: "/me/settings", label: n.settings },
         ]}
       />
       <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 pt-6 pb-24">{children}</main>
+      <BottomTabs />
     </div>
   );
 }

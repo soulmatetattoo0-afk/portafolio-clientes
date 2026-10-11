@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { PANELS, type ExperienceData, type PanelId } from "./types";
 
 /**
  * Full-screen stage for one category. It opens by growing out of the card
  * rectangle (clip-path), scrolls on its own, and carries the back / next bar.
+ * With `morph`, the panel only darkens in behind and leaves the entrance to
+ * its content (the magazine grows its own cover out of the card).
  */
 export function Panel({
   id,
@@ -14,6 +17,7 @@ export function Panel({
   from,
   onBack,
   onGo,
+  morph = false,
   children,
 }: {
   id: PanelId;
@@ -21,6 +25,7 @@ export function Panel({
   from: DOMRect | null;
   onBack: () => void;
   onGo: (id: PanelId) => void;
+  morph?: boolean;
   children: React.ReactNode;
 }) {
   const a = data.t.artist;
@@ -29,7 +34,21 @@ export function Panel({
   const prev = i > 0 ? PANELS[i - 1] : null;
   const next = i < PANELS.length - 1 ? PANELS[i + 1] : null;
   const scroller = useRef<HTMLDivElement>(null);
+  const section = useRef<HTMLElement>(null);
+  const header = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(!from);
+
+  // The morph entrance: the ink comes in behind the travelling cover, the bar follows once it has landed.
+  useLayoutEffect(() => {
+    if (!morph || !from) return;
+    const tl = gsap
+      .timeline()
+      .fromTo(section.current, { backgroundColor: "rgb(10 10 10 / 0)" }, { backgroundColor: "rgb(10 10 10 / 1)", duration: 0.6, ease: "power2.out" })
+      .fromTo(header.current, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.75);
+    return () => {
+      tl.kill();
+    };
+  }, [morph, from]);
 
   // Start clipped to the card, then release to the full screen on the next frame.
   useEffect(() => {
@@ -43,16 +62,17 @@ export function Panel({
     scroller.current?.focus({ preventScroll: true });
   }, [id]);
 
-  const clip = from && !open ? `inset(${from.top}px ${window.innerWidth - from.right}px ${window.innerHeight - from.bottom}px ${from.left}px round 22px)` : "inset(0 round 0)";
+  const clip = !morph && from && !open ? `inset(${from.top}px ${window.innerWidth - from.right}px ${window.innerHeight - from.bottom}px ${from.left}px round 22px)` : "inset(0 round 0)";
 
   return (
     <section
       aria-labelledby={`panel-${id}`}
-      className={`fixed inset-0 z-30 flex flex-col bg-ink text-bone ${from ? "p-portal" : ""}`}
-      style={{ clipPath: clip, transition: "clip-path 620ms cubic-bezier(0.7, 0, 0.2, 1)" }}
+      ref={section}
+      className={`fixed inset-0 z-30 flex flex-col bg-ink text-bone ${from && !morph ? "p-portal" : ""}`}
+      style={morph ? undefined : { clipPath: clip, transition: "clip-path 620ms cubic-bezier(0.7, 0, 0.2, 1)" }}
     >
       <div className="p-grain" aria-hidden />
-      <header className="relative z-10 mx-auto flex w-full max-w-3xl items-center justify-between gap-2 border-b border-line/70 bg-ink/85 px-3 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2 backdrop-blur-md">
+      <header ref={header} className={`relative z-10 mx-auto flex w-full max-w-3xl items-center justify-between gap-2 border-b border-line/70 bg-ink/85 px-3 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2 backdrop-blur-md`}>
         <button type="button" onClick={onBack} className="btn btn-ghost -ml-1 gap-2 text-bone" aria-label={a.panel.back}>
           <span aria-hidden className="text-[1.3rem] leading-none">←</span>
           <span className="p-stamp hidden sm:inline">{a.panel.back}</span>
@@ -68,7 +88,7 @@ export function Panel({
         </div>
       </header>
       <div ref={scroller} tabIndex={-1} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none [scrollbar-width:thin]">
-        <div className={`mx-auto w-full max-w-3xl ${open ? "p-immerse" : "opacity-0"}`} style={{ animationDelay: "160ms" }}>
+        <div className={`mx-auto w-full max-w-3xl ${morph ? "" : open ? "p-immerse" : "opacity-0"}`} style={morph ? undefined : { animationDelay: "160ms" }}>
           {children}
         </div>
       </div>

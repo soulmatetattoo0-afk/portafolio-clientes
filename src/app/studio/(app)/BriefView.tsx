@@ -2,10 +2,12 @@ import Link from "next/link";
 
 import { dict, fill, type Dict, type Locale } from "@/i18n";
 import { colorLabel, styleLabel } from "@/lib/catalog";
-import { cmLabel, dateLong, money, moneyRange, relativeTime } from "@/lib/format";
+import { cmLabel, money, moneyRange, relativeTime } from "@/lib/format";
+import type { ChatThread } from "@/lib/chat";
 import type { BriefDetail } from "@/lib/queries";
 import { PLACEMENT_BY_SLUG } from "@/mannequin/catalog";
 
+import { ArtistChat } from "./ArtistChat";
 import { BriefActions } from "./BriefActions";
 import { PlacementPreview } from "./PlacementPreview";
 
@@ -25,7 +27,7 @@ export function statusLabel(status: string, t: Dict) {
   return tabs[status as keyof typeof tabs] ?? status;
 }
 
-export function BriefView({ brief, t, locale }: { brief: BriefDetail; t: Dict; locale: Locale }) {
+export function BriefView({ brief, t, locale, chat, stops, artistName }: { brief: BriefDetail; t: Dict; locale: Locale; chat: ChatThread | null; stops: { id: string; label: string }[]; artistName: string }) {
   const s = t.studio.brief;
   const placement = PLACEMENT_BY_SLUG.get(brief.placement);
   const ct = dict(brief.client_locale);
@@ -86,6 +88,26 @@ export function BriefView({ brief, t, locale }: { brief: BriefDetail; t: Dict; l
         />
       </header>
 
+      {/* The conversation comes first: the request below is what it's about. */}
+      {chat && (
+        <section aria-labelledby="chat-title" className="grid gap-3 rounded-[var(--radius-lg)] border border-line p-4 sm:p-5">
+          <h3 id="chat-title" className="t-label">
+            {t.chat.conversation}
+          </h3>
+          <ArtistChat
+            briefId={brief.id}
+            items={chat.items}
+            names={{ client: brief.client_name, artist: artistName }}
+            t={t.chat}
+            locale={locale}
+            stops={stops}
+            currency={brief.currency}
+            canOffer={!["booked", "declined", "archived"].includes(brief.status) && stops.length > 0}
+          />
+        </section>
+      )}
+
+      <h3 className="t-label -mb-4">{t.chat.card.pinned}</h3>
       <div className="grid gap-8 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="grid content-start gap-3">
           {placement && (
@@ -104,7 +126,7 @@ export function BriefView({ brief, t, locale }: { brief: BriefDetail; t: Dict; l
             />
           )}
           <p className="t-meta">
-            {[brief.body === "f" ? t.brief.placement.female : t.brief.placement.male, brief.body_height_cm ? fill(s.height, { cm: brief.body_height_cm }) : null].filter(Boolean).join(", ")}
+            {brief.body === "f" ? t.brief.placement.female : t.brief.placement.male}
           </p>
         </div>
 
@@ -168,23 +190,6 @@ export function BriefView({ brief, t, locale }: { brief: BriefDetail; t: Dict; l
             <Fact label={s.source}>{source || <span className="text-ash-dim">—</span>}</Fact>
           </dl>
 
-          <section aria-labelledby="timeline">
-            <h3 id="timeline" className="t-label mb-3">
-              {s.timeline}
-            </h3>
-            <ol className="grid gap-4 border-l border-line pl-4">
-              {brief.events.map((e) => (
-                <li key={e.id} className="relative">
-                  <span aria-hidden className="absolute top-[0.55em] -left-[1.32rem] h-2 w-2 rounded-full bg-line-strong" />
-                  <p className="text-[0.92rem]">
-                    {s.events[e.kind as keyof typeof s.events] ?? e.kind}
-                    <span className="t-meta ml-2">{dateLong(e.created_at, locale)}</span>
-                  </p>
-                  {e.body && <p className="mt-1 max-w-[60ch] text-[0.92rem] whitespace-pre-line text-ash">{e.body}</p>}
-                </li>
-              ))}
-            </ol>
-          </section>
         </div>
       </div>
     </article>

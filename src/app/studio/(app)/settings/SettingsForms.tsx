@@ -65,7 +65,8 @@ export function ProfileForm({ artist, labels, locale, cover, mapLine, checklist 
         <Text name="min_price" type="number" label={labels.minPrice} hint={labels.minPriceHint} defaultValue={artist.min_price_cents ? String(artist.min_price_cents / 100) : ""} prefix="$" optional={labels.optional} />
       </div>
       <fieldset className="grid gap-2">
-        <legend className="t-label mb-2">{labels.styles}</legend>
+        <legend className="t-label mb-1">{labels.styles}</legend>
+        <p className="mb-2 text-[0.85rem] text-ash">{labels.stylesHint}</p>
         <div className="flex flex-wrap gap-2">
           {STYLES.filter((s) => s.slug !== "other").map((s) => (
             <label key={s.slug} className="chip has-[:checked]:border-gilt has-[:checked]:text-gilt-bright">

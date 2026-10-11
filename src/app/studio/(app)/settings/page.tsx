@@ -102,6 +102,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/studio/
               minPrice: s.minPrice,
               minPriceHint: s.minPriceHint,
               styles: s.styles,
+              stylesHint: s.stylesHint,
               accepting: s.accepting,
               save: t.common.save,
               optional: t.common.optional,

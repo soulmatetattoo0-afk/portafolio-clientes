@@ -1,8 +1,9 @@
 import type { Dict, Locale } from "@/i18n";
+import type { Magazine } from "@/lib/magazine-server";
 import type { Artist, ArtistCard, FlashItem, PortfolioItem, TourStop } from "@/lib/queries";
 
 export type PanelId = "bio" | "work" | "flash" | "book" | "spots";
-export const PANELS: PanelId[] = ["bio", "work", "flash", "book", "spots"];
+export const PANELS: PanelId[] = ["bio", "work", "flash", "spots", "book"];
 
 export interface ExperienceData {
   artist: Artist;
@@ -17,6 +18,8 @@ export interface ExperienceData {
   following: boolean | null;
   /** Artists like this one, for the "more like" rows. */
   related: ArtistCard[];
+  /** The artist's own magazine, laid out in the studio. */
+  magazine: Magazine;
   locale: Locale;
   t: Dict;
   demo: boolean;

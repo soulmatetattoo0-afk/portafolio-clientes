@@ -6,7 +6,7 @@ import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { getClientUser, getMyContact } from "@/lib/client";
 import { env, live } from "@/lib/env";
-import { getArtistBySlug, listFlash, listStops } from "@/lib/queries";
+import { getArtistBySlug, listFlash, listPortfolio, listStops } from "@/lib/queries";
 
 import { BriefWizard } from "./BriefWizard";
 
@@ -25,6 +25,10 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   // A signed-in client starts from the details they last gave a studio, else their account.
   const contact = user ? await getMyContact(user.userId) : null;
   const me = user ? { name: contact?.name ?? user.name, email: user.email, phone: contact?.phone ?? null, instagram: contact?.instagram ?? null } : null;
+  // A piece of the artist's own work for each style they offer, for the style tiles.
+  const portfolio = await listPortfolio(artist.id, { publishedOnly: true });
+  const styleImages: Record<string, string> = {};
+  for (const p of portfolio) if (p.style && p.url && !styleImages[p.style]) styleImages[p.style] = p.url;
   const picked = flashAll.find((f) => f.id === sp.flash && f.status === "available") ?? null;
   return (
     <>
@@ -33,6 +37,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         t={t}
         locale={locale}
         artist={{ slug: artist.slug, name: artist.display_name, styles: artist.styles, minPriceCents: artist.min_price_cents, currency: artist.currency, accent: artist.accent }}
+        styleImages={styleImages}
         flash={picked ? { id: picked.id, title: picked.title, description: picked.description, sizeLabel: picked.size_label, url: picked.url } : null}
         stops={stops
           .filter((s) => s.status === "booking" || s.status === "announced")

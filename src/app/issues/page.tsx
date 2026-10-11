@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BottomTabs } from "@/components/world/BottomTabs";
 import { WorldBar } from "@/components/world/WorldBar";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
@@ -56,6 +57,7 @@ export default async function IssuesPage() {
           ))}
         </ul>
       </main>
+      <BottomTabs />
     </div>
   );
 }

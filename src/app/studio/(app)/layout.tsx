@@ -3,6 +3,8 @@ import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { DemoBanner, Wordmark } from "@/components/Chrome";
 import { LangToggle } from "@/components/LangToggle";
+import { PushPrompt } from "@/components/PushPrompt";
+import { vapidKeys } from "@/lib/push";
 import { getDict } from "@/i18n/server";
 import { requireMember } from "@/lib/auth";
 import { getArtistById, inboxCounts } from "@/lib/queries";
@@ -18,7 +20,7 @@ export default async function StudioLayout({ children }: LayoutProps<"/studio">)
   return (
     <>
       <DemoBanner />
-      <div className="mx-auto grid w-full max-w-[1400px] flex-1 lg:grid-cols-[232px_minmax(0,1fr)]">
+      <div className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-[minmax(0,1fr)] lg:grid-cols-[232px_minmax(0,1fr)]">
         <aside className="border-b border-line px-4 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r lg:border-b-0 lg:px-4 lg:py-6">
           <div className="mb-3 flex items-center justify-between gap-3 lg:mb-8 lg:block">
             <div className="min-w-0">
@@ -34,8 +36,10 @@ export default async function StudioLayout({ children }: LayoutProps<"/studio">)
           <StudioNav
             items={[
               { href: "/studio", label: n.requests, badge: counts.new },
+              { href: "/studio/agenda", label: n.agenda },
               { href: "/studio/bookings", label: n.bookings },
               { href: "/studio/portfolio", label: n.portfolio },
+              { href: "/studio/magazine", label: n.magazine },
               { href: "/studio/flash", label: n.flash },
               { href: "/studio/cities", label: n.cities },
               { href: "/studio/settings", label: n.settings },
@@ -55,7 +59,15 @@ export default async function StudioLayout({ children }: LayoutProps<"/studio">)
             </form>
           </div>
         </aside>
-        <div className="min-w-0">{children}</div>
+        <div className="min-w-0">
+          {/* Requests and messages reach the artist's phone with the app closed. */}
+          <PushPrompt
+            vapidKey={vapidKeys().publicKey}
+            className="mx-4 mt-4 sm:mx-6 lg:mx-10"
+            labels={{ title: t.push.title, body: t.push.bodyArtist, enable: t.push.enable, on: t.push.on, denied: t.push.denied, ios: t.push.ios }}
+          />
+          {children}
+        </div>
       </div>
     </>
   );

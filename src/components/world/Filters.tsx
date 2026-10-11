@@ -18,6 +18,8 @@ export interface FilterOptions {
   trades: { slug: string; label: string; live: boolean }[];
   styles: { slug: string; label: string }[];
   cities: { slug: string; city: string }[];
+  /** Pick a country first, then one of its cities. */
+  countries: { code: string; label: string; cities: { slug: string; city: string }[] }[];
   /** Price ceilings in cents. */
   prices: { cents: number; label: string }[];
 }
@@ -27,6 +29,7 @@ export interface FilterLabels {
   trade: string;
   styles: string;
   city: string;
+  country: string;
   colour: string;
   blackGrey: string;
   color: string;
@@ -63,6 +66,9 @@ export function Filters({
     state.color || state.healed || state.available || state.priceMax,
   );
   const [open, setOpen] = useState(secondary);
+  // The country follows the chosen city; with none, the person picks one.
+  const [country, setCountry] = useState<string | null>(options.countries.find((c) => c.cities.some((x) => x.slug === state.city))?.code ?? null);
+  const countryCities = options.countries.find((c) => c.code === country)?.cities ?? [];
   const live =
     options.trades.find((tr) => tr.slug === state.trade)?.live ?? true;
 
@@ -124,19 +130,39 @@ export function Filters({
           ))}
         </Row>
       )}
-      <Row label={labels.city}>
-        {options.cities.map((c) => (
+      <Row label={labels.country}>
+        {options.countries.map((c) => (
           <button
-            key={c.slug}
+            key={c.code}
             type="button"
             className="chip shrink-0"
-            aria-pressed={state.city === c.slug}
-            onClick={() => set("city", state.city === c.slug ? null : c.slug)}
+            aria-pressed={country === c.code}
+            onClick={() => {
+              const next = country === c.code ? null : c.code;
+              setCountry(next);
+              // A city from another country no longer applies.
+              if (state.city && !options.countries.find((x) => x.code === next)?.cities.some((x) => x.slug === state.city)) set("city", null);
+            }}
           >
-            {c.city}
+            {c.label}
           </button>
         ))}
       </Row>
+      {country && (
+        <Row label={labels.city}>
+          {countryCities.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              className="chip shrink-0"
+              aria-pressed={state.city === c.slug}
+              onClick={() => set("city", state.city === c.slug ? null : c.slug)}
+            >
+              {c.city}
+            </button>
+          ))}
+        </Row>
+      )}
 
       {open && (
         <div className="grid gap-2">

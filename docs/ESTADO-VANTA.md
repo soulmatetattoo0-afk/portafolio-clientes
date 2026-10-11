@@ -33,9 +33,14 @@ Vercel despliega solo cada push a `main` (proyecto `portafolio-clientes`).
 6. Sin casilla de consentimiento por pieza: el artista responde por su portafolio.
 7. La raíz `/` es para clientes; la página de venta a artistas está en `/artists`.
 8. "Cerca de ti" solo si el usuario lo pide; nunca se guardan coordenadas.
-9. En la portada dice **"Guest artists in {ciudad}"**, nunca "guest spots".
-10. La revista es la protagonista: portada oficial de VANTA, fondo que cambia según la noticia, arte alrededor del mundo. Más adelante, ingresos por promociones y publicidad dentro de la revista.
+9. La portada (v2, oct 2026) va en este orden: buscador "Encuentra a tu artista", pendientes, "Tus artistas guardados" (revistas con "Pedir cotización"), "Artistas en tu zona" (visitantes y residentes juntos) y al final "La revista · En esta edición".
+10. La revista VANTA cierra la portada (ya no es el titular de arriba). Más adelante, ingresos por promociones y publicidad dentro de la revista.
 11. Nunca noticias inventadas: las notas de arte son historia documentada o van selladas como "Muestra".
+12. Sin salidas a Instagram: el contacto con el artista es el chat de VANTA.
+13. Toda solicitud nace de una cuenta (usuario, email, contraseña) y abre un chat con la carta de solicitud anclada; el cliente escribe cuando el artista responde. Avisos por notificación de la app (Web Push), no por email.
+14. El formulario de solicitud solo muestra los estilos que el artista eligió en Ajustes.
+15. Plan gratis: 5 solicitudes nuevas al día legibles; el resto llega borroso hasta el día siguiente o el plan Completo ($22/mes).
+16. Primera clienta real: TATTOO BY SOVA (Sasha), /sova, residente en Manhattan.
 
 ## Qué está construido
 

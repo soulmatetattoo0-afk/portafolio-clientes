@@ -11,7 +11,6 @@ import {
 
 import { BRAND } from "@/lib/brand";
 
-import { WorldMap, type Pin } from "./WorldMap";
 
 /**
  * The five objects that stand on the ring, one per category. Each one idles
@@ -514,229 +513,144 @@ export const ReserveSign = forwardRef<ObjectHandle, { label: string }>(
   },
 );
 
-/* 05 · Guest spots: the world floating in gold, the cities lighting up. */
-export const WorldObject = forwardRef<ObjectHandle, { pins: Pin[] }>(
-  function WorldObject({ pins }, ref) {
+/* 05 · Where I work: a street signpost. The enamel plate is the home the artist is resident in; arrows point to the cities they visit. */
+export const Signpost = forwardRef<
+  ObjectHandle,
+  { home: string; area: string | null; resident: string; guests: string[] }
+>(function Signpost({ home, area, resident, guests }, ref) {
+  const root = useRef<HTMLDivElement>(null);
+  const plate = useRef<SVGGElement>(null);
+  const arrows = useRef<SVGGElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    reset: () => gsap.set([root.current, plate.current, arrows.current], CLEAR),
+    select: () =>
+      new Promise((resolve) => {
+        const el = root.current!;
+        if (reduced()) return resolve(el.getBoundingClientRect());
+        gsap
+          .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
+          // the arrows swing on the post, the plate catches the light
+          .to(arrows.current, { rotate: 8, duration: 0.18, ease: "power2.out", transformOrigin: "100px 40px" })
+          .to(arrows.current, { rotate: 0, duration: 0.5, ease: "elastic.out(1.2, 0.35)" })
+          .to(plate.current, { scale: 1.06, duration: 0.2, ease: "power2.out", transformOrigin: "100px 46px" }, "<")
+          .to(el, { scale: 2.4, duration: 0.45, ease: "power3.in" }, ">-0.2");
+      }),
+  }));
+
+  // Up to three arrows, one per city visited; with no guest spots the post holds only its home plate.
+  const signs = guests.slice(0, 3).map((c) => c.toUpperCase());
+  const homeName = (area || home).toUpperCase();
+  const fit = (text: string, max: number, base: number) => Math.min(base, (max / Math.max(1, text.length)) * 1.9);
+
+  return (
+    <div ref={root} className="relative aspect-square w-full origin-center will-change-transform">
+      <svg viewBox="0 0 200 200" className="p-float h-full w-full overflow-visible" aria-hidden>
+        {/* the post and its shadow on the floor */}
+        <ellipse cx="100" cy="192" rx="34" ry="5" fill="rgb(0 0 0 / 0.55)" />
+        <rect x="96" y="10" width="8" height="182" rx="2" fill="#2a2724" stroke="var(--color-bone)" strokeOpacity="0.35" />
+        <circle cx="100" cy="10" r="6" fill="#2a2724" stroke="var(--color-bone)" strokeOpacity="0.35" />
+
+        {/* home: the enamel city plate, bone on black with a double rule */}
+        <g ref={plate}>
+          <rect x="18" y="22" width="164" height="50" rx="6" fill="var(--color-bone)" />
+          <rect x="23" y="27" width="154" height="40" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="1.5" />
+          <text x="100" y="51" textAnchor="middle" fill="#0a0a0a" className="p-display" style={{ fontSize: fit(homeName, 140, 24) }}>
+            {homeName}
+          </text>
+          <text x="100" y="62" textAnchor="middle" fill="#0a0a0a" className="p-stamp" style={{ fontSize: 6, letterSpacing: "0.3em" }}>
+            {`★ ${resident.toUpperCase()}${area ? ` · ${home.toUpperCase()}` : ""}`}
+          </text>
+        </g>
+
+        {/* the cities they visit: arrows alternating left and right down the post */}
+        <g ref={arrows}>
+          {signs.map((city, i) => {
+            const y = 86 + i * 30;
+            const right = i % 2 === 0;
+            const d = right ? `M104 ${y}h62l12 11l-12 11h-62z` : `M96 ${y}h-62l-12 11l12 11h62z`;
+            return (
+              <g key={city + i}>
+                <path d={d} fill="var(--accent)" stroke="var(--accent)" strokeWidth="2" />
+                <text
+                  x={right ? 138 : 62}
+                  y={y + 15}
+                  textAnchor="middle"
+                  fill="#0a0a0a"
+                  className="p-display"
+                  style={{ fontSize: fit(city, 64, 13) }}
+                >
+                  {city}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+    </div>
+  );
+});
+
+/* 01 · The artist: the cover of their digital magazine, on a screen of glass. Chosen, it lifts and catches the light; the reader then grows it to full size. */
+export const Portrait = forwardRef<ObjectHandle, { children: React.ReactNode }>(
+  function Portrait({ children }, ref) {
     const root = useRef<HTMLDivElement>(null);
-    const flare = useRef<HTMLDivElement>(null);
-    const tilt = useRef<HTMLDivElement>(null);
+    const idle = useRef<HTMLDivElement>(null);
+    const issue = useRef<HTMLDivElement>(null);
+    const flash = useRef<HTMLDivElement>(null);
+    const tab = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
-      reset: () =>
-        gsap.set([root.current, flare.current, tilt.current], {
-          clearProps: "all",
-        }),
+      reset: () => {
+        gsap.set([root.current, flash.current, tab.current, issue.current], CLEAR);
+        gsap.set(idle.current, { clearProps: "animationPlayState,transform" });
+      },
       select: () =>
         new Promise((resolve) => {
-          const el = root.current!;
-          if (reduced()) return resolve(el.getBoundingClientRect());
+          const box = issue.current!;
+          if (reduced()) return resolve(box.getBoundingClientRect());
+          gsap.set(idle.current, { animationPlayState: "paused" });
           gsap
-            .timeline({ onComplete: () => resolve(el.getBoundingClientRect()) })
-            .to(tilt.current, { rotateX: 0, duration: 0.4, ease: "power2.out" })
-            .to(
-              flare.current,
-              { scale: 1.6, opacity: 1, duration: 0.4, ease: "power2.out" },
-              "<",
-            )
-            .to(
-              flare.current,
-              { scale: 7, duration: 0.5, ease: "power3.in" },
-              ">-0.08",
-            )
-            .to(el, { scale: 2.6, duration: 0.5, ease: "power3.in" }, "<");
+            .timeline({ onComplete: () => resolve(box.getBoundingClientRect()) })
+            // the cover straightens and comes up to you
+            .to(idle.current, { rotateY: 0, rotateX: 0, y: 0, duration: 0.35, ease: "power2.out" })
+            .to(root.current, { y: -10, scale: 1.05, duration: 0.35, ease: "power2.out" }, "<")
+            .to(tab.current, { opacity: 0, duration: 0.2 }, "<")
+            // one pass of light across the glass
+            .fromTo(flash.current, { xPercent: -140, opacity: 1 }, { xPercent: 240, duration: 0.45, ease: "power1.inOut" }, "<0.1")
+            .to(flash.current, { opacity: 0, duration: 0.15 }, ">-0.1");
         }),
     }));
 
     return (
-      <div
-        ref={root}
-        className="relative aspect-square w-full origin-center will-change-transform"
-        style={{ perspective: "900px" }}
-      >
-        <div
-          ref={flare}
-          aria-hidden
-          className="absolute aspect-square w-[72%] -translate-x-1/2 -translate-y-1/2"
-          style={{ left: "50%", top: "50%" }}
-        >
-          <div
-            className="p-beam absolute inset-0 rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle, rgb(255 206 110 / 0.5), rgb(255 170 60 / 0.15) 45%, transparent 70%)",
-              filter: "blur(14px)",
-            }}
-          />
-        </div>
-        <div className="p-float absolute top-1/2 -left-[12%] w-[124%] -translate-y-1/2">
-          <div
-            ref={tilt}
-            style={{ transform: "rotateX(18deg)", transformOrigin: "50% 60%" }}
-          >
-            <WorldMap
-              pins={pins}
-              className="w-full drop-shadow-[0_26px_30px_rgb(0_0_0/0.7)]"
+      <div ref={root} className="relative mx-auto w-[68%] origin-center will-change-transform" style={{ perspective: "900px" }}>
+        <div ref={idle} className="p-cover-idle relative aspect-[2/3] w-full" style={{ transformStyle: "preserve-3d" }}>
+          {/* the earlier issues underneath */}
+          {[2, 1].map((k) => (
+            <div
+              key={k}
+              aria-hidden
+              className="absolute inset-0 rounded-[6px] bg-ink-2"
+              style={{
+                transform: `translate3d(${k * 4}px, ${k * 5}px, ${-k * 7}px)`,
+                boxShadow: "inset 0 0 0 1px rgb(244 237 224 / 0.2), 0 14px 30px -12px rgb(0 0 0 / 0.9)",
+                opacity: 1 - k * 0.22,
+              }}
             />
-          </div>
-        </div>
-      </div>
-    );
-  },
-);
-
-/* 01 · The artist: the cover of a digital magazine, his poster as it came. */
-export const Portrait = forwardRef<
-  ObjectHandle,
-  { src: string | null; name: string; grey: boolean }
->(function Portrait({ src, name, grey }, ref) {
-  const root = useRef<HTMLDivElement>(null);
-  const idle = useRef<HTMLDivElement>(null);
-  const issue = useRef<HTMLDivElement>(null);
-  const cover = useRef<HTMLDivElement>(null);
-  const flash = useRef<HTMLDivElement>(null);
-  const page = useRef<HTMLDivElement>(null);
-  const tab = useRef<HTMLDivElement>(null);
-
-  useImperativeHandle(ref, () => ({
-    reset: () => {
-      gsap.set(
-        [root.current, cover.current, flash.current, page.current, tab.current],
-        CLEAR,
-      );
-      gsap.set(idle.current, { clearProps: "animationPlayState" });
-    },
-    select: () =>
-      new Promise((resolve) => {
-        const el = root.current!;
-        const box = issue.current!;
-        if (reduced()) return resolve(box.getBoundingClientRect());
-        // Hold the idle tilt where it is; the lift and the page turn happen in that pose.
-        gsap.set(idle.current, { animationPlayState: "paused" });
-        gsap
-          .timeline({ onComplete: () => resolve(box.getBoundingClientRect()) })
-          // the cover comes up to you
-          .to(el, { y: -14, scale: 1.08, duration: 0.3, ease: "power2.out" })
-          // one flash of the screen
-          .fromTo(
-            flash.current,
-            { xPercent: -140, opacity: 1 },
-            { xPercent: 240, duration: 0.5, ease: "power1.inOut" },
-            "<0.05",
-          )
-          .to(flash.current, { opacity: 0, duration: 0.2 }, "<0.32")
-          // the cover turns around its spine and the first page shows
-          .to(
-            cover.current,
-            { rotateY: -168, duration: 0.9, ease: "power2.inOut" },
-            ">-0.15",
-          )
-          .to(
-            page.current,
-            { filter: "brightness(1)", duration: 0.6, ease: "power2.out" },
-            "<0.25",
-          )
-          .to(el, { scale: 2.2, duration: 0.5, ease: "power3.in" }, "<0.3")
-          .to(tab.current, { opacity: 0, duration: 0.2 }, "<");
-      }),
-  }));
-
-  return (
-    <div
-      ref={root}
-      className="relative mx-auto w-[68%] origin-center will-change-transform"
-      style={{ perspective: "900px" }}
-    >
-      <div
-        ref={idle}
-        className="p-cover-idle relative aspect-[9/16] w-full"
-        style={{ transformStyle: "preserve-3d" }}
-      >
-        {/* the issues underneath, a stack of them */}
-        {[2, 1].map((k) => (
-          <div
-            key={k}
-            aria-hidden
-            className="absolute inset-0 rounded-[6px] bg-ink-2"
-            style={{
-              transform: `translate3d(${k * 4}px, ${k * 5}px, ${-k * 7}px)`,
-              boxShadow:
-                "inset 0 0 0 1px rgb(244 237 224 / 0.2), 0 14px 30px -12px rgb(0 0 0 / 0.9)",
-              opacity: 1 - k * 0.22,
-            }}
-          />
-        ))}
-        {/* the first page, bone, under the cover */}
-        <div
-          ref={page}
-          aria-hidden
-          className="absolute inset-0 overflow-hidden rounded-[6px] bg-bone text-ink"
-          style={{
-            transform: "translateZ(-1px)",
-            filter: "brightness(0.55)",
-            boxShadow: "inset 0 0 0 1px rgb(0 0 0 / 0.08)",
-          }}
-        >
-          <div className="p-halftone" />
-          <div
-            className="absolute inset-y-0 left-0 w-[16%]"
-            style={{
-              background:
-                "linear-gradient(to right, rgb(0 0 0 / 0.22), rgb(0 0 0 / 0.04) 60%, transparent)",
-            }}
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-[6%]">
-            <span className="p-stamp text-[0.5rem] text-ink/55">{BRAND.name}</span>
-            <span className="p-gothic text-[2.6rem] leading-none text-accent">
-              Vol. 01
-            </span>
-            <span className="h-px w-[28%] bg-ink/25" />
-          </div>
-        </div>
-        {/* the cover: the poster as it came, behind glass */}
-        <div
-          ref={cover}
-          className="absolute inset-0"
-          style={{ transformStyle: "preserve-3d", transformOrigin: "0% 50%" }}
-        >
+          ))}
           <div
             ref={issue}
-            className="absolute inset-0 overflow-hidden rounded-[6px] bg-ink-2"
-            style={{
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              boxShadow:
-                "0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 60px -18px rgb(0 0 0 / 0.95)",
-            }}
+            className="absolute inset-0 overflow-hidden rounded-[6px] bg-ink"
+            style={{ boxShadow: "0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 60px -18px rgb(0 0 0 / 0.95)" }}
           >
-            {src ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt=""
-                draggable={false}
-                className={`h-full w-full object-cover object-top select-none ${grey ? "grayscale" : ""}`}
-              />
-            ) : (
-              <div className="relative grid h-full w-full place-items-end bg-[radial-gradient(ellipse_at_30%_20%,#2a2622,#0c0b0a_70%)] p-[9%]">
-                <span className="p-display absolute top-[6%] left-[8%] text-[1.1rem] text-accent">
-                  {BRAND.name}
-                </span>
-                <span className="p-display text-[4.6rem] leading-[0.8] text-bone/25">
-                  {name.slice(0, 1)}
-                </span>
-                <span className="p-stamp absolute bottom-[7%] left-[8%] text-[0.52rem] text-bone/70">
-                  {name}
-                </span>
-              </div>
-            )}
+            <div className="pointer-events-none absolute inset-0">{children}</div>
             {/* the glass: a thin bright edge, a soft specular, the sheen that sweeps */}
             <div
               aria-hidden
               className="absolute inset-0 rounded-[6px]"
               style={{
-                boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.55)",
-                background:
-                  "radial-gradient(ellipse 70% 45% at 18% 0%, rgb(255 255 255 / 0.16), transparent 70%)",
+                boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.45)",
+                background: "radial-gradient(ellipse 70% 45% at 18% 0%, rgb(255 255 255 / 0.12), transparent 70%)",
               }}
             />
             <div aria-hidden className="p-screen absolute inset-0" />
@@ -744,34 +658,16 @@ export const Portrait = forwardRef<
               ref={flash}
               aria-hidden
               className="absolute inset-y-0 left-0 w-[60%] opacity-0"
-              style={{
-                background:
-                  "linear-gradient(105deg, transparent 20%, rgb(255 255 255 / 0.55) 50%, transparent 80%)",
-                mixBlendMode: "screen",
-              }}
+              style={{ background: "linear-gradient(105deg, transparent 20%, rgb(255 255 255 / 0.55) 50%, transparent 80%)", mixBlendMode: "screen" }}
             />
           </div>
-          {/* the inside of the cover */}
-          <div
-            aria-hidden
-            className="absolute inset-0 rounded-[6px] bg-bone-dim"
-            style={{
-              transform: "rotateY(180deg)",
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              background:
-                "linear-gradient(to left, rgb(0 0 0 / 0.2), transparent 30%), var(--color-bone-dim)",
-            }}
-          />
+        </div>
+        {/* the issue tab, below the cover and never on it */}
+        <div ref={tab} className="mt-2.5 flex items-center justify-center gap-1.5">
+          <span aria-hidden className="h-1 w-1 rounded-full bg-accent" />
+          <span className="p-stamp text-[0.5rem] text-bone-dim">{BRAND.name} · Vol. 01</span>
         </div>
       </div>
-      {/* the issue tab, below the cover and never on it */}
-      <div ref={tab} className="mt-2.5 flex items-center justify-center gap-1.5">
-        <span aria-hidden className="h-1 w-1 rounded-full bg-accent" />
-        <span className="p-stamp text-[0.5rem] text-bone-dim">
-          {BRAND.name} · Vol. 01
-        </span>
-      </div>
-    </div>
-  );
-});
+    );
+  },
+);

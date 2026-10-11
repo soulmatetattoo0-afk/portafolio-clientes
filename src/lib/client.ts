@@ -108,6 +108,12 @@ export interface MyBriefItem {
   artist_accent: string | null;
   artist_portrait_url: string | null;
   quote: { token: string; status: string; deposit_cents: number; currency: string; expires_at: Date } | null;
+  /** The private link into the conversation, its last line, and whether the artist wrote since the client last looked. */
+  chat_token: string;
+  last_body: string | null;
+  last_actor: string | null;
+  last_at: Date | null;
+  unread: boolean;
 }
 
 type MyBriefRow = Omit<MyBriefItem, "artist_portrait_url" | "quote"> & {
@@ -117,9 +123,12 @@ type MyBriefRow = Omit<MyBriefItem, "artist_portrait_url" | "quote"> & {
 
 const MY_BRIEF_COLS = `b.id, b.ref, b.status, b.created_at, b.placement, b.full_coverage, b.style,
   a.display_name as artist_name, a.slug as artist_slug, a.accent as artist_accent, a.portrait_path as artist_portrait_path,
-  q.token as q_token, q.status as q_status, q.deposit_cents as q_deposit_cents, q.currency as q_currency, q.expires_at as q_expires_at`;
+  q.token as q_token, q.status as q_status, q.deposit_cents as q_deposit_cents, q.currency as q_currency, q.expires_at as q_expires_at,
+  b.chat_token, m.body as last_body, m.actor as last_actor, m.created_at as last_at,
+  exists (select 1 from brief_events e where e.brief_id = b.id and e.actor = 'artist' and e.created_at > coalesce(b.client_read_at, b.created_at)) as unread`;
 const MY_BRIEF_FROM = `from briefs b join clients c on c.id = b.client_id join artists a on a.id = b.artist_id
-  left join lateral (select token, status, deposit_cents, currency, expires_at from quotes where brief_id = b.id order by created_at desc limit 1) q on true`;
+  left join lateral (select token, status, deposit_cents, currency, expires_at from quotes where brief_id = b.id order by created_at desc limit 1) q on true
+  left join lateral (select body, actor, created_at from brief_events where brief_id = b.id and kind in ('message', 'offer', 'info_requested', 'client_replied') order by created_at desc limit 1) m on true`;
 
 async function toMyBrief(r: MyBriefRow): Promise<MyBriefItem> {
   const { artist_portrait_path, q_token, q_status, q_deposit_cents, q_currency, q_expires_at, ...b } = r;
@@ -132,7 +141,7 @@ async function toMyBrief(r: MyBriefRow): Promise<MyBriefItem> {
 
 export async function listMyBriefs(userId: string): Promise<MyBriefItem[]> {
   const db = await getDb();
-  const rows = await db.query<MyBriefRow>(`select ${MY_BRIEF_COLS} ${MY_BRIEF_FROM} where c.user_id = $1 order by b.created_at desc limit 100`, [userId]);
+  const rows = await db.query<MyBriefRow>(`select ${MY_BRIEF_COLS} ${MY_BRIEF_FROM} where c.user_id = $1 order by coalesce(m.created_at, b.created_at) desc limit 100`, [userId]);
   return Promise.all(rows.map(toMyBrief));
 }
 
@@ -314,4 +323,16 @@ export async function followedSpots(userId: string, days = 120): Promise<Followe
   );
   const iso = (d: unknown) => (d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
   return rows.map((r) => ({ ...r, starts_on: iso(r.starts_on), ends_on: iso(r.ends_on) }));
+}
+
+/** Conversations where the artist wrote since the person last opened them: the badge on the chat icon. */
+export async function unreadChats(userId: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.one<{ n: number }>(
+    `select count(*)::int as n from briefs b join clients c on c.id = b.client_id
+      where c.user_id = $1 and exists (
+        select 1 from brief_events e where e.brief_id = b.id and e.actor = 'artist' and e.created_at > coalesce(b.client_read_at, b.created_at))`,
+    [userId],
+  );
+  return row?.n ?? 0;
 }

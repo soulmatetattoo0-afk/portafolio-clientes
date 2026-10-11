@@ -12,6 +12,15 @@ export const STYLES: { slug: string; label: L; hint: L }[] = [
   { slug: "japanese", label: { en: "Japanese", es: "Japonés" }, hint: { en: "Irezumi motifs and large flow", es: "Motivos irezumi y composiciones grandes" } },
   { slug: "illustrative", label: { en: "Illustrative", es: "Ilustrativo" }, hint: { en: "Drawn, painterly, sketch-like", es: "Dibujado, pictórico, tipo boceto" } },
   { slug: "lettering", label: { en: "Lettering", es: "Lettering" }, hint: { en: "Script, words and dates", es: "Letras, palabras y fechas" } },
+  { slug: "dotwork", label: { en: "Dotwork", es: "Dotwork" }, hint: { en: "Shading built from dots", es: "Sombras hechas de puntos" } },
+  { slug: "geometric", label: { en: "Geometric", es: "Geométrico" }, hint: { en: "Lines, shapes and sacred geometry", es: "Líneas, figuras y geometría sagrada" } },
+  { slug: "watercolor", label: { en: "Watercolour", es: "Acuarela" }, hint: { en: "Washes and splashes of colour", es: "Manchas y aguadas de color" } },
+  { slug: "chicano", label: { en: "Chicano", es: "Chicano" }, hint: { en: "Fine black and grey, lettering and portraits", es: "Negro y gris fino, letras y retratos" } },
+  { slug: "trash_polka", label: { en: "Trash polka", es: "Trash polka" }, hint: { en: "Collage in black and red", es: "Collage en negro y rojo" } },
+  { slug: "minimalist", label: { en: "Minimalist", es: "Minimalista" }, hint: { en: "Small, clean, few lines", es: "Pequeño, limpio, pocas líneas" } },
+  { slug: "ornamental", label: { en: "Ornamental", es: "Ornamental" }, hint: { en: "Filigree, mandalas, jewellery on skin", es: "Filigrana, mandalas, joyería en la piel" } },
+  { slug: "new_school", label: { en: "New school", es: "New school" }, hint: { en: "Cartoon volume and loud colour", es: "Volumen caricaturesco y color intenso" } },
+  { slug: "anime", label: { en: "Anime", es: "Anime" }, hint: { en: "Manga and anime characters", es: "Personajes de manga y anime" } },
   { slug: "other", label: { en: "Something else", es: "Otro estilo" }, hint: { en: "Describe it in your idea", es: "Descríbelo en tu idea" } },
 ];
 
@@ -71,3 +80,14 @@ export const TRADES: { slug: Trade; label: L; plural: L; bookingMode: BookingMod
 ];
 export const TRADE_BY_SLUG = new Map(TRADES.map((t) => [t.slug, t]));
 export const isTrade = (s: unknown): s is Trade => typeof s === "string" && TRADE_BY_SLUG.has(s as Trade);
+
+/** Countries open in search for now, each with its cities: pick the country, then the city. */
+export const COUNTRIES: { code: "cl" | "us" | "mx"; label: L; cities: string[] }[] = [
+  { code: "cl", label: { en: "Chile", es: "Chile" }, cities: ["Santiago", "Valparaíso", "Viña del Mar", "Concepción", "La Serena", "Antofagasta", "Temuco", "Puerto Montt"] },
+  {
+    code: "us",
+    label: { en: "United States", es: "Estados Unidos" },
+    cities: ["New York", "Los Angeles", "Miami", "Chicago", "Austin", "San Francisco", "Houston", "Las Vegas", "Seattle", "Portland"],
+  },
+  { code: "mx", label: { en: "Mexico", es: "México" }, cities: ["Ciudad de México", "Guadalajara", "Monterrey", "Tijuana", "Puebla", "Mérida", "Cancún", "Querétaro"] },
+];
