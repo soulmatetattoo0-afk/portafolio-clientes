@@ -104,7 +104,7 @@ export default async function RoomPage() {
   const nowMs = requestTime();
   // 06 · the route: each upcoming city with its booked sessions and free days.
   const routeRows = await Promise.all(
-    stops.slice(0, 5).map(async (st) => {
+    stops.filter((x) => !x.is_home).slice(0, 5).map(async (st) => {
       const n = await db.one<{ n: number }>(
         `select count(*)::int as n from appointments where artist_id = $1 and status in ('confirmed', 'completed') and lower(coalesce(city, '')) = lower($2) and starts_at >= now()`,
         [member.artistId, st.city],
@@ -113,14 +113,17 @@ export default async function RoomPage() {
       return { ...st, sessions: n?.n ?? 0, free: span !== null ? Math.max(0, span - (n?.n ?? 0)) : null };
     }),
   );
+  const guestRows = routeRows;
+  // 05 · a resident's next sessions (not today's: those are on the sheet).
+  const upcoming = day.filter((x) => !x.today && new Date(x.starts_at).getTime() > requestTime());
   // 04 · the page's next steps, the ones that matter most first.
   const pieces = portfolio.filter((x) => x.url);
   const perStyle = Object.entries(pieces.reduce<Record<string, number>>((m, x) => ((m[x.style ?? "other"] = (m[x.style ?? "other"] ?? 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
   const steps: [string, string][] = [];
-  if (!artist.stripe_charges_enabled) steps.push([r.step.stripe, "/studio/ajustes"]);
+  if (!artist.stripe_charges_enabled) steps.push([r.step.stripe, "/studio/sala/stripe"]);
   if (stats?.response_min != null && stats.response_min > 24 * 60) steps.push([r.step.response, "/studio/chats?tab=pending"]);
-  if (!artist.precare || !artist.postcare) steps.push([r.step.care, "/studio/ajustes"]);
-  if (!artist.default_deposit_cents) steps.push([r.step.deposit, "/studio/ajustes"]);
+  if (!artist.precare || !artist.postcare) steps.push([r.step.care, "/studio/sala/cuidados"]);
+  if (!artist.default_deposit_cents) steps.push([r.step.deposit, "/studio/sala/precios"]);
   if (!signals?.magazine) steps.push([r.step.cover, "/studio/revista"]);
   if (signals?.last_piece && nowMs - new Date(signals.last_piece).getTime() > 21 * 86400000) steps.push([r.step.work, "/studio/obras"]);
   if (perStyle.some(([, n]) => n < 6)) steps.push([r.step.style, "/studio/obras"]);
@@ -147,11 +150,11 @@ export default async function RoomPage() {
   const fmax = Math.max(1, ...funnel.map(([, v]) => Math.sqrt(v)));
   const monthLabel = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(now0);
   const tiles: [string, string, React.ReactNode, boolean][] = [
-    [r.tile.prices, "/studio/ajustes", <path key="p" d="M3 10l7-7h7v7l-7 7zM13.5 6.5h.01" />, Boolean(artist.default_deposit_cents)],
-    [r.tile.styles, "/studio/ajustes", <path key="s" d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z" />, artist.styles.length > 0],
-    [r.tile.care, "/studio/ajustes", <path key="c" d="M10 17s-6-3.6-6-8a3.5 3.5 0 0 1 6-2.4A3.5 3.5 0 0 1 16 9c0 4.4-6 8-6 8z" />, Boolean(artist.precare && artist.postcare)],
-    [r.tile.stripe, "/studio/ajustes", <path key="t" d="M3 6h14v9H3zM3 9h14" />, artist.stripe_charges_enabled],
-    [r.tile.push, "/studio/ajustes", <path key="n" d="M6 14V9a4 4 0 0 1 8 0v5l1.5 1.5h-11zM8.5 17h3" />, Boolean(signals?.push)],
+    [r.tile.prices, "/studio/sala/precios", <path key="p" d="M3 10l7-7h7v7l-7 7zM13.5 6.5h.01" />, Boolean(artist.default_deposit_cents)],
+    [r.tile.styles, "/studio/sala/estilos", <path key="s" d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z" />, artist.styles.length > 0],
+    [r.tile.care, "/studio/sala/cuidados", <path key="c" d="M10 17s-6-3.6-6-8a3.5 3.5 0 0 1 6-2.4A3.5 3.5 0 0 1 16 9c0 4.4-6 8-6 8z" />, Boolean(artist.precare && artist.postcare)],
+    [r.tile.stripe, "/studio/sala/stripe", <path key="t" d="M3 6h14v9H3zM3 9h14" />, artist.stripe_charges_enabled],
+    [r.tile.push, "/studio/sala/avisos", <path key="n" d="M6 14V9a4 4 0 0 1 8 0v5l1.5 1.5h-11zM8.5 17h3" />, Boolean(signals?.push)],
     [r.tile.magazine, "/studio/revista", <path key="m" d="M5 3h10v14H5zM8 7h4M8 10h4" />, Boolean(signals?.magazine)],
   ];
 
@@ -218,7 +221,7 @@ export default async function RoomPage() {
 
         {/* 02 · La cola: the band in the artist's colour. */}
         <section className="v2-block min-w-0">
-          <Head n={2} title={r.queue} />
+          <Head n={2} title={r.queuePending} />
           <Link href="/studio/chats?tab=pending" className="ed-tile ed-book mt-4 block h-24">
             <span className="relative flex h-full items-center justify-between gap-3 px-5">
               <span className="min-w-0">
@@ -275,42 +278,15 @@ export default async function RoomPage() {
           </div>
         </section>
 
-        {/* 05 · La obra: a contact sheet on film. */}
-        <section className="v2-block min-w-0">
-          <Head n={5} title={r.work} sub={r.workSub} />
-          <div className="v2-film mt-4">
-            {pieces.slice(0, 8).map((x, i) => (
-              <Link key={x.id} href="/studio/obras" className="relative block h-[130px] w-[104px] shrink-0 snap-start overflow-hidden rounded-[4px] bg-ink-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={x.url!} alt={x.title ?? ""} loading="lazy" className="h-full w-full object-cover" />
-                <span className="p-stamp absolute bottom-1 left-1.5 text-[0.55rem] text-bone/80">{String(8 - i).padStart(2, "0")}A</span>
-                {i === 0 && (
-                  <svg viewBox="0 0 110 70" className="absolute inset-0 h-full w-full" aria-hidden preserveAspectRatio="none">
-                    <path d="M8 40C6 18 30 4 58 8s46 24 40 46-40 30-64 22S4 52 12 30" fill="none" stroke="#efe7d6" strokeWidth="2.5" strokeLinecap="round" />
-                  </svg>
-                )}
-              </Link>
-            ))}
-            <Link href="/studio/obras" className="grid h-[130px] w-[104px] shrink-0 snap-start place-items-center rounded-[4px] border border-dashed border-bone/30 text-center text-[0.8rem] font-semibold uppercase tracking-[0.12em] text-bone/80">
-              + {r.upload}
-            </Link>
-          </div>
-          {perStyle.length > 0 && (
-            <p className="p-stamp mt-2 px-1 text-bone/55">
-              {perStyle.slice(0, 4).map(([st, n]) => fill(r.perStyle, { n, style: styleLabel(st, locale) })).join(" · ")}
-            </p>
-          )}
-        </section>
-
-        {/* 06 · La ruta: like the back of a tour shirt. */}
-        {routeRows.length > 0 && (
+        {/* 05 · Mis próximas rutas when there are guest spots; a resident sees their next sessions instead. */}
+        {guestRows.length > 0 ? (
           <section className="v2-block min-w-0">
-            <Head n={6} title={r.route} sub={r.routeSub} />
+            <Head n={5} title={r.route} sub={r.routeSub} />
             <ul className="mt-4 grid divide-y divide-bone/10 border-y border-bone/10">
-              {routeRows.map((x) => (
+              {guestRows.map((x) => (
                 <li key={x.id}>
                   <Link href="/studio/pagina/fechas" className="flex min-h-16 items-center gap-3 py-3">
-                    <span className="p-stamp w-[4.6rem] shrink-0 text-[0.55rem] leading-tight text-bone/60">{x.is_home ? r.home : [x.starts_on, x.ends_on].filter(Boolean).map((d) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`))).join(" – ")}</span>
+                    <span className="p-stamp w-[4.6rem] shrink-0 text-[0.55rem] leading-tight text-bone/60">{[x.starts_on, x.ends_on].filter(Boolean).map((d) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`))).join(" – ")}</span>
                     <span className="min-w-0 flex-1">
                       <span className="p-display block truncate text-[1.6rem] uppercase leading-none">{x.city}</span>
                       {x.studio_name && <span className="block truncate text-[0.8rem] text-bone-dim">{x.studio_name}</span>}
@@ -325,11 +301,36 @@ export default async function RoomPage() {
               ))}
             </ul>
           </section>
+        ) : (
+          <section className="v2-block min-w-0">
+            <Head n={5} title={r.nextSessions} sub={r.nextSessionsSub} />
+            {upcoming.length === 0 ? (
+              <p className="mt-4 px-1 text-bone-dim">{r.noNext}</p>
+            ) : (
+              <ul className="mt-4 grid divide-y divide-bone/10 border-y border-bone/10">
+                {upcoming.map((x) => {
+                  const w = sessionTime(new Date(x.starts_at), x.timezone, locale);
+                  return (
+                    <li key={x.id}>
+                      <Link href={x.brief_id ? `/studio/chats/${x.brief_id}` : "/studio/pagina/fechas"} className="flex min-h-16 items-center gap-3 py-3">
+                        <span className="p-stamp w-[5.2rem] shrink-0 text-[0.6rem] leading-tight text-bone/60">{w.day}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="p-display block truncate text-[1.5rem] uppercase leading-none">{x.client}</span>
+                          <span className="block truncate text-[0.8rem] text-bone-dim">{[w.time, x.style ? styleLabel(x.style, locale) : null].filter(Boolean).join(" · ")}</span>
+                        </span>
+                        <span aria-hidden className="text-bone/50">›</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         )}
 
-        {/* 07 · El mes: the funnel. */}
+        {/* 06 · El mes: the funnel. */}
         <section className="v2-block min-w-0">
-          <Head n={7} title={r.month2} sub={r.monthSub} />
+          <Head n={6} title={r.month2} sub={r.monthSub} />
           <div className="mt-4 grid gap-2">
             {funnel.map(([label, v], i) => (
               <div key={label} className="flex items-center gap-3">
@@ -346,9 +347,9 @@ export default async function RoomPage() {
           </div>
         </section>
 
-        {/* 08 · Caja. */}
+        {/* 07 · Caja. */}
         <section className="v2-block min-w-0">
-          <Head n={8} title={r.caja} sub={r.cajaLead} />
+          <Head n={7} title={r.caja} sub={r.cajaLead} />
           <div className="mt-2">
             <Caja
               artist={{ display_name: artist.display_name }}
@@ -362,9 +363,9 @@ export default async function RoomPage() {
           </div>
         </section>
 
-        {/* 09 · Cuarto de máquinas: the pegboard. */}
+        {/* 08 · Cuarto de máquinas: each tile opens its own room. */}
         <section className="v2-block min-w-0">
-          <Head n={9} title={r.machines} sub={r.machinesSub} />
+          <Head n={8} title={r.machines} sub={r.machinesSub} />
           <ul className="v2-pegboard mt-4 grid grid-cols-3 gap-2 rounded-[22px] p-2">
             {tiles.map(([label, href, icon, ok]) => (
               <li key={label}>

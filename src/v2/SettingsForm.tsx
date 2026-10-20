@@ -10,7 +10,10 @@ import { STYLES } from "@/lib/catalog";
 import type { Artist } from "@/lib/queries";
 
 /** What the artist sets: who they are, their prices, their styles, the care sheets. Each block saves on its own. */
-export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; storage: Storage; t: Dict; locale: Locale }) {
+export type SettingsBlock = "account" | "prices" | "styles" | "care";
+
+export function SettingsForm({ artist, storage, t, locale, only }: { artist: Artist; storage: Storage; t: Dict; locale: Locale; only?: SettingsBlock[] }) {
+  const show = (b: SettingsBlock) => !only || only.includes(b);
   const s = t.v2.settings;
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -58,7 +61,8 @@ export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; s
   );
 
   return (
-    <div className="grid gap-8 pt-8">
+    <div className={`grid gap-8 ${only ? "pt-2" : "pt-8"}`}>
+      {show("account") && (
       <section>
         <p className="p-stamp text-bone/60">{s.account}</p>
         <form
@@ -95,14 +99,16 @@ export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; s
           {saveBtn("account")}
         </form>
       </section>
+      )}
 
+      {show("prices") && (
       <section>
-        <p className="p-stamp text-bone/60">{s.prices}</p>
+        {!only && <p className="p-stamp text-bone/60">{s.prices}</p>}
         <form
           className="v2-sheet mt-2 grid gap-3 p-4"
           onSubmit={(e) => {
             e.preventDefault();
-            save("prices", { min_price: Number(v.min_price) || 0, default_deposit: Number(v.default_deposit) || 0, accepting: v.accepting, styles: v.styles });
+            save("prices", { min_price: Number(v.min_price) || 0, default_deposit: Number(v.default_deposit) || 0, accepting: v.accepting });
           }}
         >
           <div className="grid grid-cols-2 gap-3">
@@ -122,8 +128,23 @@ export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; s
             </span>
             <input type="checkbox" className="h-5 w-5 accent-[var(--accent)]" checked={v.accepting} onChange={(e) => set("accepting", e.target.checked)} />
           </label>
+          {saveBtn("prices")}
+        </form>
+      </section>
+      )}
+
+      {show("styles") && (
+      <section>
+        {!only && <p className="p-stamp text-bone/60">{s.styles}</p>}
+        <form
+          className="v2-sheet mt-2 grid gap-3 p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save("styles", { styles: v.styles });
+          }}
+        >
           <div className="v2-field">
-            <span>{s.styles}</span>
+            <span>{s.stylesCatalog}</span>
             <div className="flex flex-wrap gap-2">
               {STYLES.filter((x) => x.slug !== "other").map((x) => {
                 const on = v.styles.includes(x.slug);
@@ -135,10 +156,12 @@ export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; s
               })}
             </div>
           </div>
-          {saveBtn("prices")}
+          {saveBtn("styles")}
         </form>
       </section>
+      )}
 
+      {show("care") && (
       <section>
         <p className="p-stamp text-bone/60">{s.care}</p>
         <form
@@ -161,6 +184,7 @@ export function SettingsForm({ artist, storage, t, locale }: { artist: Artist; s
           {saveBtn("care")}
         </form>
       </section>
+      )}
       {error && (
         <p role="alert" className="text-[0.88rem] text-accent">
           {error}

@@ -171,21 +171,42 @@ function PieceEditor({ piece, sections, storage, t, pending, error, run, onDelet
   const [confirming, setConfirming] = useState(false);
   const [words, setWords] = useState({ title: piece.title ?? "", story: piece.story ?? "", section_id: piece.section_id ?? "", published: piece.published });
   const box = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; fx: number; fy: number } | null>(null);
+  // Fingers on the window: one moves the picture, two pinch it bigger or smaller.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const start = useRef<{ fx: number; fy: number; zoom: number; x: number; y: number; dist: number } | null>(null);
   const clamp = (n: number) => Math.min(100, Math.max(0, n));
+  const clampZoom = (n: number) => Math.min(3, Math.max(0.5, n));
+  const centre = () => {
+    const pts = [...touches.current.values()];
+    const x = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+    const y = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    const dist = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+    return { x, y, dist };
+  };
+  const begin = () => {
+    const c = centre();
+    start.current = { fx: f.fx, fy: f.fy, zoom: f.zoom, ...c };
+  };
   const onDown = (e: React.PointerEvent) => {
     if (!framing) return;
-    drag.current = { x: e.clientX, y: e.clientY, fx: f.fx, fy: f.fy };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    begin();
   };
   const onMove = (e: React.PointerEvent) => {
-    const d = drag.current;
+    const s = start.current;
     const el = box.current;
-    if (!d || !el) return;
-    // Dragging the picture moves what sits under the window: the focus goes the other way, less the closer it is.
-    setF((p) => ({ ...p, fx: clamp(d.fx - ((e.clientX - d.x) / el.clientWidth) * 100 / p.zoom), fy: clamp(d.fy - ((e.clientY - d.y) / el.clientHeight) * 100 / p.zoom) }));
+    if (!s || !el || !touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const c = centre();
+    const zoom = s.dist > 0 && c.dist > 0 ? clampZoom((s.zoom * c.dist) / s.dist) : s.zoom;
+    setF({ fx: clamp(s.fx + ((c.x - s.x) / el.clientWidth) * 100), fy: clamp(s.fy + ((c.y - s.y) / el.clientHeight) * 100), zoom: Math.round(zoom * 100) / 100 });
   };
-  const onUp = () => (drag.current = null);
+  const onUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId);
+    if (touches.current.size) begin();
+    else start.current = null;
+  };
   const shown = { ...piece, focus_x: f.fx, focus_y: f.fy, zoom: f.zoom };
   return (
     <div className="px-3 pt-3">
@@ -199,8 +220,11 @@ function PieceEditor({ piece, sections, storage, t, pending, error, run, onDelet
             <span>
               {w.zoom} · {f.zoom.toFixed(1)}×
             </span>
-            <input type="range" min={1} max={3} step={0.05} value={f.zoom} onChange={(e) => setF((p) => ({ ...p, zoom: Number(e.target.value) }))} className="accent-[var(--accent)]" />
+            <input type="range" min={0.5} max={3} step={0.05} value={f.zoom} onChange={(e) => setF((p) => ({ ...p, zoom: Number(e.target.value) }))} className="accent-[var(--accent)]" />
           </label>
+          <button type="button" className="justify-self-start text-[0.82rem] text-bone-dim underline underline-offset-4" onClick={() => setF({ fx: 50, fy: 50, zoom: 1 })}>
+            {w.framingReset}
+          </button>
           <div className="flex gap-2">
             <button type="button" className="v2-btn flex-1" data-tone="accent" disabled={pending} onClick={() => run(() => setFraming(piece.id, f), () => setFraming_(false))}>
               {w.saveFraming}

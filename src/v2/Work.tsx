@@ -17,31 +17,32 @@ export interface Group {
   items: PortfolioItem[];
 }
 
-/** The artist's sections when they made them; otherwise one group per style the pieces carry. */
+/** The artist's own styles first (the sections they named), then every other piece by the style it carries. */
 export function groupPieces(pieces: PortfolioItem[], sections: PortfolioSection[], locale: Locale, more: string): Group[] {
   const out: Group[] = [];
-  if (sections.length) {
-    for (const s of sections) {
-      const items = pieces.filter((i) => i.section_id === s.id);
-      if (items.length) out.push({ id: s.id, name: s.name, items, cover: items.find((i) => i.id === s.cover_item_id) ?? items[0] });
-    }
-    const rest = pieces.filter((i) => !i.section_id || !sections.some((s) => s.id === i.section_id));
-    if (rest.length) out.push({ id: "rest", name: more, items: rest, cover: rest[0] });
-  } else {
-    for (const st of [...new Set(pieces.map((i) => i.style).filter((x): x is string => !!x))]) {
-      const items = pieces.filter((i) => i.style === st);
-      out.push({ id: st, name: styleLabel(st, locale), items, cover: items.find((i) => i.featured) ?? items[0] });
-    }
-    const rest = pieces.filter((i) => !i.style);
-    if (rest.length) out.push({ id: "rest", name: more, items: rest, cover: rest[0] });
+  for (const s of sections) {
+    const items = pieces.filter((i) => i.section_id === s.id);
+    if (items.length) out.push({ id: s.id, name: s.name, items, cover: items.find((i) => i.id === s.cover_item_id) ?? items[0] });
   }
+  const loose = pieces.filter((i) => !i.section_id || !sections.some((s) => s.id === i.section_id));
+  for (const st of [...new Set(loose.map((i) => i.style).filter((x): x is string => !!x))]) {
+    const items = loose.filter((i) => i.style === st);
+    out.push({ id: st, name: styleLabel(st, locale), items, cover: items.find((i) => i.featured) ?? items[0] });
+  }
+  const rest = loose.filter((i) => !i.style);
+  if (rest.length) out.push({ id: "rest", name: more, items: rest, cover: rest[0] });
   return out;
 }
 
-/** A piece inside a window, where the artist framed it (centre and closeness); the same framing serves the grid and the viewer. */
+/**
+ * A piece inside a window, as the artist framed it: moved (fx, fy: 50 is the
+ * centre, each step a percent of the window) and sized (zoom: under 1 the
+ * whole picture sits smaller on ink, over 1 it comes closer). The same
+ * framing serves the grid, the viewer and the editor.
+ */
 export function Framed({ item, className = "", sizes }: { item: Pick<PortfolioItem, "url" | "focus_x" | "focus_y" | "zoom" | "title">; className?: string; sizes?: string }) {
   return (
-    <span className={`relative block overflow-hidden ${className}`}>
+    <span className={`relative block overflow-hidden bg-ink ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={item.url!}
@@ -49,7 +50,8 @@ export function Framed({ item, className = "", sizes }: { item: Pick<PortfolioIt
         loading="lazy"
         sizes={sizes}
         className="absolute inset-0 h-full w-full object-cover"
-        style={{ objectPosition: `${item.focus_x}% ${item.focus_y}%`, transform: item.zoom !== 1 ? `scale(${item.zoom})` : undefined, transformOrigin: `${item.focus_x}% ${item.focus_y}%` }}
+        draggable={false}
+        style={{ transform: item.focus_x !== 50 || item.focus_y !== 50 || item.zoom !== 1 ? `translate(${item.focus_x - 50}%, ${item.focus_y - 50}%) scale(${item.zoom})` : undefined }}
       />
     </span>
   );

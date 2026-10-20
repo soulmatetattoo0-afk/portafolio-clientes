@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
@@ -44,7 +45,10 @@ export async function supabaseServer() {
   });
 }
 
-export async function getSession(): Promise<Session | null> {
+/** Who is signed in, asked once per request however many parts of the page want to know. */
+export const getSession = cache(readSession);
+
+async function readSession(): Promise<Session | null> {
   if (live.auth) {
     const supabase = await supabaseServer();
     const { data } = await supabase.auth.getUser();
@@ -106,8 +110,10 @@ export async function getMember(session?: Session | null): Promise<Member | null
   return { ...s, studioId: row.studio_id, artistId: row.artist_id, role: row.role, plan: row.plan };
 }
 
-/** Gate for every studio page and action: signed in, with a page. */
-export async function requireMember(): Promise<Member> {
+/** Gate for every studio page and action: signed in, with a page. Asked once per request. */
+export const requireMember = cache(resolveMember);
+
+async function resolveMember(): Promise<Member> {
   const session = await getSession();
   // Local mode and previews: the studio always opens as the demo artist (Camo), no sign-in needed.
   if (!live.auth && (!session || session.implicit)) {

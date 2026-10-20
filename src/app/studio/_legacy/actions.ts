@@ -623,7 +623,7 @@ export async function startStripeConnect() {
   if (!live.payments) redirect("/studio/ajustes");
   const db = await getDb();
   const artist = await db.one<{ stripe_account_id: string | null }>(`select stripe_account_id from artists where id = $1`, [member.artistId]);
-  const { accountId, url } = await connectLink({ accountId: artist?.stripe_account_id ?? null, email: member.email, returnPath: "/studio/ajustes" });
+  const { accountId, url } = await connectLink({ accountId: artist?.stripe_account_id ?? null, email: member.email, returnPath: "/studio/sala/stripe" });
   await db.query(`update artists set stripe_account_id = $2 where id = $1`, [member.artistId, accountId]);
   redirect(url);
 }
@@ -1309,7 +1309,7 @@ export async function quickStop(id: string | null, values: Record<string, string
 /** Where the artist centred a piece inside its window and how close (the framing is data, never a cropped file). */
 export async function setFraming(itemId: string, framing: { fx: number; fy: number; zoom: number }): Promise<{ error?: string } | void> {
   const member = await requireMember();
-  const f = z.object({ fx: z.number().min(0).max(100), fy: z.number().min(0).max(100), zoom: z.number().min(1).max(4) }).safeParse(framing);
+  const f = z.object({ fx: z.number().min(0).max(100), fy: z.number().min(0).max(100), zoom: z.number().min(0.4).max(4) }).safeParse(framing);
   if (!f.success) return { error: dict(await getLocale()).common.error };
   const db = await getDb();
   await db.query(`update portfolio_items set focus_x = $3, focus_y = $4, zoom = $5 where id = $1 and studio_id = $2`, [itemId, member.studioId, f.data.fx, f.data.fy, f.data.zoom]);
