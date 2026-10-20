@@ -765,7 +765,7 @@ const Offer = z.object({
   hours: z.coerce.number().positive().max(14),
   stopId: z.string().uuid(),
   price: z.coerce.number().positive().max(100000),
-  deposit: z.coerce.number().positive().max(100000),
+  deposit: z.coerce.number().min(0).max(100000),
   message: z.string().trim().max(1000),
 });
 
@@ -1396,7 +1396,7 @@ const Confirm = z.object({
   hours: z.coerce.number().positive().max(14).default(3),
   stopId: z.string().uuid(),
   total: z.coerce.number().positive().max(100000),
-  deposit: z.coerce.number().positive().max(100000),
+  deposit: z.coerce.number().min(0).max(100000),
   message: z.string().trim().max(1000).default(""),
 });
 
@@ -1410,7 +1410,10 @@ export async function confirmQuote(briefId: string, input: z.input<typeof Confir
   const c = Confirm.safeParse(input);
   if (!c.success) return { error: t.chat.offerForm.invalid };
   if (c.data.deposit > c.data.total) return { error: t.chat.offerForm.depositTooHigh };
-  return offerReservation(briefId, { mode: "date", date: c.data.date, time: c.data.time, hours: c.data.hours, stopId: c.data.stopId, price: c.data.total, deposit: c.data.deposit, message: c.data.message });
+  const r = await offerReservation(briefId, { mode: "date", date: c.data.date, time: c.data.time, hours: c.data.hours, stopId: c.data.stopId, price: c.data.total, deposit: c.data.deposit, message: c.data.message });
+  if (r?.error || c.data.deposit > 0) return r;
+  // No deposit asked (already paid outside, a friend, a test): the date is booked right away.
+  return confirmDirectDeposit(briefId);
 }
 
 /** The tattoo is done: the balance (total minus deposit) goes to the client as a payment link in the chat. */

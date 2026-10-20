@@ -32,7 +32,7 @@ export async function loadArtist(slug: string): Promise<Artist> {
 export function Bars({ artist, viewer }: { artist: Artist; viewer: Viewer }) {
   const t = viewer.t.v2.tabs;
   if (viewer.owner) return <ArtistTabs slug={artist.slug} labels={{ page: t.page, chats: t.chats, settings: t.settings, bar: viewer.t.studio.nav.label }} badge={viewer.pending} />;
-  if (viewer.client) return <ClientTabs slug={artist.slug} labels={{ page: t.page, messages: t.messages, profile: t.profile, bar: viewer.t.me.nav.label }} badge={viewer.unread} />;
+  if (viewer.client) return <ClientTabs labels={{ artists: t.myArtists, messages: t.messages, profile: t.profile, bar: viewer.t.me.nav.label }} badge={viewer.unread} />;
   return null;
 }
 
@@ -42,7 +42,7 @@ export async function FrontPage({ artist, owner, base }: { artist: Artist; owner
   const viewer = await getViewer(artist, { owner });
   const stops = await listStops(artist.id, { publicOnly: true });
   const [portfolio, magazine, taken] = await Promise.all([listPortfolio(artist.id, { publishedOnly: true }), getMagazine(artist.id), listTakenDays(artist.id, stops)]);
-  if (!viewer.owner) after(() => countVisit(artist.id));
+  if (!viewer.owner) after(() => countVisit(artist.id, viewer.client?.userId ?? null));
   const pieces = portfolio.filter((p) => p.url);
   const cover = magazine.doc.cover;
   const poster = cover.mode === "poster" && cover.poster ? (magazine.urls[cover.poster] ?? null) : null;

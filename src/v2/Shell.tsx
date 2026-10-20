@@ -52,12 +52,12 @@ export function ArtistTabs({ slug, labels, badge }: { slug: string; labels: { pa
   );
 }
 
-export function ClientTabs({ slug, labels, badge }: { slug: string | null; labels: { page: string; messages: string; profile: string; bar: string }; badge?: number }) {
+export function ClientTabs({ labels, badge }: { labels: { artists: string; messages: string; profile: string; bar: string }; badge?: number }) {
   return (
     <Tabs
       label={labels.bar}
       items={[
-        ...(slug ? [{ href: `/${slug}`, label: labels.page, icon: "page" as const, match: (p: string) => p === `/${slug}` || p.startsWith(`/${slug}/`) }] : []),
+        { href: "/me/artistas", label: labels.artists, icon: "page" as const, match: (p: string) => p.startsWith("/me/artistas") },
         { href: "/me", label: labels.messages, icon: "chats", badge, match: (p) => p === "/me" || p.startsWith("/me/briefs") || p.startsWith("/c/") },
         { href: "/me/perfil", label: labels.profile, icon: "profile" },
       ]}

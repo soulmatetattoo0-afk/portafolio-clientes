@@ -7,7 +7,7 @@ import { RequestCard } from "@/components/chat/RequestCard";
 import { getDict } from "@/i18n/server";
 import { PushPrompt } from "@/components/PushPrompt";
 import { getChatByToken } from "@/lib/chat";
-import { getClientUser, listFollowed, unreadChats } from "@/lib/client";
+import { getClientUser, unreadChats } from "@/lib/client";
 import { paysDirect } from "@/lib/env";
 import { vapidKeys } from "@/lib/push";
 import { ArtistTabs, ClientTabs } from "@/v2/Shell";
@@ -34,7 +34,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
   const thread = await getChatByToken(token);
   if (!thread) notFound();
   const [{ t, locale }, me] = await Promise.all([getDict(), getClientUser()]);
-  const [unread, followed] = me ? await Promise.all([unreadChats(me.userId), listFollowed(me.userId)]) : [0, []];
+  const unread = me ? await unreadChats(me.userId) : 0;
   const c = t.chat;
   const accent = thread.artist.accent ?? "#d8552f";
 
@@ -82,7 +82,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
       {fromStudio ? (
         <ArtistTabs slug={thread.artist.slug} labels={{ page: t.v2.tabs.page, chats: t.v2.tabs.chats, settings: t.v2.tabs.settings, bar: t.studio.nav.label }} />
       ) : (
-        me && <ClientTabs slug={followed[0]?.slug ?? thread.artist.slug} labels={{ page: t.v2.tabs.page, messages: t.v2.tabs.messages, profile: t.v2.tabs.profile, bar: t.me.nav.label }} badge={unread} />
+        me && <ClientTabs labels={{ artists: t.v2.tabs.myArtists, messages: t.v2.tabs.messages, profile: t.v2.tabs.profile, bar: t.me.nav.label }} badge={unread} />
       )}
     </div>
   );

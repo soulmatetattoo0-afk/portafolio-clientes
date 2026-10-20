@@ -142,17 +142,51 @@ export function Thread({
                 )}
               </li>,
             ];
-          if (m.kind === "balance" || m.kind === "paid")
+          if (m.kind === "paid")
+            // The booking, stamped in the middle of the conversation for both sides.
             return [
               divider,
-              <li key={m.id} className="flex justify-center py-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-[#8fb07a]/40 bg-[#8fb07a]/12 py-1.5 pr-4 pl-2 text-[0.8rem] text-[#b5d1a2]">
-                  <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full bg-[#8fb07a] text-[0.7rem] font-bold text-[#14120f]">
-                    ✓
-                  </span>
-                  {m.kind === "paid" ? t.booked : fill(side === "artist" ? t.balance.paidArtist : t.balance.paid, { amount: m.amount ? money(m.amount.cents, m.amount.currency, locale) : "" })}
-                  <span className="text-[#b5d1a2]/60">· {time(m.at, locale)}</span>
-                </span>
+              <li key={m.id} className="my-3 flex justify-center">
+                <div className="w-[min(92%,360px)] rounded-[16px] border-[3px] border-double border-[#8fb07a]/80 bg-[#8fb07a]/10 px-4 py-3 text-center">
+                  <p className="p-display flex items-center justify-center gap-2 text-[1.45rem] uppercase leading-none tracking-[0.02em] text-[#c3dcae]">
+                    <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-[#8fb07a] font-sans text-[0.8rem] font-bold text-[#14120f]">
+                      ✓
+                    </span>
+                    {t.bookedBanner}
+                  </p>
+                  <p className="mt-1.5 text-[0.82rem] leading-snug text-bone/70">
+                    {fill(t.bookedLine, { artist: names.artist })}
+                    {m.amount && m.amount.cents > 0 ? ` · ${fill(t.bookedDeposit, { amount: money(m.amount.cents, m.amount.currency, locale) })}` : ""}
+                  </p>
+                  <p className="mt-1 text-[0.7rem] text-bone/40">{time(m.at, locale)}</p>
+                </div>
+              </li>,
+            ];
+          if (m.kind === "balance")
+            // The session paid in full: the loudest line in the chat, in gold.
+            return [
+              divider,
+              <li key={m.id} className="my-3 flex justify-center">
+                <div className="w-[min(92%,360px)] rounded-[16px] border-[3px] border-double border-[#e8c46b] bg-[#e8c46b]/10 px-4 py-3.5 text-center shadow-[0_0_40px_-12px_rgb(232_196_107/0.55)]">
+                  <p className="p-display text-[1.5rem] uppercase leading-none tracking-[0.02em] text-[#f2d27a]">{t.balance.banner}</p>
+                  {m.amount && <p className="mt-1.5 font-[family-name:var(--font-cinzel)] text-[1.6rem] font-bold text-[#f2d27a] tabular-nums">{money(m.amount.cents, m.amount.currency, locale)}</p>}
+                  <p className="mt-1 text-[0.82rem] leading-snug text-bone/70">{side === "artist" ? t.balance.bannerArtist : fill(t.balance.bannerClient, { artist: names.artist })}</p>
+                  <p className="mt-1 text-[0.7rem] text-bone/40">{time(m.at, locale)}</p>
+                </div>
+              </li>,
+            ];
+          if (m.request)
+            // The client asked to book (paid straight to the artist): a notice, not a question.
+            return [
+              divider,
+              <li key={m.id} className="my-3 flex justify-center">
+                <div className="w-[min(92%,360px)] rounded-[16px] border border-[#e8c46b]/45 bg-[#e8c46b]/[0.07] px-4 py-3 text-center">
+                  <p className="p-display text-[1.2rem] uppercase leading-none text-[#f2d27a]">{t.direct.requestedTitle}</p>
+                  <p className="mt-1.5 text-[0.84rem] leading-snug text-bone/75">
+                    {fill(side === "artist" ? t.direct.requestedArtist : t.direct.requestedClient, { name: names.client.split(" ")[0], artist: names.artist, amount: m.amount ? money(m.amount.cents, m.amount.currency, locale) : "" })}
+                  </p>
+                  <p className="mt-1 text-[0.7rem] text-bone/40">{time(m.at, locale)}</p>
+                </div>
               </li>,
             ];
           const mine = (m.actor === "client") === (side === "client");

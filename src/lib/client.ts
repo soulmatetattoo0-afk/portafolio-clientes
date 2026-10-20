@@ -387,3 +387,40 @@ export async function listMyChatsWith(userId: string, artistIds: string[]): Prom
     })),
   );
 }
+
+export interface MyArtist {
+  id: string;
+  slug: string;
+  name: string;
+  city: string | null;
+  accent: string | null;
+  styles: string[];
+  lastAt: string;
+  saved: boolean;
+  chats: number;
+  visits: number;
+}
+
+/**
+ * "Mis artistas": every artist the client has saved, written to, or looked
+ * at, with when they last crossed paths and how.
+ */
+export async function listMyArtists(userId: string): Promise<MyArtist[]> {
+  const db = await getDb();
+  const rows = await db.query<{ id: string; slug: string; name: string; city: string | null; accent: string | null; styles: string[]; last_at: Date; saved: boolean; chats: number; visits: number }>(
+    `with mine as (
+       select artist_id, max(last_at) as last_at, bool_or(saved) as saved, sum(chats)::int as chats, sum(visits)::int as visits from (
+         select artist_id, created_at as last_at, true as saved, 0 as chats, 0 as visits from follows where user_id = $1
+         union all
+         select b.artist_id, coalesce(b.updated_at, b.created_at), false, 1, 0 from briefs b join clients c on c.id = b.client_id where c.user_id = $1 and b.status <> 'archived'
+         union all
+         select artist_id, last_at, false, 0, visits from artist_visits where user_id = $1
+       ) x group by artist_id
+     )
+     select a.id, a.slug, a.display_name as name, a.home_city as city, a.accent, a.styles, m.last_at, m.saved, m.chats, m.visits
+       from mine m join artists a on a.id = m.artist_id
+      order by m.last_at desc limit 120`,
+    [userId],
+  );
+  return rows.map((r) => ({ id: r.id, slug: r.slug, name: r.name, city: r.city, accent: r.accent, styles: r.styles ?? [], lastAt: new Date(r.last_at).toISOString(), saved: Boolean(r.saved), chats: Number(r.chats), visits: Number(r.visits) }));
+}

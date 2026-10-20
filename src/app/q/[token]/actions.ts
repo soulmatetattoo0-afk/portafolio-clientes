@@ -57,7 +57,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
     const body = fill(ct.request, { amount: money(quote.deposit_cents, quote.currency, locale), artist: quote.artist_name });
     const b = await db.one<{ id: string; studio_id: string; client: string }>(`select b.id, b.studio_id, c.name as client from briefs b join clients c on c.id = b.client_id where b.chat_token = $1`, [quote.chat_token]);
     if (b) {
-      await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, data) values ($1, $2, 'message', 'client', $3, $4)`, [b.studio_id, b.id, body, JSON.stringify({ direct: quote.id })]);
+      await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, data) values ($1, $2, 'message', 'client', $3, $4)`, [b.studio_id, b.id, body, JSON.stringify({ direct: quote.id, amount_cents: quote.deposit_cents, currency: quote.currency })]);
       const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [b.studio_id]);
       after(() => notifyEach(members, (l) => ({ title: fill(dict(l).chat.direct.pushTitle, { name: b.client }), body: money(quote.deposit_cents, quote.currency, l), url: `/studio/chats/${b.id}`, tag: `direct:${b.id}` })));
       await emailChat(db, b.id, "artist", "bookRequest", body);

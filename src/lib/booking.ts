@@ -76,7 +76,8 @@ export async function confirmBooking(db: Db, a: ConfirmArgs): Promise<{ appointm
       }
     }
 
-    await tx.query(
+    // A booking without deposit (the artist set it to zero) leaves no payment behind.
+    if (a.amountCents > 0) await tx.query(
       `insert into payments (studio_id, quote_id, appointment_id, provider, checkout_id, payment_intent_id, amount_cents, application_fee_cents, currency, status)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'paid')
        on conflict (checkout_id) do update set status = 'paid', appointment_id = excluded.appointment_id, payment_intent_id = excluded.payment_intent_id`,
@@ -133,12 +134,12 @@ async function queueBookingEmails(db: Db, appointmentId: string) {
             ar.display_name as artist, c.name as client, c.email as client_email, c.locale as client_locale,
             (select m.email from members m where m.studio_id = ap.studio_id order by (m.role = 'owner') desc limit 1) as artist_email,
             (select m.locale from members m where m.studio_id = ap.studio_id order by (m.role = 'owner') desc limit 1) as artist_locale,
-            p.amount_cents, p.currency, q.token, c.user_id as client_user, (select chat_token from briefs where id = ap.brief_id) as chat_token
+            coalesce(p.amount_cents, 0) as amount_cents, coalesce(p.currency, q.currency) as currency, q.token, c.user_id as client_user, (select chat_token from briefs where id = ap.brief_id) as chat_token
        from appointments ap
        join artists ar on ar.id = ap.artist_id
        join clients c on c.id = ap.client_id
        join quotes q on q.id = ap.quote_id
-       join payments p on p.appointment_id = ap.id
+       left join payments p on p.appointment_id = ap.id and p.kind = 'deposit' 
        left join quote_slots s on s.id = ap.slot_id
        left join tour_stops t on t.id = s.tour_stop_id
       where ap.id = $1`,

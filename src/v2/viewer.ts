@@ -25,11 +25,17 @@ export async function getViewer(artist: Artist | null, opts: { owner?: boolean }
   return { t, locale, member, owner, client, chats, following, unread, pending };
 }
 
-/** One more visit to the artist's page today (never the artist's own). */
-export async function countVisit(artistId: string) {
+/** One more visit to the artist's page today (never the artist's own); a signed-in client also keeps the artist in "Mis artistas". */
+export async function countVisit(artistId: string, userId: string | null = null) {
   const db = await getDb();
   await db.query(
     `insert into page_views (artist_id, day, n) values ($1, current_date, 1) on conflict (artist_id, day) do update set n = page_views.n + 1`,
     [artistId],
   );
+  if (userId)
+    await db.query(
+      `insert into artist_visits (user_id, artist_id) values ($1, $2)
+       on conflict (user_id, artist_id) do update set visits = artist_visits.visits + 1, last_at = now()`,
+      [userId, artistId],
+    );
 }

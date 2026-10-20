@@ -53,6 +53,8 @@ export interface ChatItem {
   amount?: { cents: number; currency: string };
   /** A care sheet: the letter before or after the tattoo. */
   care?: "pre" | "post";
+  /** The client asked to book (payments made straight to the artist): shown as a notice, not a message. */
+  request?: boolean;
 }
 
 /** The request as the client sent it: the card pinned to the top of the conversation. */
@@ -152,6 +154,11 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
     const item: ChatItem = { id: e.id, actor: e.actor, kind, body: e.body, at: iso(e.created_at) };
     if (kind === "balance" && typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
     if (kind === "message" && (e.data?.care === "pre" || e.data?.care === "post")) item.care = e.data.care;
+    if (kind === "message" && typeof e.data?.direct === "string") {
+      item.request = true;
+      if (typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
+    }
+    if (kind === "paid" && typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
     if (kind === "offer") {
       const o = typeof e.data?.quote_id === "string" ? offerBy.get(e.data.quote_id) : undefined;
       if (!o) continue;

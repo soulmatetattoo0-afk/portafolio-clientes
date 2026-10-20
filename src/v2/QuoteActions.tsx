@@ -16,7 +16,7 @@ export type QuoteStage = "new" | "open" | "offered" | "booked" | "paid" | "close
  * deposit: the client gets the booking link), and when the tattoo is done,
  * collect the balance. Each state says where things stand.
  */
-export function QuoteActions({ briefId, stage, clientName, stops, defaults, balance, bookedOn, booking, currency, template, direct = false, t, locale }: { briefId: string; stage: QuoteStage; direct?: boolean; booking?: { date: string; time: string; hours: number; deposit: string } | null; clientName: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null }; balance: Balance | null; bookedOn: string | null; currency: string; template: string; t: Dict; locale: Locale }) {
+export function QuoteActions({ briefId, stage, clientName, stops, defaults, balance, bookedOn, booking, currency, template, direct = false, t, locale }: { briefId: string; stage: QuoteStage; direct?: boolean; booking?: { date: string; time: string; hours: number; deposit: string } | null; clientName: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null; date?: string | null; stopId?: string | null; client?: string }; balance: Balance | null; bookedOn: string | null; currency: string; template: string; t: Dict; locale: Locale }) {
   const c = t.v2.chats;
   const router = useRouter();
   const [mode, setMode] = useState<"accept" | "decline" | "confirm" | "move" | "cancel" | null>(null);
@@ -176,17 +176,20 @@ function MessageForm({ lead, initial, submit, tone = "accent", pending, onCancel
   );
 }
 
-export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onCancel, onSubmit }: { briefId: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null }; currency: string; pending: boolean; t: Dict; locale: Locale; onCancel: () => void; onSubmit: (v: { date: string; time: string; hours: number; stopId: string; total: number; deposit: number; message: string }) => void }) {
+export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onCancel, onSubmit }: { briefId: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null; date?: string | null; stopId?: string | null; client?: string }; currency: string; pending: boolean; t: Dict; locale: Locale; onCancel: () => void; onSubmit: (v: { date: string; time: string; hours: number; stopId: string; total: number; deposit: number; message: string }) => void }) {
   const c = t.v2.chats;
-  const [v, setV] = useState({ date: "", time: defaults.start ?? "12:00", hours: String(defaults.hours ?? 3), stopId: stops[0]?.id ?? "", price: "", sessions: "1", deposit: String(defaults.deposit ?? 100), message: "" });
+  const today = new Date().toISOString().slice(0, 10);
+  // The day the client asked for comes in chosen; the artist can suggest another.
+  const asked = defaults.date && defaults.date >= today ? defaults.date : null;
+  const [other, setOther] = useState(!asked);
+  const [v, setV] = useState({ date: asked ?? "", time: defaults.start ?? "12:00", hours: String(defaults.hours ?? 3), stopId: (defaults.stopId && stops.some((s) => s.id === defaults.stopId) ? defaults.stopId : stops[0]?.id) ?? "", price: "", sessions: "1", deposit: String(defaults.deposit ?? 100), message: "" });
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setV((p) => ({ ...p, [k]: e.target.value }));
   const total = (Number(v.price) || 0) * Math.max(1, Math.round(Number(v.sessions) || 1));
   const deposit = Number(v.deposit) || 0;
   const balance = Math.max(0, total - deposit);
   const fmt = (n: number) => money(Math.round(n * 100), currency, locale);
-  const today = new Date().toISOString().slice(0, 10);
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(v.date) && !Number.isNaN(new Date(`${v.date}T12:00:00Z`).getTime());
-  const ready = validDate && v.time && total > 0 && deposit > 0 && deposit <= total && v.stopId;
+  const ready = validDate && v.time && total > 0 && deposit >= 0 && deposit <= total && v.stopId;
   const when = validDate ? new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${v.date}T12:00:00Z`)) : "";
   return (
     <form
@@ -198,11 +201,24 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
     >
       <p className="p-display text-[1.4rem] leading-none">{c.confirm}</p>
       <p className="text-[0.88rem] text-bone-dim">{c.confirmLead}</p>
+      {asked && !other ? (
+        <div className="flex items-center justify-between gap-3 rounded-[16px] border border-accent/40 bg-accent/10 px-4 py-3">
+          <span className="min-w-0">
+            <span className="p-stamp block text-bone/60">{fill(c.askedDate, { name: defaults.client ?? "" })}</span>
+            <span className="p-display mt-1 block text-[1.35rem] uppercase leading-none">{when}</span>
+          </span>
+          <button type="button" className="shrink-0 rounded-full border border-bone/30 px-3 py-2 text-[0.78rem] font-semibold text-bone" onClick={() => setOther(true)}>
+            {c.suggestDate}
+          </button>
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
-        <label className="v2-field">
-          <span>{c.date}</span>
-          <input type="date" className="v2-input" min={today} value={v.date} onChange={set("date")} required />
-        </label>
+        {other && (
+          <label className="v2-field col-span-2">
+            <span>{asked ? c.otherDate : c.date}</span>
+            <input type="date" className="v2-input" min={today} value={v.date} onChange={set("date")} required />
+          </label>
+        )}
         <label className="v2-field">
           <span>{c.time}</span>
           <input type="time" className="v2-input" value={v.time} onChange={set("time")} required />
@@ -231,7 +247,7 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
         </label>
         <label className="v2-field">
           <span>{c.deposit}</span>
-          <input type="number" inputMode="decimal" className="v2-input" min={1} value={v.deposit} onChange={set("deposit")} required />
+          <input type="number" inputMode="decimal" className="v2-input" min={0} value={v.deposit} onChange={set("deposit")} required />
         </label>
       </div>
       <div className="rounded-[16px] bg-bone/8 px-4 py-3">
@@ -240,6 +256,7 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
         <p className="p-stamp mt-2 text-bone/60">{c.balance}</p>
         <p className="p-display text-[2rem] leading-none text-accent">{fmt(balance)}</p>
         {ready && <p className="mt-1 text-[0.82rem] text-bone-dim">{fill(c.summary, { date: when, time: v.time, deposit: fmt(deposit), balance: fmt(balance) })}</p>}
+        {ready && deposit === 0 && <p className="mt-1 text-[0.82rem] font-semibold text-bone">{c.noDeposit}</p>}
       </div>
       <label className="v2-field">
         <span>{c.message}</span>

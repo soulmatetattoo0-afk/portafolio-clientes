@@ -95,7 +95,8 @@ export function Sheet({
   transparent?: boolean;
 }) {
   return (
-    <div className={`relative aspect-[2/3] w-full overflow-hidden [container-type:inline-size] ${className}`} style={{ background: transparent ? "transparent" : page.tone === "ink" ? INK : BONE }}>
+    <div className={`relative aspect-[2/3] w-full overflow-hidden [container-type:inline-size] ${className}`} style={{ background: transparent ? "transparent" : page.tone === "ink" ? `radial-gradient(ellipse 80% 60% at 50% 42%, #1f1b18 0%, #121010 70%), ${INK}` : BONE }}>
+      {!transparent && page.tone === "ink" && <InkOrnament />}
       {page.boxes.map((b) => {
         const node = <Box box={b} tone={page.tone} urls={urls} ph={ph} />;
         return wrap ? (
@@ -107,6 +108,41 @@ export function Sheet({
         );
       })}
       {children}
+    </div>
+  );
+}
+
+/**
+ * The dress of a dark page, so it reads as printed paper and not a black
+ * screen: a fine double frame in bone and an engraved flourish in each corner,
+ * drawn faint behind whatever the artist placed on it.
+ */
+function InkOrnament() {
+  const corner = (rot: number, pos: string) => (
+    <svg viewBox="0 0 60 60" className={`absolute w-[17cqw] ${pos}`} style={{ transform: `rotate(${rot}deg)` }} fill="none" stroke="currentColor" strokeLinecap="round">
+      <path d="M3 57V19Q3 3 19 3H57" strokeWidth="1.1" />
+      <path d="M9 57V23Q9 9 23 9H57" strokeWidth="0.6" opacity="0.7" />
+      <path d="M15 33q0-15 14-18q9-1 9 7q-1 7-8 6q-5-1-4-6" strokeWidth="0.9" />
+      <path d="M33 15q-6 3-8 10" strokeWidth="0.7" />
+      <path d="M15 40q3 6 9 7M40 15q6 3 7 9" strokeWidth="0.7" />
+      <circle cx="15" cy="15" r="2" fill="currentColor" stroke="none" />
+      <path d="M21 51q2-4 6-4M51 21q-4 2-4 6" strokeWidth="0.6" />
+    </svg>
+  );
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 text-[#e9e2d4] opacity-[0.28]">
+      <span className="absolute inset-[3.2cqw] border border-current" />
+      <span className="absolute inset-[4.4cqw] border-[0.5px] border-current opacity-60" />
+      {corner(0, "top-[1.6cqw] left-[1.6cqw]")}
+      {corner(90, "top-[1.6cqw] right-[1.6cqw]")}
+      {corner(180, "right-[1.6cqw] bottom-[1.6cqw]")}
+      {corner(270, "bottom-[1.6cqw] left-[1.6cqw]")}
+      {/* A small fleuron at the foot of the frame. */}
+      <svg viewBox="0 0 40 12" className="absolute bottom-[2.1cqw] left-1/2 w-[9cqw] -translate-x-1/2" fill="none" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round">
+        <path d="M2 6h11M27 6h11M20 2q-5 4 0 8q5-4 0-8z" />
+        <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
+        <circle cx="25" cy="6" r="1" fill="currentColor" stroke="none" />
+      </svg>
     </div>
   );
 }

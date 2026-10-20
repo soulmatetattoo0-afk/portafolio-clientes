@@ -34,6 +34,9 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
     brief.status === "declined" || brief.status === "archived" ? "closed" : chat.balance?.paid ? "paid" : chat.balance ? "booked" : !answered ? "new" : offered ? "offered" : "open";
   const bookedOn = chat.balance ? (() => { const s = sessionTime(new Date(chat.balance.startsAt), stops[0]?.timezone ?? "America/New_York", locale); return `${s.day} · ${s.time}`; })() : null;
   const ct = dict(brief.client_locale);
+  // What the confirmation starts from: the artist's usual deposit and hours, the day and city the client asked for.
+  const askedDate = brief.timing === "specific" ? (/\d{4}-\d{2}-\d{2}/.exec(brief.preferred_dates ?? "")?.[0] ?? null) : null;
+  const defaults = { deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null, date: askedDate, stopId: brief.tour_stop_id ?? null, client: brief.client_name.split(" ")[0] };
   // The booked date as the move form starts from it, in the artist's time zone.
   const tz = stops[0]?.timezone ?? "America/New_York";
   const booking = chat.balance
@@ -68,7 +71,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
           demo={demoMode}
           direct={paysDirect(artist.stripe_charges_enabled)}
           stops={stops.map((s) => ({ id: s.id, label: s.is_home ? [s.studio_name, s.city].filter(Boolean).join(", ") : `${s.city}${s.starts_on ? ` · ${s.starts_on}` : ""}` }))}
-          defaults={{ deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null }}
+          defaults={defaults}
           t={t}
           locale={locale}
         />
@@ -91,7 +94,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
               stage={stage}
               clientName={brief.client_name}
               stops={stops.map((s) => ({ id: s.id, label: s.is_home ? [s.studio_name, s.city].filter(Boolean).join(", ") : `${s.city}${s.starts_on ? ` · ${s.starts_on}` : ""}` }))}
-              defaults={{ deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null }}
+              defaults={defaults}
               balance={chat.balance}
               bookedOn={bookedOn}
               booking={booking}

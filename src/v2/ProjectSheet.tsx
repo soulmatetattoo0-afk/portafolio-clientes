@@ -21,7 +21,7 @@ import { ConfirmForm, type QuoteStage } from "./QuoteActions";
  * left, and, once the session is done, the one button that sends the client
  * the link for the rest. In the demo, a way to open the client's chat and pay.
  */
-export function ProjectSheet({ briefId, card, balance, stage, bookedOn, chatToken, demo, direct = false, stops, defaults, t, locale }: { direct?: boolean; briefId: string; card: ChatCard; balance: Balance | null; stage: QuoteStage; bookedOn: string | null; chatToken: string; demo: boolean; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null }; t: Dict; locale: Locale }) {
+export function ProjectSheet({ briefId, card, balance, stage, bookedOn, chatToken, demo, direct = false, stops, defaults, t, locale }: { direct?: boolean; briefId: string; card: ChatCard; balance: Balance | null; stage: QuoteStage; bookedOn: string | null; chatToken: string; demo: boolean; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null; date?: string | null; stopId?: string | null; client?: string }; t: Dict; locale: Locale }) {
   const c = t.v2.chats;
   const router = useRouter();
   const [open, setOpen] = useState(false);
