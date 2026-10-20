@@ -1,6 +1,8 @@
 import type { Locale } from "@/i18n";
 
 import { getDb, type Db } from "./db";
+import { listStops, listTakenDays } from "./queries";
+import { loadBalance, type Balance } from "./balance";
 import { fileUrl } from "./storage";
 
 /**
@@ -25,15 +27,32 @@ export interface ChatOffer {
   timezone: string | null;
   city: string | null;
   studio_name: string | null;
+  /** The offer was the artist's calendar rather than one date. */
+  calendar: boolean;
+  /** The artist handed over their calendar and nobody has picked yet: the client picks the day among these. */
+  pick: {
+    time: string;
+    hours: number;
+    until: string;
+    /** Days already gone (sessions, holds, closed days), ISO on the studio's clock. */
+    taken: string[];
+    /** ISO weekdays the artist never works. */
+    closedWeekdays: number[];
+    today: string;
+  } | null;
 }
 
 export interface ChatItem {
   id: string;
   actor: "client" | "artist" | "system";
-  kind: "created" | "message" | "offer" | "paid" | "declined";
+  kind: "created" | "message" | "offer" | "paid" | "declined" | "balance";
   body: string | null;
   at: string;
   offer?: ChatOffer;
+  /** What a payment in the conversation came to. */
+  amount?: { cents: number; currency: string };
+  /** A care sheet: the letter before or after the tattoo. */
+  care?: "pre" | "post";
 }
 
 /** The request as the client sent it: the card pinned to the top of the conversation. */
@@ -68,6 +87,8 @@ export interface ChatThread {
   client: { name: string; email: string; locale: Locale };
   artist: { id: string; slug: string; name: string; accent: string | null; portrait_url: string | null; studio_id: string };
   chat_token: string;
+  /** The rest of the tattoo for the booked session, paid from the chat on the day. */
+  balance: Balance | null;
 }
 
 const KIND: Record<string, ChatItem["kind"] | null> = {
@@ -79,6 +100,7 @@ const KIND: Record<string, ChatItem["kind"] | null> = {
   quoted: "offer",
   paid: "paid",
   declined: "declined",
+  balance_paid: "balance",
 };
 
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : String(d));
@@ -107,23 +129,29 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
   ]);
   const quoteIds = events.map((e) => (typeof e.data?.quote_id === "string" ? e.data.quote_id : null)).filter((x): x is string => Boolean(x));
   const offers = quoteIds.length
-    ? await db.query<Omit<ChatOffer, "expired"> & { id: string }>(
+    ? await db.query<Omit<ChatOffer, "expired" | "pick" | "calendar"> & { id: string; pick_time: string | null; pick_hours: number | null; pick_until: string | null; artist_id: string }>(
         `select q.id, q.token, q.status, q.deposit_cents, q.price_min_cents, q.price_max_cents, q.currency, q.expires_at,
-                s.starts_at, s.ends_at, s.timezone, t.city, t.studio_name
+                s.starts_at, s.ends_at, coalesce(s.timezone, t.timezone) as timezone, t.city, t.studio_name,
+                q.pick_time, q.hours_per_session::float as pick_hours, to_char(q.pick_until, 'YYYY-MM-DD') as pick_until, q.artist_id
            from quotes q
            left join lateral (select * from quote_slots s where s.quote_id = q.id order by (s.status = 'booked') desc, s.starts_at limit 1) s on true
-           left join tour_stops t on t.id = s.tour_stop_id
+           left join tour_stops t on t.id = coalesce(s.tour_stop_id, q.pick_stop_id)
           where q.id = any($1::uuid[])`,
         [quoteIds],
       )
     : [];
   const offerBy = new Map(offers.map((o) => [o.id, o]));
+  // An open calendar offer needs the artist's days: what is taken and what they never work.
+  const openPick = offers.some((o) => o.pick_time && !o.starts_at && (o.status === "sent" || o.status === "viewed"));
+  const days = openPick ? await openDays(db, b.artist_id) : null;
 
   const items: ChatItem[] = [];
   for (const e of events) {
     const kind = KIND[e.kind];
     if (!kind) continue;
     const item: ChatItem = { id: e.id, actor: e.actor, kind, body: e.body, at: iso(e.created_at) };
+    if (kind === "balance" && typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
+    if (kind === "message" && (e.data?.care === "pre" || e.data?.care === "post")) item.care = e.data.care;
     if (kind === "offer") {
       const o = typeof e.data?.quote_id === "string" ? offerBy.get(e.data.quote_id) : undefined;
       if (!o) continue;
@@ -141,6 +169,11 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
         timezone: o.timezone,
         city: o.city,
         studio_name: o.studio_name,
+        calendar: Boolean(o.pick_time),
+        pick:
+          o.pick_time && !o.starts_at && days
+            ? { time: o.pick_time, hours: o.pick_hours ?? 3, until: o.pick_until ?? days.today, taken: days.taken, closedWeekdays: days.closedWeekdays, today: days.today }
+            : null,
       };
     }
     items.push(item);
@@ -168,7 +201,21 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
       portrait_url: artist!.portrait_path ? await fileUrl("public", artist!.portrait_path) : null,
     },
     chat_token: b.chat_token,
+    balance: await loadBalance(db, b.id),
   };
+}
+
+/** The artist's days for the client's calendar: sessions, holds and closed days as ISO dates on the studio's clock, plus the weekdays they never work. */
+async function openDays(db: Db, artistId: string): Promise<{ taken: string[]; closedWeekdays: number[]; today: string }> {
+  const [stops, art] = await Promise.all([listStops(artistId, { publicOnly: true }), db.one<{ closed_weekdays: number[]; timezone: string | null }>(
+    `select a.closed_weekdays, (select timezone from tour_stops t where t.artist_id = a.id order by t.is_home desc, t.created_at limit 1) as timezone from artists a where a.id = $1`,
+    [artistId],
+  )]);
+  const taken = new Set(Object.values(await listTakenDays(artistId, stops)).flat());
+  for (const r of await db.query<{ day: string }>(`select to_char(day, 'YYYY-MM-DD') as day from days_off where artist_id = $1 and day >= current_date`, [artistId])) taken.add(r.day);
+  const tz = art?.timezone ?? "America/New_York";
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return { taken: [...taken].sort(), closedWeekdays: (art?.closed_weekdays ?? []).map(Number), today };
 }
 
 /** The client's side: the conversation behind a private link. */

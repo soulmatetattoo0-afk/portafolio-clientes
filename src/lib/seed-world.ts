@@ -85,7 +85,7 @@ const ARTISTS: Seed[] = [
 ];
 
 export async function seedWorld(db: Db) {
-  for (const a of ARTISTS) {
+  for (const [i, a] of ARTISTS.entries()) {
     const home = placeCity(a.city, a.country);
     const studio = await db.one<{ id: string }>(`insert into studios (slug, name, kind, plan, subscription_status) values ($1, $2, 'solo', $3, 'active') returning id`, [a.slug + "-studio", a.studio, a.plan]);
     const s = studio!.id;
@@ -95,6 +95,8 @@ export async function seedWorld(db: Db) {
       [s, a.slug, a.name, a.headline, a.bio, a.instagram, a.city, a.country, home.city_slug, home.lat, home.lng, a.styles, a.priceFrom, a.word, a.quote, a.since, a.accent, a.accepting ?? true],
     );
     const id = artist!.id;
+    // Most of the demo pages opened months ago; the last two are new arrivals.
+    await db.query(`update artists set created_at = now() - make_interval(days => $2) where id = $1`, [id, i >= ARTISTS.length - 2 ? 3 + i : 60 + i * 23]);
     await db.query(
       `insert into tour_stops (studio_id, artist_id, city, country, city_slug, lat, lng, studio_name, timezone, status, is_home) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'booking', true)`,
       [s, id, a.city, a.country, home.city_slug, home.lat, home.lng, a.studio, a.tz],
@@ -133,4 +135,43 @@ export async function seedWorld(db: Db) {
   await db.query(`insert into follows (user_id, artist_id) select $1, id from artists where slug in ('camo', 'elena-sanz', 'kenji-okada') on conflict do nothing`, [DEMO_CLIENT_USER_ID]);
   await db.query(`insert into saves (user_id, portfolio_item_id) select $1, id from portfolio_items where title in ('Saint Sebastian', 'Grandfather at the harbour') on conflict do nothing`, [DEMO_CLIENT_USER_ID]);
   await db.query(`insert into city_follows (user_id, city_slug, trade) values ($1, 'miami', 'tattoo') on conflict do nothing`, [DEMO_CLIENT_USER_ID]);
+}
+
+/**
+ * Soulmate Tattoo as a studio of several artists (local demo only): Camo's
+ * house in New York with three more artists, so the studio front, its
+ * magazine and the join form have something to show. Camo owns it.
+ */
+export async function seedHouse(db: Db) {
+  const s = await db.one<{ id: string }>(
+    `update studios set kind = 'studio', city = 'New York', since_year = 2016, accent = '#b0201a', cover_path = 'demo/camo-cover.webp',
+            about = 'Un estudio privado en Manhattan donde cada artista trabaja su propio estilo: realismo, fine line, japonés y blackwork. Citas con calma, diseño a mano y una sola regla: que el tatuaje se vea igual de bien en diez años.'
+      where slug = 'soulmate-tattoo' returning id`,
+  );
+  if (!s) return;
+  const home = placeCity("New York", "United States");
+  const crew: [string, string, string, string[], string, number[]][] = [
+    ["rafa-ortiz", "Rafa Ortiz", "Realismo en negro y gris, retratos y estatuas", ["realism", "blackwork"], "#7a6a58", [1, 2, 3, 4]],
+    ["nina-volkova", "Nina Volkova", "Fine line y botánica, piezas pequeñas", ["fine_line", "illustrative"], "#5d7a63", [5, 6, 7, 8]],
+    ["june-park", "June Park", "Japonés y blackwork de gran formato", ["japanese", "blackwork"], "#9c2b23", [9, 10, 11, 12]],
+  ];
+  for (const [slug, name, headline, styles, accent, imgs] of crew) {
+    const exists = await db.one(`select 1 from artists where slug = $1`, [slug]);
+    if (exists) continue;
+    const a = await db.one<{ id: string }>(
+      `insert into artists (studio_id, slug, display_name, headline, home_city, country, city_slug, lat, lng, styles, min_price_cents, currency, accent, portrait_path, trade, booking_mode)
+       values ($1, $2, $3, $4, 'New York', 'United States', $5, $6, $7, $8, 20000, 'usd', $9, $10, 'tattoo', 'brief_quote') returning id`,
+      [s.id, slug, name, headline, home.city_slug, home.lat, home.lng, styles, accent, `demo/tattoo-${String(imgs[0]).padStart(2, "0")}.webp`],
+    );
+    await db.query(
+      `insert into tour_stops (studio_id, artist_id, city, country, city_slug, lat, lng, studio_name, timezone, status, is_home) values ($1, $2, 'New York', 'United States', $3, $4, $5, 'Soulmate Tattoo', 'America/New_York', 'booking', true)`,
+      [s.id, a!.id, home.city_slug, home.lat, home.lng],
+    );
+    for (const [i, n] of imgs.entries()) {
+      await db.query(
+        `insert into portfolio_items (studio_id, artist_id, image_path, style, color_mode, sort, published_at) values ($1, $2, $3, $4, 'black_grey', $5, now() - make_interval(days => $6))`,
+        [s.id, a!.id, `demo/tattoo-${String(n).padStart(2, "0")}.webp`, styles[0], i, 3 + i * 7],
+      );
+    }
+  }
 }

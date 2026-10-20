@@ -8,7 +8,7 @@ import { LangToggle } from "./LangToggle";
 
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-2 text-gilt ${className}`} aria-label="Vanta">
+    <span className={`inline-flex items-center gap-2 text-gilt ${className}`} aria-label="VANTA">
       <VantaMark className="h-5 w-auto" />
       <VantaWord className="h-[0.55rem] w-auto" />
     </span>

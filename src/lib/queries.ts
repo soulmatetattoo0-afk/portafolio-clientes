@@ -22,6 +22,10 @@ export interface Artist {
   min_price_cents: number | null;
   currency: string;
   deposit_policy: DepositPolicy;
+  /** What the booking-offer form starts with. */
+  default_deposit_cents: number | null;
+  default_session_hours: number | null;
+  default_start_time: string | null;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
   /** Poster cover: the giant word behind the photo, a short quote, the year they started. */
@@ -41,6 +45,14 @@ export interface Artist {
   lat: number | null;
   lng: number | null;
   listed: boolean;
+  /** The front's buttons as the artist arranged them (lib/layout); null for the default. */
+  layout: unknown;
+  /** When the artist launched the page to the public; null while it is still being built. */
+  launched_at: Date | string | null;
+  /** The illustration across the top of the paper calendar, when the artist set one. */
+  calendar_art_url: string | null;
+  precare: string | null;
+  postcare: string | null;
 }
 
 export interface TourStop {
@@ -55,6 +67,9 @@ export interface TourStop {
   is_home: boolean;
   status: "announced" | "booking" | "full" | "done";
   waitlist_count?: number;
+  /** The cover of this city's calendar, where the artist put one. */
+  cover_path?: string | null;
+  cover_url?: string | null;
 }
 
 export interface FlashItem {
@@ -80,22 +95,48 @@ export interface PortfolioItem {
   published: boolean;
   /** Opens a page of its own in the artist's magazine. */
   featured: boolean;
-  /** The words beside the piece in the magazine. */
+  /** The words beside the piece in the magazine and in the open picture. */
   story: string | null;
+  /** Where the artist centred the piece inside its 4:5 window (percent) and how close. */
+  focus_x: number;
+  focus_y: number;
+  zoom: number;
   url: string | null;
+  /** The artist's own section this piece sits in, if any. */
+  section_id: string | null;
+}
+
+/** A section of the work the artist named themselves. */
+export interface PortfolioSection {
+  id: string;
+  name: string;
+  /** The style the section stands for, when it is one. */
+  style: string | null;
+  /** The piece shown on the section's card in the styles carousel. */
+  cover_item_id: string | null;
+}
+
+export async function listSections(artistId: string): Promise<PortfolioSection[]> {
+  const db = await getDb();
+  return db.query<PortfolioSection>(`select id, name, style, cover_item_id from portfolio_sections where artist_id = $1 order by sort, created_at`, [artistId]);
 }
 
 const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bio, a.instagram, a.home_city, a.styles, a.accepting,
-  a.min_price_cents, a.currency, a.deposit_policy, a.stripe_account_id, a.stripe_charges_enabled,
+  a.min_price_cents, a.currency, a.deposit_policy, a.default_deposit_cents, a.default_session_hours::float as default_session_hours, a.default_start_time,
+  a.stripe_account_id, a.stripe_charges_enabled,
   a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path,
-  a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed`;
+  a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed, a.layout, a.launched_at, a.calendar_art_path, a.precare, a.postcare`;
 
-type ArtistRow = Omit<Artist, "portrait_url"> & { portrait_path: string | null };
+type ArtistRow = Omit<Artist, "portrait_url" | "calendar_art_url"> & { portrait_path: string | null; calendar_art_path: string | null };
 
 async function withPortrait(row: ArtistRow | null): Promise<Artist | null> {
   if (!row) return null;
-  const { portrait_path, ...a } = row;
-  return { ...a, portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null };
+  const { portrait_path, calendar_art_path, ...a } = row;
+  return {
+    ...a,
+    portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null,
+    calendar_art_url: calendar_art_path ? await fileUrl("public", calendar_art_path) : null,
+  };
 }
 
 const isoDate = (d: unknown) => (d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
@@ -117,14 +158,14 @@ export async function getArtistById(id: string): Promise<Artist | null> {
 export async function listStops(artistId: string, opts: { publicOnly?: boolean } = {}): Promise<TourStop[]> {
   const db = await getDb();
   const rows = await db.query<TourStop>(
-    `select t.id, t.city, t.country, t.studio_name, t.address, t.timezone, t.starts_on, t.ends_on, t.is_home, t.status,
+    `select t.id, t.city, t.country, t.studio_name, t.address, t.timezone, t.starts_on, t.ends_on, t.is_home, t.status, t.cover_path,
             (select count(*) from waitlist w where w.tour_stop_id = t.id and w.notified_at is null) as waitlist_count
        from tour_stops t
       where t.artist_id = $1 ${opts.publicOnly ? "and t.status <> 'done' and (t.ends_on is null or t.ends_on >= current_date)" : ""}
       order by t.is_home desc, t.starts_on nulls first`,
     [artistId],
   );
-  return rows.map(normStop);
+  return Promise.all(rows.map(async (r) => ({ ...normStop(r), cover_url: r.cover_path ? await fileUrl("public", r.cover_path) : null })));
 }
 
 /**
@@ -143,7 +184,7 @@ export async function listTakenDays(artistId: string, stops: TourStop[]): Promis
      union all
      select s.starts_at, s.tour_stop_id, null::text
        from quote_slots s join quotes q on q.id = s.quote_id
-      where q.artist_id = $1 and s.tour_stop_id is not null and s.status in ('held', 'booked')`,
+      where q.artist_id = $1 and s.tour_stop_id is not null and s.status = 'booked'`,
     [artistId],
   );
   const dayIn = (at: Date, timezone: string) => {
@@ -167,7 +208,13 @@ export async function listTakenDays(artistId: string, stops: TourStop[]): Promis
   }
   // Days the artist closed in their agenda read as taken wherever they fall.
   const off = await db.query<{ day: string }>(`select to_char(day, 'YYYY-MM-DD') as day from days_off where artist_id = $1 and day >= current_date`, [artistId]);
-  for (const { day } of off) {
+  // So do the weekdays they never work, for the months a client can pick from.
+  const weekly = await db.query<{ day: string }>(
+    `select to_char(d, 'YYYY-MM-DD') as day from generate_series(current_date, current_date + 180, interval '1 day') d, artists a
+      where a.id = $1 and extract(isodow from d)::smallint = any(a.closed_weekdays)`,
+    [artistId],
+  );
+  for (const { day } of [...off, ...weekly]) {
     const stop = stops.find((s) => !s.is_home && s.starts_on && s.ends_on && day >= s.starts_on && day <= s.ends_on) ?? home;
     if (stop) (taken[stop.id] ??= new Set()).add(day);
   }
@@ -177,7 +224,7 @@ export async function listTakenDays(artistId: string, stops: TourStop[]): Promis
 export async function listPortfolio(artistId: string, opts: { publishedOnly?: boolean } = {}): Promise<PortfolioItem[]> {
   const db = await getDb();
   const rows = await db.query<Omit<PortfolioItem, "url"> & { image_path: string | null }>(
-    `select id, title, style, color_mode, placement, is_healed, published, featured, story, image_path from portfolio_items
+    `select id, title, style, color_mode, placement, is_healed, published, featured, story, section_id, image_path, focus_x::float as focus_x, focus_y::float as focus_y, zoom::float as zoom from portfolio_items
       where artist_id = $1 ${opts.publishedOnly ? "and published" : ""} order by sort, created_at desc`,
     [artistId],
   );
@@ -431,6 +478,9 @@ export interface QuoteView {
   artist_id: string;
   artist_name: string;
   artist_slug: string;
+  artist_accent: string | null;
+  /** The conversation the offer was made in; the page leads back to it. */
+  chat_token: string;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
   plan: string;
@@ -447,7 +497,7 @@ export async function getQuoteByToken(token: string): Promise<QuoteView | null> 
             q.deposit_cents, q.currency, q.message, q.policy, q.expires_at, q.brief_id,
             b.placement, b.full_coverage, b.size_w_cm::float as size_w_cm, b.size_h_cm::float as size_h_cm, b.style, b.color_mode,
             c.name as client_name, c.email as client_email, c.locale as client_locale,
-            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.stripe_account_id, a.stripe_charges_enabled, st.plan
+            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.accent as artist_accent, b.chat_token, a.stripe_account_id, a.stripe_charges_enabled, st.plan
        from quotes q join briefs b on b.id = q.brief_id join clients c on c.id = b.client_id join artists a on a.id = q.artist_id join studios st on st.id = q.studio_id
       where q.token = $1`,
     [token],

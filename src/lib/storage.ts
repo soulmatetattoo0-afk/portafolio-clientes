@@ -13,6 +13,13 @@ const LOCAL_ROOT = process.env.VERCEL ? path.join("/tmp", "brief-data", "files")
 
 const admin = () => createClient(env.supabaseUrl!, env.supabaseServiceKey!, { auth: { persistSession: false } });
 
+/**
+ * On a Vercel preview without Supabase storage, the "local" files live in Blob
+ * storage instead of the instance's disk: every instance sees the same photos.
+ */
+const shared = () => Boolean(process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN);
+const blobPath = (bucket: Bucket, key: string) => `files/${bucket}/${key}`;
+
 export async function putFile(bucket: Bucket, key: string, data: Buffer, contentType: string) {
   if (live.storage) {
     const { error } = await admin().storage.from(BUCKET_NAMES[bucket]).upload(key, data, { contentType, upsert: false });
@@ -20,6 +27,11 @@ export async function putFile(bucket: Bucket, key: string, data: Buffer, content
     return;
   }
   const file = localPath(bucket, key);
+  if (shared()) {
+    const { put } = await import("@vercel/blob");
+    await put(blobPath(bucket, key), data, { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType });
+    return;
+  }
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, data);
 }
@@ -29,11 +41,18 @@ export async function removeFile(bucket: Bucket, key: string) {
     await admin().storage.from(BUCKET_NAMES[bucket]).remove([key]);
     return;
   }
+  if (shared()) {
+    const { del } = await import("@vercel/blob");
+    await del(blobPath(bucket, key)).catch(() => undefined);
+    return;
+  }
   await fs.rm(localPath(bucket, key), { force: true });
 }
 
 /** A URL the browser can load. Private files get a short-lived signature. */
 export async function fileUrl(bucket: Bucket, key: string, expiresIn = 3600): Promise<string> {
+  // Photographs that ship with the app (the seeded pages) live in public/, in every mode.
+  if (key.startsWith("demo/")) return `/${key.split("/").map(encodeURIComponent).join("/")}`;
   if (live.storage) {
     const store = admin().storage.from(BUCKET_NAMES[bucket]);
     if (bucket === "public") return store.getPublicUrl(key).data.publicUrl;
@@ -42,8 +61,6 @@ export async function fileUrl(bucket: Bucket, key: string, expiresIn = 3600): Pr
     return data.signedUrl;
   }
   const encoded = key.split("/").map(encodeURIComponent).join("/");
-  // Demo assets ship in public/, so the static host serves them on any instance (serverless /tmp is per instance).
-  if (bucket === "public" && key.startsWith("demo/")) return `/${encoded}`;
   if (bucket === "public") return `/api/files/public/${encoded}`;
   const exp = Math.floor(Date.now() / 1000) + expiresIn;
   return `/api/files/private/${encoded}?exp=${exp}&sig=${sign(`private/${key}:${exp}`)}`;
@@ -60,6 +77,13 @@ export async function readLocalFile(bucket: Bucket, key: string, exp?: string | 
     if (!sig || !e || e < Date.now() / 1000 || !verify(`private/${key}:${e}`, sig)) return null;
   }
   try {
+    if (shared()) {
+      localPath(bucket, key);
+      const { get } = await import("@vercel/blob");
+      const r = await get(blobPath(bucket, key), { access: "private" });
+      if (!r || r.statusCode !== 200) return null;
+      return Buffer.from(await new Response(r.stream).arrayBuffer());
+    }
     return await fs.readFile(localPath(bucket, key));
   } catch {
     return null;

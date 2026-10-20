@@ -94,7 +94,7 @@ export async function FollowedIssues({ userId, citySlug, t, locale, folio }: { u
       <ul className="-mx-4 mt-6 flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-5 md:px-0">
         {items.map((a) => (
           <li key={a.id} className="w-[58vw] max-w-[16rem] shrink-0 snap-start md:w-auto md:max-w-none" style={{ ["--accent" as string]: a.accent ?? "#d8552f" }}>
-            <Link href={`/${a.slug}#bio`} className="relative block overflow-hidden rounded-[2px] shadow-[0_24px_40px_-20px_rgb(0_0_0/0.9)] transition hover:-translate-y-1" aria-label={a.name}>
+            <Link href={`/${a.slug}`} className="relative block overflow-hidden rounded-[2px] shadow-[0_24px_40px_-20px_rgb(0_0_0/0.9)] transition hover:-translate-y-1" aria-label={a.name}>
               <CoverSheet cover={a.magazine.doc.cover} name={a.name} urls={a.magazine.urls} ph={t.magazine.ph} />
               {/* What's new with this artist, stamped on the cover like a sticker. */}
               {(() => {

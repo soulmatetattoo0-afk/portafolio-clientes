@@ -10,7 +10,7 @@ import { STYLE_BY_SLUG } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { briefReceivedToClient, newBriefToArtist } from "@/lib/messages";
-import { notify } from "@/lib/push";
+import { notifyEach } from "@/lib/push";
 import { allow } from "@/lib/ratelimit";
 import { MAX_IMAGE_BYTES } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, MAX_REFERENCES, readDraftToken, type UploadTarget } from "@/lib/uploads";
@@ -121,6 +121,8 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
     if (!draftId) return { ok: false, error: t.brief.errors.upload };
     for (const u of b.uploads) {
       const info = await inspectUpload(draftId, u.key);
+      // The figure's picture is optional: without it the artist still has the zone on the figure.
+      if (!info && u.kind === "placement") continue;
       if (!info) return { ok: false, error: t.brief.errors.upload };
       files.push({ key: u.key, kind: u.kind, ...info });
     }
@@ -199,12 +201,12 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [artist.studio_id]);
   after(async () => {
     await flushOutbox(await getDb());
-    await notify(members.map((m) => m.user_id), {
-      title: fill(dict(members[0]?.locale ?? "en").push.newRequest, { name: b.name }),
+    await notifyEach(members, (l) => ({
+      title: fill(dict(l).push.newRequest, { name: b.name }),
       body: b.description,
-      url: `/studio?brief=${result.briefId}`,
+      url: `/studio/chats/${result.briefId}`,
       tag: `chat:${result.briefId}`,
-    });
+    }));
   });
   return { ok: true, ref: result.ref, chat: result.chat };
 }

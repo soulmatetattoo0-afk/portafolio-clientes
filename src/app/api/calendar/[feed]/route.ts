@@ -10,6 +10,8 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/calendar/[f
   const [studioId, sig] = feed.replace(/\.ics$/, "").split(".");
   if (!studioId || !sig || !verify(`cal:${studioId}`, sig)) return new Response("Not found", { status: 404 });
   const db = await getDb();
+  // The feed reads in the studio owner's language.
+  const locale = (await db.one<{ locale: "en" | "es" }>(`select locale from members where studio_id = $1 order by (role = 'owner') desc limit 1`, [studioId]))?.locale ?? "en";
   const rows = await db.query<{ id: string; starts_at: Date; ends_at: Date; city: string | null; client: string; placement: string | null; brief_id: string | null; artist: string }>(
     `select ap.id, ap.starts_at, ap.ends_at, ap.city, c.name as client, b.placement, ap.brief_id, a.display_name as artist
        from appointments ap join clients c on c.id = ap.client_id left join briefs b on b.id = ap.brief_id join artists a on a.id = ap.artist_id
@@ -17,13 +19,13 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/calendar/[f
       order by ap.starts_at`,
     [studioId],
   );
-  const body = calendar(rows[0]?.artist ?? "Bookings", rows.map((r) => ({
+  const body = calendar(rows[0]?.artist ?? "VANTA", rows.map((r) => ({
     uid: `${r.id}@brief`,
     start: new Date(r.starts_at),
     end: new Date(r.ends_at),
-    summary: `${r.client}: ${r.placement ? placementLabel(r.placement, "en") : "Session"}`,
+    summary: r.placement ? `${r.client}: ${placementLabel(r.placement, locale)}` : r.client,
     location: r.city,
-    url: r.brief_id ? `${env.appUrl}/studio?brief=${r.brief_id}` : null,
+    url: r.brief_id ? `${env.appUrl}/studio/chats/${r.brief_id}` : null,
   })));
   return new Response(body, { headers: { "content-type": "text/calendar; charset=utf-8", "cache-control": "private, max-age=300" } });
 }

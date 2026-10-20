@@ -2,6 +2,12 @@
 
     python tools/mannequin/human.py --out public/mannequin [--preview DIR] [--only f|m] [--tris 72000]
 
+Or, without a `bpy` wheel, under Blender's own interpreter (scipy on PYTHONPATH):
+
+    Blender -b --python-use-system-env --python tools/mannequin/human.py -- --out DIR [--only f]
+
+then `npm run mannequin:compress` once the GLBs are in public/mannequin.
+
 Source
 ------
 `mh/` holds the few MakeHuman 1.x assets this build needs, copied verbatim
@@ -35,10 +41,13 @@ soles on y = 0.
 
 Output (same contract as build.py)
 ---------------------------------
-body-f.glb / body-m.glb: one mesh, metres, glTF Y up, facing +Z, left side at
-+X, with a `_ZONE` float vertex attribute (ids from body.ZONES, never
+body-f.glb / body-m.glb: one skinned mesh, metres, glTF Y up, facing +Z, left
+side at +X, with a `_ZONE` float vertex attribute (ids from body.ZONES, never
 renumbered), every vertex duplicated per zone that touches it so zone borders
-are crisp while custom normals keep the shading seamless. zones.json: the
+are crisp while custom normals keep the shading seamless, and a 23-bone
+skeleton (pelvis, spine, neck, head, and per side clavicle, shoulder, upperarm,
+forearm, hand, thigh, lowerleg, foot) with weights from MakeHuman's default
+rig, so the viewer can pose the arms (src/mannequin/poses.ts). zones.json: the
 catalog plus per-zone anchors (centre, mean normal, extent) in glTF space.
 
 Pipeline: parse → morph → Catmull-Clark twice (214k quads, a smooth statue
@@ -64,7 +73,7 @@ from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).parent))
 from body import ZONES, ZONE_ID  # noqa: E402
-from build import blender_reset, export_glb, face_data, split_by_zone, vertex_normals  # noqa: E402
+from build import blender_reset, face_data, split_by_zone, vertex_normals  # noqa: E402
 
 import bpy  # noqa: E402  (bpy must come after numpy for the wheel's bundled libs)
 
@@ -184,6 +193,109 @@ def part_weights(weights: dict, n_verts: int) -> np.ndarray:
         np.add.at(W[:, PART_INDEX[part]], idx, w)
     W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
     return W
+
+
+# ---------------------------------------------------------------------------
+# The posing skeleton: a few bones over MakeHuman's rig, one per part
+# ---------------------------------------------------------------------------
+
+# name, parent, (bone whose head starts it), (bone whose tail ends it)
+SKELETON: list[tuple[str, str | None, tuple[str, str], tuple[str, str]]] = [
+    ("pelvis", None, ("root", "head"), ("spine05", "tail")),
+    ("spine04", "pelvis", ("spine04", "head"), ("spine04", "tail")),
+    ("spine03", "spine04", ("spine03", "head"), ("spine03", "tail")),
+    ("spine02", "spine03", ("spine02", "head"), ("spine02", "tail")),
+    ("spine01", "spine02", ("spine01", "head"), ("spine01", "tail")),
+    ("neck", "spine01", ("neck01", "head"), ("neck03", "tail")),
+    ("head", "neck", ("head", "head"), ("head", "tail")),
+]
+for _s in "LR":
+    SKELETON += [
+        (f"clavicle_{_s}", "spine01", (f"clavicle.{_s}", "head"), (f"clavicle.{_s}", "tail")),
+        (f"shoulder_{_s}", f"clavicle_{_s}", (f"shoulder01.{_s}", "head"), (f"shoulder01.{_s}", "tail")),
+        (f"upperarm_{_s}", f"shoulder_{_s}", (f"upperarm01.{_s}", "head"), (f"upperarm02.{_s}", "tail")),
+        (f"forearm_{_s}", f"upperarm_{_s}", (f"lowerarm01.{_s}", "head"), (f"lowerarm02.{_s}", "tail")),
+        (f"hand_{_s}", f"forearm_{_s}", (f"wrist.{_s}", "head"), (f"finger3-3.{_s}", "tail")),
+        (f"thigh_{_s}", "pelvis", (f"upperleg01.{_s}", "head"), (f"upperleg02.{_s}", "tail")),
+        (f"lowerleg_{_s}", f"thigh_{_s}", (f"lowerleg01.{_s}", "head"), (f"lowerleg02.{_s}", "tail")),
+        (f"foot_{_s}", f"lowerleg_{_s}", (f"foot.{_s}", "head"), (f"toe3-3.{_s}", "tail")),
+    ]
+BONE_INDEX = {name: i for i, (name, _, _, _) in enumerate(SKELETON)}
+# Which skeleton bone each weight part drives: the hips and the breasts ride on the torso bones.
+PART_BONE = {p: p for p in PARTS}
+PART_BONE.update({"pelvis": "pelvis", "pelvis_L": "pelvis", "pelvis_R": "pelvis", "breast_L": "spine02", "breast_R": "spine02"})
+
+
+def skin_weights(fig: "Figure", V: np.ndarray, influences: int = 4) -> tuple[np.ndarray, np.ndarray]:
+    """Per-vertex (joints, weights) for the skeleton, interpolated from the base mesh's bone weights."""
+    base = fig.V[fig.body_idx]
+    d, nn = cKDTree(base).query(V, k=4)
+    wk = 1.0 / np.maximum(d, 1e-5)
+    wk /= wk.sum(axis=1, keepdims=True)
+    Wp = np.einsum("fk,fkp->fp", wk, fig.W[fig.body_idx][nn])  # (n, parts)
+    Wb = np.zeros((len(V), len(SKELETON)), dtype=np.float64)
+    for part, col in PART_INDEX.items():
+        Wb[:, BONE_INDEX[PART_BONE[part]]] += Wp[:, col]
+    order = np.argsort(-Wb, axis=1)[:, :influences]
+    w = np.take_along_axis(Wb, order, axis=1)
+    w /= np.maximum(w.sum(axis=1, keepdims=True), 1e-9)
+    return order.astype(np.int64), w
+
+
+def export_glb_skinned(name: str, fig: "Figure", V, F, N, zone, joints, weights, path: Path):
+    """The statue with its skeleton: an armature the viewer can pose, vertex groups as skin weights."""
+    arm_data = bpy.data.armatures.new(f"{name}_rig")
+    arm = bpy.data.objects.new(f"{name}_rig", arm_data)
+    bpy.context.scene.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    for bone, parent, (hb, hend), (tb, tend) in SKELETON:
+        eb = arm_data.edit_bones.new(bone)
+        eb.head = to_blender(fig.joint[fig.bones[hb][hend]][None, :])[0].tolist()
+        eb.tail = to_blender(fig.joint[fig.bones[tb][tend]][None, :])[0].tolist()
+        if parent:
+            eb.parent = arm_data.edit_bones[parent]
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(V.tolist(), [], F.tolist())
+    me.update()
+    me.shade_smooth()
+    me.normals_split_custom_set_from_vertices(N.tolist())
+    attr = me.attributes.new("_ZONE", "FLOAT", "POINT")
+    attr.data.foreach_set("value", zone)
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    groups = [ob.vertex_groups.new(name=bone) for bone, _, _, _ in SKELETON]
+    # Same weight, same bone: one call per distinct pair keeps this quick.
+    by_group: dict[tuple[int, float], list[int]] = {}
+    wq = np.round(weights, 3)
+    for i in range(len(V)):
+        for k in range(joints.shape[1]):
+            if wq[i, k] > 0:
+                by_group.setdefault((int(joints[i, k]), float(wq[i, k])), []).append(i)
+    for (j, w), idx in by_group.items():
+        groups[j].add(idx, w, "REPLACE")
+    ob.parent = arm
+    mod = ob.modifiers.new("skin", "ARMATURE")
+    mod.object = arm
+    for o in bpy.context.scene.objects:
+        o.select_set(o in (ob, arm))
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.export_scene.gltf(
+        filepath=str(path),
+        export_format="GLB",
+        use_selection=True,
+        export_attributes=True,
+        export_normals=True,
+        export_texcoords=False,
+        export_materials="NONE",
+        export_yup=True,
+        export_apply=False,
+        export_skins=True,
+        export_animations=False,
+    )
+    return ob
 
 
 # ---------------------------------------------------------------------------
@@ -743,12 +855,13 @@ def build(name: str, target_tris: int, out: Path, preview: Path | None):
     print(f"[{name}] decimated: {len(F)} tris, {len(V)} verts in {time.time() - t0:.0f}s")
 
     N = vertex_normals(V, F)
-    Vs, Fs, Ns, zone = split_by_zone(V, F, N, labels)
+    Vs, Fs, Ns, zone, _ = split_by_zone(V, F, N, labels)
     print(f"[{name}] zones: {len(np.unique(labels))} used, {len(Vs)} verts after zone split")
+    joints, weights = skin_weights(fig, Vs)
 
     out.mkdir(parents=True, exist_ok=True)
-    # export_glb works in Blender axes (+Z up, -Y front); the glTF writer turns that into Y up / +Z front.
-    ob = export_glb(f"body_{name}", to_blender(Vs), Fs, to_blender(Ns), zone, out / f"body-{name}.glb")
+    # The export works in Blender axes (+Z up, -Y front); the glTF writer turns that into Y up / +Z front.
+    ob = export_glb_skinned(f"body_{name}", fig, to_blender(Vs), Fs, to_blender(Ns), zone, joints, weights, out / f"body-{name}.glb")
 
     # Per-zone anchors in glTF space (already y up / +z front here).
     anchors = {}
@@ -779,7 +892,9 @@ def main():
     ap.add_argument("--preview", type=Path)
     ap.add_argument("--only", choices=["f", "m"])
     ap.add_argument("--tris", type=int, default=72_000)
-    args = ap.parse_args()
+    # Under Blender's own interpreter the script's arguments follow a `--`.
+    argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
+    args = ap.parse_args(argv)
 
     names = [n for n in ("f", "m") if not args.only or n == args.only]
     catalog_path = args.out / "zones.json"

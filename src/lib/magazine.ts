@@ -15,10 +15,10 @@ export const PAGE_RATIO = 2 / 3;
 export const SAFE = 4;
 /** On the cover the masthead and the title line are ours; boxes live below them. */
 export const COVER_TOP = 24;
-export const MAX_PAGES = 24;
+export const MAX_PAGES = 10;
 export const MAX_BOXES = 24;
 
-export const FONTS = ["poster", "roman", "serif", "italic", "gothic", "script", "sans"] as const;
+export const FONTS = ["poster", "roman", "serif", "italic", "gothic", "script", "sans", "anton", "bebas", "oswald", "playfair", "abril", "marker", "typewriter", "fraktur", "neon", "retro", "hand", "dancing", "mono"] as const;
 export type FontId = (typeof FONTS)[number];
 /** Each face, as the CSS family it maps to. */
 export const FONT_FAMILY: Record<FontId, string> = {
@@ -29,6 +29,24 @@ export const FONT_FAMILY: Record<FontId, string> = {
   gothic: "var(--font-gothic)",
   script: "var(--font-script)",
   sans: "var(--font-sans)",
+  anton: '"Anton", Impact, sans-serif',
+  bebas: '"Bebas Neue", Impact, sans-serif',
+  oswald: '"Oswald", "Arial Narrow", sans-serif',
+  playfair: '"Playfair Display", Georgia, serif',
+  abril: '"Abril Fatface", Georgia, serif',
+  marker: '"Permanent Marker", cursive',
+  typewriter: '"Special Elite", "Courier New", monospace',
+  fraktur: '"UnifrakturMaguntia", "Old English Text MT", serif',
+  neon: '"Monoton", Impact, sans-serif',
+  retro: '"Righteous", Impact, sans-serif',
+  hand: '"Caveat", cursive',
+  dancing: '"Dancing Script", cursive',
+  mono: '"Rubik Mono One", Impact, sans-serif',
+};
+/** How each face is called in the picker. */
+export const FONT_LABEL: Record<FontId, string> = {
+  poster: "Póster", roman: "Romana", serif: "Garamond", italic: "Itálica", gothic: "Gótica", script: "Caligrafía", sans: "Sans",
+  anton: "Anton", bebas: "Bebas", oswald: "Oswald", playfair: "Playfair", abril: "Abril", marker: "Marcador", typewriter: "Máquina", fraktur: "Fraktur", neon: "Neón", retro: "Retro", hand: "Manuscrita", dancing: "Dancing", mono: "Bloque",
 };
 /** The face's own weight and case, so each one looks like itself. */
 export const FONT_STYLE: Record<FontId, React.CSSProperties> = {
@@ -39,6 +57,19 @@ export const FONT_STYLE: Record<FontId, React.CSSProperties> = {
   gothic: { lineHeight: 1.05 },
   script: { lineHeight: 1.15 },
   sans: { fontWeight: 400, lineHeight: 1.45 },
+  anton: { textTransform: "uppercase", lineHeight: 0.95 },
+  bebas: { textTransform: "uppercase", lineHeight: 0.95, letterSpacing: "0.02em" },
+  oswald: { fontWeight: 600, textTransform: "uppercase", lineHeight: 1.05 },
+  playfair: { fontWeight: 700, lineHeight: 1.08 },
+  abril: { lineHeight: 1.05 },
+  marker: { lineHeight: 1.15 },
+  typewriter: { lineHeight: 1.3 },
+  fraktur: { lineHeight: 1.1 },
+  neon: { lineHeight: 1.1 },
+  retro: { lineHeight: 1.05 },
+  hand: { fontWeight: 700, lineHeight: 1.1 },
+  dancing: { fontWeight: 700, lineHeight: 1.15 },
+  mono: { lineHeight: 1.15 },
 };
 
 export const PLACEHOLDERS = ["title", "kicker", "bio", "caption", "quote", "coverTitle", "coverLine"] as const;
@@ -130,9 +161,10 @@ export function starterDoc(photos: string[], cover: string | null, portrait: str
   return {
     v: 1,
     cover: {
-      mode: "compose",
+      // The portrait treatment by default: the picture full bleed under the masthead; the artist can still compose their own.
+      mode: cover || portrait ? "poster" : "compose",
       tone: "ink",
-      poster: null,
+      poster: cover ?? portrait ?? null,
       boxes: [
         frame(cover ?? next(), 4, 24, 92, 60, { fy: 30 }),
         words("coverLine", 4, 86, 92, 10, { font: "italic", size: 4.2, align: "center" }),

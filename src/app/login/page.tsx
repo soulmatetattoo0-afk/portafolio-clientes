@@ -5,21 +5,24 @@ import { DemoBanner, Wordmark } from "@/components/Chrome";
 import { LangToggle } from "@/components/LangToggle";
 import { getDict } from "@/i18n/server";
 import { getMember, getSession } from "@/lib/auth";
-import { getClientUser } from "@/lib/client";
 import { live } from "@/lib/env";
 
 import { enterDemo, enterSova } from "./actions";
-import { LoginForm } from "./LoginForm";
+import { AccountForm } from "../me/signin/AccountForm";
 
-export const metadata = { title: "Sign in", robots: { index: false } };
+export async function generateMetadata() {
+  const { t } = await getDict();
+  return { title: t.studio.login.title, robots: { index: false } };
+}
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const session = await getSession();
-  if (session) {
-    // A signed-in client without a studio of their own belongs in their space, not the onboarding.
-    if (!(await getMember(session)) && (await getClientUser(session)))
-      redirect("/me");
-    redirect("/studio");
+  const sp0 = await searchParams;
+  // Local mode and previews: straight into the demo studio, unless the point is to create a new page.
+  if (!live.auth && sp0.mode !== "create") redirect("/studio/pagina");
+  if (session && !session.implicit) {
+    // Signed in at the artists' door: their studio, or the page they still have to set up.
+    redirect((await getMember(session)) ? "/studio" : "/studio/onboarding");
   }
   const [{ t, locale }, sp] = await Promise.all([getDict(), searchParams]);
   const l = t.studio.login;
@@ -44,28 +47,39 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               {l.invalid}
             </p>
           )}
-          {live.auth ? (
-            <>
-              <p className="mt-3 mb-8 text-ash">{l.lead}</p>
-              <LoginForm labels={{ email: l.email, send: l.send }} />
-            </>
-          ) : (
-            <>
-              <p className="mt-3 mb-8 text-ash">{l.demoLead}</p>
+          <p className="mt-3 mb-8 text-ash">{l.lead}</p>
+          <AccountForm
+            next="/studio"
+            initial={sp.mode === "create" ? "create" : "enter"}
+            labels={{
+              create: t.me.account.create,
+              enter: t.me.account.enter,
+              username: t.me.account.username,
+              usernameHint: t.me.account.usernameHint,
+              email: t.me.account.email,
+              password: t.me.account.password,
+              passwordHint: t.me.account.passwordHint,
+              who: t.me.account.who,
+              submitCreate: l.create,
+              submitEnter: t.me.account.submitEnter,
+              forgot: t.me.account.forgot,
+            }}
+          />
+          {/* The demo studios: only on a laptop, never on a shared deployment. */}
+          {!live.auth && !process.env.VERCEL && (
+            <div className="mt-10 grid gap-3 border-t border-line pt-6">
+              <p className="text-[0.9rem] text-ash">{l.demoLead}</p>
               <form action={enterDemo}>
-                <button type="submit" className="btn btn-primary w-full">
+                <button type="submit" className="btn btn-secondary w-full">
                   {l.demo}
                 </button>
               </form>
-              {/* Sasha's own studio: only on a laptop, never on the shared demo. */}
-              {!process.env.VERCEL && (
-                <form action={enterSova} className="mt-3">
-                  <button type="submit" className="btn btn-secondary w-full">
-                    {l.demoSova}
-                  </button>
-                </form>
-              )}
-            </>
+              <form action={enterSova}>
+                <button type="submit" className="btn btn-secondary w-full">
+                  {l.demoSova}
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </main>

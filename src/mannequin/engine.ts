@@ -12,6 +12,7 @@
 
 import {
   ACESFilmicToneMapping,
+  Bone,
   Box3,
   BufferAttribute,
   BufferGeometry,
@@ -21,10 +22,14 @@ import {
   Matrix4,
   Mesh,
   MeshMatcapMaterial,
+  Object3D,
   PerspectiveCamera,
+  Quaternion,
   Ray,
   Raycaster,
   Scene,
+  Skeleton,
+  SkinnedMesh,
   SRGBColorSpace,
   Vector2,
   Vector3,
@@ -38,7 +43,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree, type MeshBVH } from "three-mesh-bvh";
 
-import { BODY_HEIGHT_CM, MIN_DESIGN_CM, PAIN_COLORS, PLACEMENT_BY_SLUG, ZONES, ZONE_BY_ID, ZONE_BY_SLUG, maxSizeFor, patchZoneIds, type BodyType } from "./catalog";
+import { BODY_HEIGHT_CM, MIN_DESIGN_CM, PAIN_COLORS, PLACEMENT_BY_SLUG, ZONES, ZONE_BY_ID, ZONE_BY_SLUG, maxSizeFor, painFor, patchZoneIds, type BodyType } from "./catalog";
+import { poseFor, viewFor, type PoseSpec } from "./poses";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree;
@@ -105,6 +111,7 @@ uniform vec3 uDesignY;
 uniform vec3 uDesignN;
 uniform vec2 uDesignHalf;
 uniform float uDesignDepth;
+uniform vec3 uDesignColor;
 uniform float uDesignMask[${MAX_ZONES}];
 uniform vec3 uAccent;
 uniform float uPainMap;
@@ -286,10 +293,8 @@ function srgb(css: string): Vector3 {
 }
 
 interface Gesture {
-  kind: "drag" | "pinch";
+  kind: "pinch";
   ids: number[];
-  /** Last hit point in figure space while dragging. */
-  last?: Vector3;
   startDist?: number;
   startAngle?: number;
   startW?: number;
@@ -298,6 +303,9 @@ interface Gesture {
   moved: boolean;
 }
 
+/** A triangle of the skin (vertex indices) and barycentric weights of a point inside it. */
+type Tri = { a: number; b: number; c: number; u: number; v: number; w: number };
+
 export class MannequinEngine {
   private renderer: WebGLRenderer;
   private scene = new Scene();
@@ -305,11 +313,28 @@ export class MannequinEngine {
   private controls: OrbitControls;
   private root = new Group();
   private body: Mesh | null = null;
+  /** The statue's skeleton, when the body shipped with one: the limbs can then be posed. */
+  private skeleton: Skeleton | null = null;
+  private boneOrder: Bone[] = [];
+  private restLocal = new Map<Bone, Quaternion>();
+  private restWorld = new Map<Bone, Quaternion>();
+  /** Each bone's anatomical frame at rest: Y up along the bone, Z the figure's front, so X is the hinge. */
+  private boneFrame = new Map<Bone, Quaternion>();
+  private poseTarget = new Map<Bone, Quaternion>();
+  private poseAnim: { from: Map<Bone, Quaternion>; start: number; dur: number } | null = null;
+  private poseKey = "";
+  /** The skin as it is posed right now, for picking; the drawn mesh keeps the bind pose and lets the GPU move it. */
+  private posedGeom: BufferGeometry | null = null;
+  private pickMesh: Mesh | null = null;
+  /** The bind pose, for settling the patch along the skin: the design lives in that space. */
+  private bindMesh: Mesh | null = null;
   private bodyType: BodyType;
   private heightCm: number;
   private material: MeshMatcapMaterial;
   private zoneState = new Float32Array(MAX_ZONES);
   private zoneColor: Vector3[] = [];
+  /** The patch's one colour: the pain of the chosen placement. */
+  private designColor = new Vector3(0.8, 0.8, 0.8);
   /** 1 for the zones a design may spread over (its placement's body region). */
   private designMask = new Float32Array(MAX_ZONES);
   private hoverZone = 0;
@@ -317,6 +342,8 @@ export class MannequinEngine {
   private painMap = false;
   private placement: string | null = null;
   private design = { point: null as Vector3 | null, normal: null as Vector3 | null, widthCm: 10, heightCm: 10, rotationDeg: 0 };
+  /** The triangle the design's centre sits on and where in it, so the posed centre can be found again. */
+  private designTri: Tri | null = null;
   /** Tangent frame of the design in figure space, kept for hit tests. */
   private frame = { x: new Vector3(1, 0, 0), y: new Vector3(0, 1, 0), n: new Vector3(0, 0, 1), halfW: 0, halfH: 0 };
   private uniforms: Record<string, { value: unknown }> | null = null;
@@ -325,7 +352,6 @@ export class MannequinEngine {
   private pointers = new Map<number, { x: number; y: number }>();
   private gesture: Gesture | null = null;
   private downAt: { x: number; y: number; t: number } | null = null;
-  private holdTimer = 0;
   private frameId = 0;
   private dirty = true;
   private flight: { from: [Vector3, Vector3]; to: [Vector3, Vector3]; start: number; dur: number } | null = null;
@@ -336,6 +362,7 @@ export class MannequinEngine {
   private io: IntersectionObserver;
   private loader: GLTFLoader;
   private cache = new Map<BodyType, BG>();
+  private rigCache = new Map<BodyType, { bones: Bone[]; inverses: Matrix4[] }>();
   /** The painted flash per body: front and back sheets, drawn once from their SVGs. */
   private inkCache = new Map<BodyType, Promise<{ front: CanvasTexture; back: CanvasTexture } | null>>();
   private ink: { front: CanvasTexture | null; back: CanvasTexture | null; box: Vector4 } = { front: null, back: null, box: new Vector4(-1, 1, -1, 1) };
@@ -381,6 +408,7 @@ export class MannequinEngine {
       shader.uniforms.uDesignN = { value: new Vector3(0, 0, 1) };
       shader.uniforms.uDesignHalf = { value: new Vector2(0.05, 0.05) };
       shader.uniforms.uDesignDepth = { value: 0.05 };
+      shader.uniforms.uDesignColor = { value: this.designColor };
       shader.uniforms.uDesignMask = { value: this.designMask };
       shader.uniforms.uAccent = { value: srgb(this.accent) };
       shader.uniforms.uPainMap = { value: this.painMap ? 1 : 0 };
@@ -407,6 +435,14 @@ export class MannequinEngine {
   vec3 zc = vec3(0.8);
   float onRegion = 0.0;
   for (int k = 0; k < ${MAX_ZONES}; k++) { if (k == zi) { st = uZoneState[k]; zc = uZoneColor[k]; onRegion = uDesignMask[k]; } if (k == oi) so = uZoneState[k]; }
+  // The bicep is its inner face: the front of the upper arm and the side toward the body.
+  // The outer half of zones 5 and 6 stays plain porcelain whatever the state.
+  if (zi == 5 || zi == 6) {
+    vec3 inward = normalize(vec3(-sign(vObj.x) * 0.75, 0.0, 0.66));
+    float inner = smoothstep(-0.12, 0.12, dot(normalize(vNrm), inward));
+    st *= step(0.5, inner);
+    so *= step(0.5, inner);
+  }
   // 1 = hover, 2 = selected (pulses gently), 3 = dimmed (other zones while placing), 4 = the area under a design
   float hover = step(0.5, st) * step(st, 1.5);
   float sel = step(1.5, st) * step(st, 2.5);
@@ -428,7 +464,8 @@ export class MannequinEngine {
   gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.10, 0.22, 0.52) * (0.55 + lum * 0.55), inked * 0.95);
   // The pain colour is laid on like paint: it keeps the wax's shading.
   vec3 paint = zc * (0.5 + lum * 0.62);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, (hover * 0.5 + area * 0.4 + idle * 0.24) * wash);
+  // Under a design the area takes no tint of its own: the patch is the one shape on the skin.
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, (hover * 0.5 + area * 0.14 * (1.0 - uDesignOn) + idle * 0.24) * wash);
   // The selection reads like a laser scan: the whole area filled edge to edge,
   // a bright rim along its border, fine scan lines and a band that sweeps up it.
   if (sel > 0.5) {
@@ -467,12 +504,19 @@ export class MannequinEngine {
     float soft = 1.0 - smoothstep(-min(0.012, min(uDesignHalf.x, uDesignHalf.y) * 0.5), 0.0, sdf);
     float lineW = max(fwidth(sdf) * 1.5, 0.0012);
     float line = 1.0 - smoothstep(lineW * 0.6, lineW * 1.6, abs(sdf));
-    vec3 ink = vec3(0.13, 0.11, 0.105) * (0.75 + lum * 0.5);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, ink, inside * (0.22 + 0.34 * soft) * mask);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, uAccent, line * mask);
+    // The patch is the chosen area itself: the same laser scan as the selection,
+    // in one colour (the placement's pain), even where it spills onto a
+    // neighbouring zone of another pain, cut to the size the client set.
+    vec3 laserP = min(uDesignColor * 1.35 + 0.08, vec3(1.0));
+    vec3 paintP = uDesignColor * (0.5 + lum * 0.62);
+    float gridP = smoothstep(0.82, 1.0, sin(vObj.x * 520.0)) * 0.5 + smoothstep(0.82, 1.0, sin(vObj.y * 520.0)) * 0.5;
+    float linesP = smoothstep(0.55, 1.0, sin(vObj.y * 900.0)) * 0.22;
+    float bandP = exp(-pow((fract(vObj.y * 1.4 - uTime * 0.45) - 0.5) * 9.0, 2.0)) * 0.55;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, paintP, inside * (0.42 + 0.16 * soft) * mask);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, laserP, clamp(inside * (gridP * 0.75 + linesP + bandP * 0.55) + line * 0.95, 0.0, 1.0) * mask);
     // A small cross at the centre, so the middle reads even on a tiny patch.
     float mark = (1.0 - smoothstep(lineW * 0.5, lineW * 1.2, min(abs(uv.x), abs(uv.y)))) * (1.0 - smoothstep(0.006, 0.0085, max(abs(uv.x), abs(uv.y))));
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, uAccent, mark * mask * 0.9);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, laserP, mark * mask * 0.9);
   }`,
         );
     };
@@ -601,6 +645,8 @@ export class MannequinEngine {
   selectPlacement(slug: string | null, fly = true) {
     this.placement = slug;
     this.refreshZoneState();
+    // The figure turns to show the area (an arm comes forward, bends, turns its palm), then the camera closes in.
+    this.setPose(slug ? poseFor(slug) : null, !this.opts.reducedMotion);
     if (slug && fly) this.focusPlacement(slug);
     if (!slug) this.frameAll(true);
   }
@@ -615,7 +661,8 @@ export class MannequinEngine {
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const half = Math.tan(Math.min(vfov, hfov) / 2);
     const dist = Math.max(0.45 / half, (radius / half) * 1.45);
-    const dir = this.clearestView(target, dist);
+    const hint = viewFor(slug);
+    const dir = hint ? new Vector3(...hint).normalize() : this.clearestView(target, dist);
     const eye = center.clone().add(dir.multiplyScalar(dist));
     eye.y += radius * 0.25;
     if (animate) this.flyTo(eye, center);
@@ -629,7 +676,7 @@ export class MannequinEngine {
    * camera inside the torso). Level, front-facing views win ties.
    */
   private clearestView(anchor: { center: Vector3; normal: Vector3; samples: Vector3[] }, dist: number): Vector3 {
-    const geom = this.body!.geometry as BufferGeometry;
+    const geom = this.skinGeometry()!;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const bvh = (geom as any).boundsTree as MeshBVH | undefined;
     const base = anchor.normal.clone().normalize();
@@ -701,14 +748,18 @@ export class MannequinEngine {
   focusDesign(animate = true) {
     if (!this.design.point || !this.design.normal) return;
     const s = this.root.scale.x;
-    const center = this.design.point.clone().multiplyScalar(s);
+    const center = this.posedPoint(this.design.point).multiplyScalar(s);
     const vfov = (this.camera.fov * Math.PI) / 180;
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const half = Math.tan(Math.min(vfov, hfov) / 2);
     const size = Math.max(this.design.widthCm, this.design.heightCm) / 100;
-    const dist = Math.max(0.45 / half, (size / half) * 1.6);
-    const dir = this.design.normal.clone();
-    dir.y *= 0.35;
+    const dist = Math.max(0.5 / half, (size / half) * 1.7);
+    // Look from where the whole area is in sight (an inner forearm faces the
+    // body: its own normal would put the eye between arm and torso).
+    const anchor = this.placement ? this.placementAnchor(this.placement) : null;
+    // Without an area to measure, look along the design's own normal, carried to where the limb is now.
+    const dir = anchor ? this.clearestView(anchor, dist) : this.design.normal.clone().applyQuaternion(this.designTri ? this.boneTurn(this.designTri.a) : new Quaternion());
+    if (!anchor) dir.y *= 0.35;
     dir.normalize();
     const eye = center.clone().addScaledVector(dir, dist);
     if (animate) this.flyTo(eye, center);
@@ -746,6 +797,7 @@ export class MannequinEngine {
   clearDesign() {
     this.design.point = null;
     this.design.normal = null;
+    this.designTri = null;
     this.updateDesign();
     this.refreshZoneState();
   }
@@ -755,9 +807,17 @@ export class MannequinEngine {
     if (!this.body || !this.placement) return;
     const anchor = this.placementAnchor(this.placement);
     if (!anchor) return;
-    const origin = anchor.center.clone().add(anchor.normal.clone().multiplyScalar(0.5));
-    this.raycaster.set(origin, anchor.normal.clone().negate());
-    const hit = this.raycaster.intersectObject(this.body, false)[0];
+    // Anchors are in root space scaled to metres; the ray is cast in world space.
+    this.root.updateMatrixWorld(true);
+    const s = this.root.scale.x;
+    const origin = this.root.localToWorld(anchor.center.clone().divideScalar(s).addScaledVector(anchor.normal, 0.5 / s));
+    this.raycaster.set(origin, anchor.normal.clone().negate().transformDirection(this.root.matrixWorld));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.raycaster as any).firstHitOnly = false;
+    // The ray may cross another part first (a posed forearm sits in front of the chest): take the area itself.
+    const ids = new Set((PLACEMENT_BY_SLUG.get(this.placement)?.zones ?? []).map((z) => ZONE_BY_SLUG.get(z)?.id ?? -1));
+    const hits = this.raycaster.intersectObject(this.pickMesh ?? this.body, false);
+    const hit = hits.find((h) => ids.has(this.zoneOf(h))) ?? hits[0];
     if (hit) this.placeFromHit(hit, true);
   }
 
@@ -766,6 +826,8 @@ export class MannequinEngine {
     if (!this.body) return;
     this.design.point = new Vector3(...point);
     this.design.normal = new Vector3(...normal).normalize();
+    const settled = this.settle(this.design.point, this.design.normal);
+    this.designTri = settled?.tri ?? null;
     this.updateDesign();
     this.refreshZoneState();
   }
@@ -782,7 +844,8 @@ export class MannequinEngine {
     if (dir === "up" || dir === "down") cam.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
     else cam.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     if (dir === "down" || dir === "left") cam.negate();
-    // Figure space only scales the world, so a direction carries over as is; then flatten it onto the skin.
+    // Into the bind pose the design lives in (the limb may be turned), then flatten it onto the skin.
+    this.worldDirToBind(cam);
     const along = cam.addScaledVector(n, -cam.dot(n));
     if (along.lengthSq() < 1e-8) return;
     along.normalize();
@@ -791,6 +854,7 @@ export class MannequinEngine {
     if (!settled || !this.zoneAllowed(settled.zone)) return;
     this.design.point = settled.point;
     this.design.normal.lerp(settled.normal, 0.6).normalize();
+    this.designTri = settled.tri;
     this.updateDesign();
     this.opts.onPlace?.(this.getPlacement());
   }
@@ -827,6 +891,7 @@ export class MannequinEngine {
     el.removeEventListener("pointercancel", this.onPointerUp);
     el.removeEventListener("pointerleave", this.onPointerLeave);
     this.controls.dispose();
+    this.posedGeom?.dispose();
     this.cache.forEach((g) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (g as any).disposeBoundsTree?.();
@@ -856,10 +921,11 @@ export class MannequinEngine {
         const mesh = found as Mesh;
         gltf.scene.updateMatrixWorld(true);
         nodeMatrix = mesh.matrixWorld.clone();
+        const skinnedSrc = (mesh as SkinnedMesh).isSkinnedMesh ? (mesh as SkinnedMesh) : null;
         // Positions and normals arrive as quantised int16; widen them to float
         // before baking the node transform, or the metre values would overflow.
         geometry = new BufferGeometry();
-        for (const name of ["position", "normal", "_zone"]) {
+        for (const name of ["position", "normal", "_zone", "skinIndex", "skinWeight"]) {
           const src = mesh.geometry.getAttribute(name);
           if (!src) continue;
           const out = new Float32Array(src.count * src.itemSize);
@@ -869,16 +935,64 @@ export class MannequinEngine {
           geometry.setAttribute(name, new BufferAttribute(out, src.itemSize));
         }
         geometry.setIndex(mesh.geometry.getIndex());
-        geometry.applyMatrix4(nodeMatrix);
+        let inverses: Matrix4[] = [];
+        if (skinnedSrc) {
+          // A compressed skin keeps its vertices in a quantised box and undoes the box through the
+          // inverse bind matrices. Bake that box back into the vertices (at rest, any bone's world
+          // matrix times its inverse bind matrix is exactly the box) so the bind pose is in figure
+          // space again, and take the box out of the matrices in turn.
+          const sk = skinnedSrc.skeleton;
+          const box = sk.bones[0].matrixWorld.clone().multiply(sk.boneInverses[0]);
+          geometry.applyMatrix4(box);
+          const unbox = box.clone().invert();
+          inverses = sk.boneInverses.map((m) => m.clone().multiply(unbox));
+        } else geometry.applyMatrix4(nodeMatrix);
         addBorderAttributes(geometry);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (geometry as any).computeBoundsTree();
         this.cache.set(body, geometry);
+        if (skinnedSrc) this.rigCache.set(body, { bones: skinnedSrc.skeleton.bones, inverses });
       }
       if (this.disposed) return;
-      if (this.body) this.root.remove(this.body);
-      this.body = new Mesh(geometry, this.material);
-      this.root.add(this.body);
+      this.unloadBody();
+      const rig = this.rigCache.get(body);
+      if (rig) {
+        // The bones hang from the figure's root (so height and the intro turn carry them); the skinned
+        // mesh sits at the scene's origin and lets the bones bring it into place.
+        const bones = rig.bones.map((b) => b.clone(false));
+        rig.bones.forEach((src, i) => {
+          const p = src.parent;
+          const pi = p ? rig.bones.indexOf(p as Bone) : -1;
+          if (pi >= 0) bones[pi].add(bones[i]);
+          else this.root.add(bones[i]);
+        });
+        this.skeleton = new Skeleton(bones, rig.inverses.map((m) => m.clone()));
+        const skinned = new SkinnedMesh(geometry, this.material);
+        skinned.frustumCulled = false;
+        this.root.updateMatrixWorld(true);
+        skinned.bind(this.skeleton, new Matrix4());
+        this.scene.add(skinned);
+        this.body = skinned;
+        this.captureRest();
+        this.bindMesh = new Mesh(geometry);
+        this.bindMesh.visible = false;
+        this.root.add(this.bindMesh);
+        this.posedGeom = new BufferGeometry();
+        // Its own copy of the index: each bounds tree sorts the triangles of the index it is built on.
+        const index = geometry.getIndex()!;
+        this.posedGeom.setIndex(new BufferAttribute(index.array.slice(), 1));
+        this.posedGeom.setAttribute("_zone", geometry.getAttribute("_zone"));
+        this.posedGeom.setAttribute("position", new BufferAttribute(new Float32Array(geometry.getAttribute("position").array), 3));
+        this.posedGeom.setAttribute("normal", new BufferAttribute(new Float32Array(geometry.getAttribute("normal").array), 3));
+        this.pickMesh = new Mesh(this.posedGeom);
+        this.pickMesh.visible = false;
+        this.root.add(this.pickMesh);
+        this.refreshPosed();
+        if (this.placement) this.setPose(poseFor(this.placement), false);
+      } else {
+        this.body = new Mesh(geometry, this.material);
+        this.root.add(this.body);
+      }
       void this.applyInk(body, geometry);
       this.applyScale();
       this.refreshZoneState();
@@ -908,29 +1022,9 @@ export class MannequinEngine {
     this.downAt = { x: e.clientX, y: e.clientY, t: performance.now() };
     if (this.mode !== "place" || !this.design.point) return;
     const el = this.renderer.domElement;
-    if (this.pointers.size === 1) {
-      const hit = this.pick(e);
-      if (hit && this.onPatch(hit)) {
-        // One finger turns the figure, even over the patch. Holding still on the
-        // patch for a moment picks it up instead, and only then the orbit stops.
-        const id = e.pointerId;
-        const start = { x: e.clientX, y: e.clientY };
-        const point = this.toFigure(hit.point);
-        clearTimeout(this.holdTimer);
-        this.holdTimer = window.setTimeout(() => {
-          const now = this.pointers.get(id);
-          if (!now || this.pointers.size !== 1 || Math.hypot(now.x - start.x, now.y - start.y) > 8) return;
-          this.controls.enabled = false;
-          try {
-            el.setPointerCapture(id);
-          } catch {}
-          this.gesture = { kind: "drag", ids: [id], last: point, moved: false };
-          el.style.cursor = "grabbing";
-          this.downAt = null;
-        }, 260);
-      }
-    } else if (this.pointers.size === 2) {
-      clearTimeout(this.holdTimer);
+    // One finger always turns the figure; a tap moves the patch; the arrows nudge
+    // it. Nothing is picked up by holding, so a slow start never freezes the orbit.
+    if (this.pointers.size === 2) {
       // A second finger: pinch to scale, turn to rotate. Freeze the orbit for
       // as long as any finger stays down.
       e.stopImmediatePropagation();
@@ -960,8 +1054,7 @@ export class MannequinEngine {
     }
     const g = this.gesture;
     if (g && g.ids.includes(e.pointerId)) {
-      if (g.kind === "drag") this.dragTo(e, g);
-      else this.pinch(g);
+      if (g.kind === "pinch") this.pinch(g);
       return;
     }
     if (e.pointerType !== "mouse" || this.downAt || this.mode !== "zone") return;
@@ -983,7 +1076,6 @@ export class MannequinEngine {
 
   private onPointerUp = (e: PointerEvent) => {
     this.pointers.delete(e.pointerId);
-    clearTimeout(this.holdTimer);
     const g = this.gesture;
     if (g && g.ids.includes(e.pointerId)) {
       // A pinch ends when either finger lifts; the remaining finger does not
@@ -1023,47 +1115,244 @@ export class MannequinEngine {
     return Boolean(slug && allowed.includes(slug));
   }
 
-  /** Is this hit on the design patch (with a finger's margin), facing it? */
-  private onPatch(hit: Intersection): boolean {
-    if (!this.design.point || !hit.face) return false;
-    const p = this.toFigure(hit.point).sub(this.design.point);
-    const margin = 0.015 / this.root.scale.x;
-    const u = Math.abs(p.dot(this.frame.x));
-    const v = Math.abs(p.dot(this.frame.y));
-    return u < this.frame.halfW + margin && v < this.frame.halfH + margin && hit.face.normal.dot(this.frame.n) > 0;
-  }
-
-  private dragTo(e: PointerEvent, g: Gesture) {
-    const hit = this.pick(e);
-    if (!hit || !hit.face || !g.last) return;
-    const here = this.toFigure(hit.point);
-    const delta = here.clone().sub(g.last);
-    g.last = here;
-    if (delta.lengthSq() < 1e-10) return;
-    // Slide the centre by the finger's travel over the skin, then settle it
-    // back onto the surface along the patch's normal. If it would leave the
-    // chosen area, it stays put.
-    if (!this.design.point || !this.design.normal) return;
-    const next = this.design.point.clone().add(delta);
-    const settled = this.settle(next, this.design.normal);
-    if (!settled || !this.zoneAllowed(settled.zone)) return;
-    this.design.point = settled.point;
-    this.design.normal.lerp(settled.normal, 0.6).normalize();
-    g.moved = true;
-    this.updateDesign();
-  }
-
   /** Project a figure-space point onto the skin along a normal. */
-  private settle(point: Vector3, normal: Vector3): { point: Vector3; normal: Vector3; zone: number } | null {
+  private settle(point: Vector3, normal: Vector3): { point: Vector3; normal: Vector3; zone: number; tri: Tri } | null {
     if (!this.body) return null;
     this.root.updateMatrixWorld(true);
     const origin = this.root.localToWorld(point.clone().addScaledVector(normal, 0.25));
     this.raycaster.set(origin, normal.clone().negate().transformDirection(this.root.matrixWorld));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.raycaster as any).firstHitOnly = true;
-    const hit = this.raycaster.intersectObject(this.body, false)[0];
+    const hit = this.raycaster.intersectObject(this.bindMesh ?? this.body, false)[0];
     if (!hit || !hit.face) return null;
-    return { point: this.toFigure(hit.point), normal: hit.face.normal.clone().normalize(), zone: this.zoneOf(hit) };
+    const p = this.toFigure(hit.point);
+    const bary = this.barycentric(this.body.geometry as BufferGeometry, hit.face, p);
+    return { point: p, normal: hit.face.normal.clone().normalize(), zone: this.zoneOf(hit), tri: { a: hit.face.a, b: hit.face.b, c: hit.face.c, ...bary } };
+  }
+
+  /* ---------------------------------------------------------------- posing */
+
+  /** Rest orientation of every bone, local and relative to the figure's root, in hierarchy order. */
+  private captureRest() {
+    this.boneOrder = [];
+    this.restLocal.clear();
+    this.restWorld.clear();
+    this.boneFrame.clear();
+    this.poseTarget.clear();
+    const walk = (o: Object3D, parentWorld: Quaternion) => {
+      if ((o as Bone).isBone) {
+        const b = o as Bone;
+        const local = b.quaternion.clone();
+        const world = parentWorld.clone().multiply(local);
+        this.boneOrder.push(b);
+        this.restLocal.set(b, local);
+        this.restWorld.set(b, world);
+        this.poseTarget.set(b, local.clone());
+        // The bone runs along its local Y; the smallest turn that hangs the figure's Y down it is its frame.
+        const along = new Vector3(0, 1, 0).applyQuaternion(world).normalize();
+        this.boneFrame.set(b, new Quaternion().setFromUnitVectors(new Vector3(0, -1, 0), along));
+        for (const c of b.children) walk(c, world);
+      }
+    };
+    for (const c of this.root.children) walk(c, new Quaternion());
+  }
+
+  /**
+   * Turn the figure into a pose: each named bone gets rotations about its own
+   * anatomical axes at rest (X the hinge, Y a twist along the bone, Z toward
+   * the front), carried along by its parent's turn. Unnamed bones follow their
+   * parents. The drawn skin tweens there; the skin used for picking jumps ahead.
+   */
+  private setPose(spec: PoseSpec | null, animate: boolean) {
+    if (!this.skeleton) return;
+    const key = JSON.stringify(spec ?? {});
+    if (key === this.poseKey) return;
+    this.poseKey = key;
+    const extra = new Map<Bone, Quaternion>();
+    const world = new Map<Bone, Quaternion>();
+    const from = new Map<Bone, Quaternion>();
+    for (const b of this.boneOrder) {
+      const parent = (b.parent as Bone)?.isBone ? (b.parent as Bone) : null;
+      const e = parent ? extra.get(parent)!.clone() : new Quaternion();
+      const steps = spec?.[b.name];
+      if (steps) {
+        const q = new Quaternion();
+        const frame = this.boneFrame.get(b)!;
+        for (const [axis, deg] of steps) {
+          const v = (axis === "x" ? new Vector3(1, 0, 0) : axis === "y" ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)).applyQuaternion(frame);
+          q.premultiply(new Quaternion().setFromAxisAngle(v, (deg * Math.PI) / 180));
+        }
+        e.multiply(q);
+      }
+      extra.set(b, e);
+      const w = e.clone().multiply(this.restWorld.get(b)!);
+      world.set(b, w);
+      const pw = parent ? world.get(parent)! : new Quaternion();
+      from.set(b, b.quaternion.clone());
+      this.poseTarget.set(b, pw.clone().invert().multiply(w));
+    }
+    // The picking skin takes the final pose right away, so the camera and taps aim where the limb will be.
+    for (const b of this.boneOrder) b.quaternion.copy(this.poseTarget.get(b)!);
+    this.refreshPosed();
+    if (animate) {
+      for (const b of this.boneOrder) b.quaternion.copy(from.get(b)!);
+      this.poseAnim = { from, start: performance.now(), dur: 750 };
+    } else this.poseAnim = null;
+    this.invalidate();
+  }
+
+  /** Move the drawn skeleton one step along its tween; true while still moving. */
+  private stepPose(now: number): boolean {
+    const a = this.poseAnim;
+    if (!a) return false;
+    const t = Math.min(1, (now - a.start) / a.dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    for (const b of this.boneOrder) b.quaternion.slerpQuaternions(a.from.get(b)!, this.poseTarget.get(b)!, e);
+    if (t >= 1) this.poseAnim = null;
+    return t < 1;
+  }
+
+  /** Skin the bind geometry on the CPU into the posed copy used for picking and anchors. */
+  private refreshPosed() {
+    if (!this.skeleton || !this.posedGeom || !this.body) return;
+    this.root.updateMatrixWorld(true);
+    const bind = this.body.geometry as BufferGeometry;
+    const pos = bind.getAttribute("position");
+    const nor = bind.getAttribute("normal");
+    const ji = bind.getAttribute("skinIndex");
+    const jw = bind.getAttribute("skinWeight");
+    const outP = this.posedGeom.getAttribute("position") as BufferAttribute;
+    const outN = this.posedGeom.getAttribute("normal") as BufferAttribute;
+    const rootInv = this.root.matrixWorld.clone().invert();
+    const mats = this.skeleton.bones.map((b, i) => rootInv.clone().multiply(b.matrixWorld).multiply(this.skeleton!.boneInverses[i]).elements);
+    const p = new Vector3();
+    const n = new Vector3();
+    const acc = new Vector3();
+    const accN = new Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i);
+      n.fromBufferAttribute(nor, i);
+      acc.set(0, 0, 0);
+      accN.set(0, 0, 0);
+      for (let k = 0; k < 4; k++) {
+        const w = jw.getComponent(i, k);
+        if (w <= 0) continue;
+        const m = mats[ji.getComponent(i, k)];
+        acc.x += w * (m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12]);
+        acc.y += w * (m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13]);
+        acc.z += w * (m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]);
+        accN.x += w * (m[0] * n.x + m[4] * n.y + m[8] * n.z);
+        accN.y += w * (m[1] * n.x + m[5] * n.y + m[9] * n.z);
+        accN.z += w * (m[2] * n.x + m[6] * n.y + m[10] * n.z);
+      }
+      outP.setXYZ(i, acc.x, acc.y, acc.z);
+      accN.normalize();
+      outN.setXYZ(i, accN.x, accN.y, accN.z);
+    }
+    outP.needsUpdate = true;
+    outN.needsUpdate = true;
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    (this.posedGeom as any).disposeBoundsTree?.();
+    (this.posedGeom as any).computeBoundsTree();
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }
+
+  /** The skin used for anchors and visibility: posed when there is a skeleton, the body itself otherwise. */
+  private skinGeometry(): BufferGeometry | null {
+    return this.posedGeom ?? ((this.body?.geometry as BufferGeometry) ?? null);
+  }
+
+  /** Where a bind-space point is on the posed skin, in root space: through the triangle it sits on. */
+  private posedPoint(bind: Vector3): Vector3 {
+    const tri = this.designTri;
+    if (!this.posedGeom || !tri) return bind.clone();
+    const pos = this.posedGeom.getAttribute("position");
+    const bindPos = (this.body!.geometry as BufferGeometry).getAttribute("position");
+    const out = new Vector3();
+    const v = new Vector3();
+    for (const [idx, w] of [[tri.a, tri.u], [tri.b, tri.v], [tri.c, tri.w]] as const) out.addScaledVector(v.fromBufferAttribute(pos, idx), w);
+    // Plus the offset the point had from the triangle, carried by the dominant bone's turn.
+    const off = bind.clone().sub(v.set(0, 0, 0).addScaledVector(new Vector3().fromBufferAttribute(bindPos, tri.a), tri.u).addScaledVector(new Vector3().fromBufferAttribute(bindPos, tri.b), tri.v).addScaledVector(new Vector3().fromBufferAttribute(bindPos, tri.c), tri.w));
+    return out.add(off.applyQuaternion(this.boneTurn(tri.a)));
+  }
+
+  /** The turn the skin took at a vertex: its heaviest bone's current rotation over its rest. */
+  private boneTurn(vertex: number): Quaternion {
+    if (!this.skeleton || !this.body) return new Quaternion();
+    const g = this.body.geometry as BufferGeometry;
+    const ji = g.getAttribute("skinIndex");
+    const jw = g.getAttribute("skinWeight");
+    let best = 0;
+    let bw = -1;
+    for (let k = 0; k < 4; k++) {
+      const w = jw.getComponent(vertex, k);
+      if (w > bw) {
+        bw = w;
+        best = ji.getComponent(vertex, k);
+      }
+    }
+    const bone = this.skeleton.bones[best];
+    const rootInv = this.root.matrixWorld.clone().invert();
+    const m = rootInv.multiply(bone.matrixWorld).multiply(this.skeleton.boneInverses[best]);
+    return new Quaternion().setFromRotationMatrix(m);
+  }
+
+  /** A world direction, as the design (bind space) sees it: undo the root and the limb's turn at the design. */
+  private worldDirToBind(dir: Vector3) {
+    dir.transformDirection(this.root.matrixWorld.clone().invert());
+    if (this.designTri) dir.applyQuaternion(this.boneTurn(this.designTri.a).invert());
+    return dir;
+  }
+
+  /** Barycentric weights of a point (figure space) in a triangle of a geometry. */
+  private barycentric(geom: BufferGeometry, face: { a: number; b: number; c: number }, p: Vector3) {
+    const pos = geom.getAttribute("position");
+    const A = new Vector3().fromBufferAttribute(pos, face.a);
+    const B = new Vector3().fromBufferAttribute(pos, face.b);
+    const C = new Vector3().fromBufferAttribute(pos, face.c);
+    const v0 = B.clone().sub(A);
+    const v1 = C.clone().sub(A);
+    const v2 = p.clone().sub(A);
+    const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1), d20 = v2.dot(v0), d21 = v2.dot(v1);
+    const den = d00 * d11 - d01 * d01 || 1e-12;
+    const v = (d11 * d20 - d01 * d21) / den;
+    const w = (d00 * d21 - d01 * d20) / den;
+    return { u: 1 - v - w, v, w };
+  }
+
+  /** A hit on the posed skin, carried back to the bind pose the design lives in. */
+  private hitToBind(hit: Intersection): { point: Vector3; normal: Vector3; tri: Tri } {
+    const face = hit.face!;
+    const bind = this.body!.geometry as BufferGeometry;
+    if (!this.posedGeom) {
+      const p = this.toFigure(hit.point);
+      return { point: p, normal: face.normal.clone().normalize(), tri: { a: face.a, b: face.b, c: face.c, ...this.barycentric(bind, face, p) } };
+    }
+    const local = this.root.worldToLocal(hit.point.clone());
+    const bary = this.barycentric(this.posedGeom, face, local);
+    const pos = bind.getAttribute("position");
+    const A = new Vector3().fromBufferAttribute(pos, face.a);
+    const B = new Vector3().fromBufferAttribute(pos, face.b);
+    const C = new Vector3().fromBufferAttribute(pos, face.c);
+    const point = A.clone().multiplyScalar(bary.u).addScaledVector(B, bary.v).addScaledVector(C, bary.w);
+    const normal = new Vector3().crossVectors(B.clone().sub(A), C.clone().sub(A)).normalize();
+    return { point, normal, tri: { a: face.a, b: face.b, c: face.c, ...bary } };
+  }
+
+  /** Take the current body (and its bones) out of the scene before another arrives. */
+  private unloadBody() {
+    if (this.body) (this.body.parent ?? this.root).remove(this.body);
+    if (this.pickMesh) this.root.remove(this.pickMesh);
+    if (this.bindMesh) this.root.remove(this.bindMesh);
+    for (const b of [...this.root.children]) if ((b as Bone).isBone) this.root.remove(b);
+    this.posedGeom?.dispose();
+    this.posedGeom = null;
+    this.pickMesh = null;
+    this.bindMesh = null;
+    this.skeleton = null;
+    this.boneOrder = [];
+    this.poseAnim = null;
+    this.poseKey = "";
   }
 
   private pinch(g: Gesture) {
@@ -1092,7 +1381,7 @@ export class MannequinEngine {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.raycaster as any).firstHitOnly = true;
-    return this.raycaster.intersectObject(this.body, false)[0] ?? null;
+    return this.raycaster.intersectObject(this.pickMesh ?? this.body, false)[0] ?? null;
   }
 
   private zoneOf(hit: Intersection): number {
@@ -1108,10 +1397,12 @@ export class MannequinEngine {
 
   private placeFromHit(hit: Intersection, notify: boolean) {
     if (!hit.face) return;
-    // Design state lives in figure space (the body's own metres), so it survives
-    // the intro turn, camera moves and rescaling of the root.
-    this.design.point = this.toFigure(hit.point);
-    this.design.normal = hit.face.normal.clone().normalize();
+    // Design state lives in figure space (the body's own metres, bind pose), so it
+    // survives the intro turn, camera moves, rescaling of the root and the poses.
+    const b = this.hitToBind(hit);
+    this.design.point = b.point;
+    this.design.normal = b.normal;
+    this.designTri = b.tri;
     this.updateDesign();
     this.refreshZoneState();
     if (notify) this.opts.onPlace?.(this.getPlacement());
@@ -1140,7 +1431,7 @@ export class MannequinEngine {
 
     // Orient the frame upright along the body (along the limb on arms and legs),
     // then apply the client's rotation.
-    const up = limb ? (this.placementAnchor(zoneSlug)?.axis ?? new Vector3(0, 1, 0)) : new Vector3(0, 1, 0);
+    const up = limb ? (this.placementAnchor(zoneSlug, "bind")?.axis ?? new Vector3(0, 1, 0)) : new Vector3(0, 1, 0);
     let tangentY = up.clone().sub(n.clone().multiplyScalar(up.dot(n)));
     if (tangentY.lengthSq() < 1e-4) tangentY = new Vector3(0, 0, 1).sub(n.clone().multiplyScalar(n.z));
     tangentY.normalize();
@@ -1151,6 +1442,7 @@ export class MannequinEngine {
     this.frame = { x: rx, y: ry, n: n.clone(), halfW: w / 2, halfH: h / 2 };
     this.designMask.fill(0);
     for (const id of patchZoneIds(zoneSlug)) this.designMask[id] = 1;
+    this.designColor.copy(srgb(PAIN_COLORS[painFor(zoneSlug)]));
     this.syncDesignUniforms(depth);
     this.invalidate();
   }
@@ -1171,12 +1463,16 @@ export class MannequinEngine {
 
   /* ---------------------------------------------------------------- render */
 
-  private placementAnchor(slug: string) {
+  /**
+   * Centre, facing, main axis and a sample of points of a placement, measured on
+   * the skin as posed (for the camera) or in the bind pose (for the design).
+   */
+  private placementAnchor(slug: string, space: "posed" | "bind" = "posed") {
     if (!this.body) return null;
     const placement = PLACEMENT_BY_SLUG.get(slug);
     if (!placement) return null;
     const ids = new Set(placement.zones.map((z) => ZONE_BY_SLUG.get(z)?.id ?? -1));
-    const geom = this.body.geometry as BufferGeometry;
+    const geom = space === "bind" ? (this.body.geometry as BufferGeometry) : this.skinGeometry()!;
     const zone = geom.getAttribute("_zone");
     const pos = geom.getAttribute("position");
     const nor = geom.getAttribute("normal");
@@ -1271,6 +1567,9 @@ export class MannequinEngine {
     // Keep the whole figure in view on narrow portrait screens.
     this.camera.fov = w / h < 0.75 ? 34 : 28;
     this.camera.updateProjectionMatrix();
+    // setSize clears the drawing buffer: draw again at once so a viewport change
+    // (the phone's address bar sliding away) never shows an empty frame.
+    if (this.body) this.render();
     this.dirty = true;
     this.loop();
   }
@@ -1300,8 +1599,12 @@ export class MannequinEngine {
         animating = true;
         this.dirty = true;
       }
+      if (this.stepPose(now)) {
+        animating = true;
+        this.dirty = true;
+      }
       const damping = this.controls.update();
-      const pulsing = this.zoneState.some((s) => s === ST_SELECTED);
+      const pulsing = this.zoneState.some((s) => s === ST_SELECTED) || (this.mode === "place" && Boolean(this.design.point));
       if (this.uniforms) this.uniforms.uTime.value = (now - this.startTime) / 1000;
       if (this.dirty || pulsing) this.render();
       this.dirty = false;

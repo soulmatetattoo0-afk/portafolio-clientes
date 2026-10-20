@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation";
 
 import { getDb } from "./db";
+import { DEMO_CLIENT_EMAIL, DEMO_CLIENT_USER_ID, live } from "./env";
 import { getSession, type Session } from "./auth";
 import { CARD_COLS, CARD_JOINS, CARD_SQL, toCard, type ArtistCard, type BriefStatus, type CardRow } from "./queries";
 import { fileUrl } from "./storage";
@@ -20,16 +21,30 @@ export interface ClientUser {
   alerts: { spots: boolean; books_open: boolean; issue: boolean; new_work: boolean };
 }
 
+/** A name to greet someone by: an artist's own name, or a username made readable ("tattoo_by_sova" → "Tattoo By Sova"). */
+export function readableName(name: string | null): string | null {
+  if (!name) return null;
+  if (!/^[a-z0-9._]+$/.test(name) || !/[._]/.test(name)) return name;
+  return name
+    .split(/[._]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export async function getClientUser(session?: Session | null): Promise<ClientUser | null> {
   const s = session ?? (await getSession());
   if (!s) return null;
   const db = await getDb();
   const row = await db.one<{ user_id: string; email: string; name: string | null; locale: "en" | "es"; home_city: string | null; city_slug: string | null; alerts: ClientUser["alerts"] }>(
-    `select user_id, email, name, locale, home_city, city_slug, alerts from client_users where user_id = $1`,
+    `select u.user_id, u.email, u.locale, u.home_city, u.city_slug, u.alerts,
+            coalesce((select a.display_name from members m join artists a on a.id = m.artist_id where m.user_id = u.user_id limit 1), u.name) as name
+       from client_users u where u.user_id = $1`,
     [s.userId],
   );
-  if (!row) return null;
-  return { userId: row.user_id, email: row.email, name: row.name, locale: row.locale, homeCity: row.home_city, citySlug: row.city_slug, alerts: row.alerts };
+  // Local mode and previews: whoever is signed in (the demo artist, say), the public pages see the demo client.
+  if (!row) return !live.auth && s.userId !== DEMO_CLIENT_USER_ID ? getClientUser({ userId: DEMO_CLIENT_USER_ID, email: DEMO_CLIENT_EMAIL, verified: true }) : null;
+  return { userId: row.user_id, email: row.email, name: readableName(row.name), locale: row.locale, homeCity: row.home_city, citySlug: row.city_slug, alerts: row.alerts };
 }
 
 /** Gate for every client page and action: signed in as a client, else to sign-in with a way back. */
@@ -335,4 +350,40 @@ export async function unreadChats(userId: string): Promise<number> {
     [userId],
   );
   return row?.n ?? 0;
+}
+
+/** The person's conversations with these artists (one artist's page, or a studio's), newest first. */
+export interface MyChat {
+  token: string;
+  ref: string;
+  artist: string;
+  portrait: string | null;
+  lastBody: string | null;
+  lastAt: Date;
+  unread: boolean;
+  /** The artist has not answered the request yet. */
+  waiting: boolean;
+}
+
+export async function listMyChatsWith(userId: string, artistIds: string[]): Promise<MyChat[]> {
+  if (!artistIds.length) return [];
+  const db = await getDb();
+  const rows = await db.query<MyBriefRow & { waiting: boolean }>(
+    `select ${MY_BRIEF_COLS}, not exists (select 1 from brief_events e where e.brief_id = b.id and e.actor = 'artist') as waiting
+       ${MY_BRIEF_FROM} where c.user_id = $1 and b.artist_id = any($2::uuid[]) and b.status <> 'archived'
+      order by coalesce(m.created_at, b.created_at) desc limit 30`,
+    [userId, artistIds],
+  );
+  return Promise.all(
+    rows.map(async (r) => ({
+      token: r.chat_token,
+      ref: r.ref,
+      artist: r.artist_name,
+      portrait: r.artist_portrait_path ? await fileUrl("public", r.artist_portrait_path) : null,
+      lastBody: r.last_body,
+      lastAt: r.last_at ?? r.created_at,
+      unread: r.unread,
+      waiting: r.waiting,
+    })),
+  );
 }

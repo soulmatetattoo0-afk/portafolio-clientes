@@ -5,7 +5,7 @@ export function PlanLock({ text, cta, className = "" }: { text: string; cta: str
   return (
     <p className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.9rem] text-ash ${className}`}>
       <span>{text}</span>
-      <Link href="/studio/settings#plan" className="link text-gilt">
+      <Link href="/studio/ajustes" className="link text-gilt">
         {cta}
       </Link>
     </p>

@@ -8,19 +8,22 @@ import { useRouter } from "next/navigation";
 import { LangToggle } from "@/components/LangToggle";
 import { Mannequin, type MannequinHandle } from "@/components/Mannequin";
 import { fill, type Dict, type Locale } from "@/i18n";
-import { BUDGETS, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
-import { dateRange, money } from "@/lib/format";
-import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, sizeBand, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
+import { PaperCalendar } from "@/components/front/PaperCalendar";
+import { BUDGETS, STYLE_BY_SLUG, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
+import { dateRange, money, prettyDates } from "@/lib/format";
+import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
 import type { DesignPlacement } from "@/mannequin/engine";
 
 import { signOutClient } from "@/app/me/actions";
 
 import { prepareUploads, submitBrief } from "./actions";
+import { BackToArtist } from "./BackToArtist";
 import { StylePicker } from "./StylePicker";
 
 type Shape = "tall" | "square" | "wide";
 type StepId = "style" | "placement" | "size" | "idea" | "timing" | "review";
-const STEPS: StepId[] = ["style", "placement", "size", "idea", "timing", "review"];
+// The area chosen on the figure is the placement: no separate step to draw a design inside it.
+const STEPS: StepId[] = ["style", "placement", "idea", "timing", "review"];
 const REVIEW_STEP = STEPS.indexOf("review");
 
 interface Draft {
@@ -91,8 +94,16 @@ interface Props {
   flash: { id: string; title: string; description: string | null; sizeLabel: string | null; url: string | null } | null;
   stops: { id: string; city: string; studio: string | null; startsOn: string | null; endsOn: string | null; home: boolean }[];
   storage: { url: string; anonKey: string } | null;
+  /** Days already taken in each city (by stop id), so the calendar prints them faint. */
+  taken: Record<string, string[]>;
+  /** The plate over the calendar and the artist's line under it, as on their agenda. */
+  calendar: { art: string | null; quote: string | null };
   /** The signed-in client, to prefill the contact step; the email is theirs and stays theirs. */
   me: { name: string | null; email: string; phone: string | null; instagram: string | null } | null;
+  /** A day the client tapped on the artist's agenda (YYYY-MM-DD): the brief asks for it. */
+  preferredDay?: string | null;
+  /** The guest spot whose calendar the day was tapped on. */
+  preferredStop?: string | null;
 }
 
 interface PickedFile {
@@ -127,7 +138,7 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
-export function BriefWizard({ t, locale, artist, styleImages, stops, storage, flash, me }: Props) {
+export function BriefWizard({ t, locale, artist, styleImages, stops, storage, taken, calendar, flash, me, preferredDay = null, preferredStop = null }: Props) {
   const b = t.brief;
   const router = useRouter();
   const draftKey = `brief-draft:${artist.slug}`;
@@ -157,11 +168,10 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
   const set = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => setD((prev) => ({ ...prev, [key]: value })), []);
   const step = STEPS[d.step];
   const placement = d.placement ? PLACEMENT_BY_SLUG.get(d.placement) : null;
-  const [w, h] = dims(d.size, d.shape);
 
   // Restore a draft and capture where the client came from.
   useEffect(() => {
-    let saved: Partial<Draft> | null = null;
+    let saved: (Partial<Draft> & { savedAt?: number }) | null = null;
     try {
       saved = JSON.parse(localStorage.getItem(draftKey) ?? "null");
     } catch {}
@@ -180,6 +190,10 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
     setD((prev) => {
       const next = { ...prev, ...(saved ?? {}) };
       next.attribution = { ...(saved?.attribution ?? {}), ...attribution };
+      // The answers come back, but the walk starts from the first step again,
+      // unless the draft is minutes old (the round trip through sign-in).
+      const age = Date.now() - Number(saved?.savedAt ?? 0);
+      if (!saved?.savedAt || age > 20 * 60 * 1000) next.step = 0;
       // A signed-in client starts with the details they last gave; a draft in progress wins.
       if (!saved && me) {
         next.name = me.name ?? "";
@@ -195,15 +209,21 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
         const line = fill(b.flash.prefix, { title: flash.title });
         next.description = next.description.trim() ? `${line}\n\n${next.description}` : `${line}\n`;
       }
+      // A day tapped on the agenda: the dates step starts on it.
+      if (preferredStop && stops.some((st) => st.id === preferredStop)) next.stopId = preferredStop;
+      if (preferredDay) {
+        next.timing = "specific";
+        next.dates = preferredDay;
+      }
       return next;
     });
-    if (saved && (saved.step ?? 0) > 0) setRestored(true);
-  }, [draftKey, flash, b.flash.prefix, me]);
+    if (saved && (saved.style || saved.placement || saved.description)) setRestored(true);
+  }, [draftKey, flash, b.flash.prefix, me, preferredDay, preferredStop, stops, locale]);
 
   useEffect(() => {
     const id = setTimeout(() => {
       try {
-        localStorage.setItem(draftKey, JSON.stringify(d));
+        localStorage.setItem(draftKey, JSON.stringify({ ...d, savedAt: Date.now() }));
       } catch {}
     }, 300);
     return () => clearTimeout(id);
@@ -284,24 +304,21 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
       return;
     }
     // Capture the placement picture while the figure is on screen.
-    if ((step === "size" || (step === "placement" && placement?.fullCoverage)) && viewer.current?.engine) {
+    if (step === "placement" && viewer.current?.engine) {
       const blob = await viewer.current.engine.snapshotPlacement();
       setSnapshot(blob);
     }
-    // A new placement still needs its size; everything else goes straight back to the review.
-    if (fromReview && !(step === "placement" && !placement?.fullCoverage)) {
+    if (fromReview) {
       setFromReview(false);
       goTo(REVIEW_STEP);
-    } else if (step === "placement" && placement?.fullCoverage) goTo(d.step + 2);
-    else goTo(d.step + 1);
+    } else goTo(d.step + 1);
   };
 
   const back = () => {
     if (fromReview) {
       setFromReview(false);
       goTo(REVIEW_STEP);
-    } else if (step === "idea" && placement?.fullCoverage) goTo(d.step - 2);
-    else goTo(d.step - 1);
+    } else goTo(d.step - 1);
   };
 
   const editFrom = (i: number) => {
@@ -380,12 +397,20 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
         await Promise.all(
           prepared.targets.map(async (target, i) => {
             const blob = outgoing[i].blob;
+            // The figure's picture is a courtesy for the artist: if it fails to upload, the request still goes.
+            const optional = target.kind === "placement";
             if (supabase && target.token && target.bucket) {
               const { error } = await supabase.storage.from(target.bucket).uploadToSignedUrl(target.key, target.token, blob, { contentType: blob.type });
-              if (error) throw new Error(b.errors.upload);
+              if (error) {
+                if (optional) return;
+                throw new Error(b.errors.upload);
+              }
             } else if (target.url) {
-              const res = await fetch(target.url, { method: "PUT", body: blob, headers: { "content-type": blob.type || "application/octet-stream" } });
-              if (!res.ok) throw new Error(b.errors.upload);
+              const res = await fetch(target.url, { method: "PUT", body: blob, headers: { "content-type": blob.type || "application/octet-stream" } }).catch(() => null);
+              if (!res?.ok) {
+                if (optional) return;
+                throw new Error(b.errors.upload);
+              }
             }
             uploads.push({ key: target.key, kind: target.kind });
           }),
@@ -400,11 +425,11 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
         body: d.body,
         height: d.height,
         placement: d.placement!,
-        widthCm: placement?.fullCoverage ? null : w,
-        heightCm: placement?.fullCoverage ? null : h,
+        widthCm: null,
+        heightCm: null,
         rotationDeg: d.rotation,
-        point: d.point,
-        normal: d.normal,
+        point: null,
+        normal: null,
         description: d.description,
         avoid: d.avoid,
         coverup: d.coverup,
@@ -425,13 +450,20 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
         uploadToken,
         uploads,
       });
-      if (!result.ok) throw new Error(result.error);
+      if (!result.ok) {
+        // The server's reasons come from the dictionary; anything else is a generic failure.
+        setSendError(result.error || b.errors.generic);
+        setSending(false);
+        return;
+      }
       try {
         localStorage.removeItem(draftKey);
       } catch {}
-      router.push(`/c/${result.chat}`);
+      // Straight into the conversation with the artist, the request as its first message.
+      router.push(`/c/${result.chat}?sent=1`);
     } catch (e) {
-      setSendError(e instanceof Error && e.message ? e.message : b.errors.generic);
+      void e;
+      setSendError(b.errors.generic);
       setSending(false);
     }
   };
@@ -439,23 +471,25 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
   /* ------------------------------------------------------------ render */
 
   const review = step === "review";
-  const figureStep = step === "placement" || step === "size" || review;
-  const viewerMode = step === "placement" ? "zone" : step === "size" && !placement?.fullCoverage ? "place" : "view";
+  const figureStep = step === "placement" || review;
+  const viewerMode = step === "placement" ? "zone" : "view";
   const figureLabel = d.body === "f" ? b.placement.female : b.placement.male;
   const chosenStop = stops.find((s) => s.id === (d.stopId ?? stops[0]?.id));
+  const todayIso = new Date().toISOString().slice(0, 10);
   const budgetLabel =
     d.budget !== null && budgets[d.budget]
       ? budgets[d.budget][1]
         ? `${money(budgets[d.budget][0], artist.currency, locale)}–${money(budgets[d.budget][1], artist.currency, locale)}`
         : fill(b.timing.budgetOpen, { price: money(budgets[d.budget][0], artist.currency, locale) })
       : null;
-  const design = placement && !placement.fullCoverage ? { widthCm: w, heightCm: h, rotationDeg: d.rotation } : null;
+  // The whole chosen area is marked; the size is agreed with the artist in the chat.
+  const design = null as { widthCm: number; heightCm: number; rotationDeg: number } | null;
   const savedPoint = useMemo(() => (d.point && d.normal ? { point: d.point, normal: d.normal } : null), [d.point, d.normal]);
   const designMemo = useMemo(() => design, [design?.widthCm, design?.heightCm, design?.rotationDeg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onZoneTap = useCallback(
     (slug: string) => {
-      setD((prev) => (prev.placement === slug ? prev : { ...prev, placement: slug, point: null, normal: null, size: Math.min(prev.size, maxSizeFor(slug)) }));
+      setD((prev) => (prev.placement === slug ? prev : { ...prev, placement: slug, point: null, normal: null, rotation: 0, size: Math.max(MIN_DESIGN_CM, Math.round(maxSizeFor(slug) * 0.7)) }));
       setTouched((p) => ({ ...p, placement: true }));
     },
     [],
@@ -481,10 +515,10 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
   return (
     <div className="poster flex min-h-dvh flex-col" style={{ ["--accent" as string]: artist.accent ?? "#d8552f" }}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2 sm:px-6">
-        <Link href={`/${artist.slug}#deck`} className="p-stamp flex items-center gap-2 py-2 text-bone">
+        <BackToArtist slug={artist.slug} className="p-stamp flex items-center gap-2 py-2 text-bone">
           <span aria-hidden className="text-[1.2rem] leading-none">←</span>
           {artist.name.toUpperCase()}
-        </Link>
+        </BackToArtist>
         <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
       </header>
 
@@ -521,7 +555,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
         {/* The figure: sticky on phones while placing, a still above the brief on review, always beside the form on desktop. */}
         <div ref={figurePane} className={`${step === "style" ? "hidden!" : ""} ${figureStep && !noWebgl ? "block" : "hidden"} ${review ? "" : "sticky top-0 z-10"} -mx-4 bg-soot px-4 pb-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:block lg:px-0 lg:pb-0`}>
           <div
-            className={`relative overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 ${review ? "h-[58dvh] min-h-[380px] lg:h-[min(72dvh,720px)]" : "h-[46dvh] min-h-[300px] lg:h-[min(80dvh,760px)]"}`}
+            className={`relative overflow-hidden rounded-[18px] border border-line [background:radial-gradient(ellipse_60%_50%_at_50%_28%,#3d3e43,transparent_72%),radial-gradient(ellipse_70%_22%_at_50%_100%,rgb(0_0_0/0.65),transparent_70%),#1c1d20] lg:sticky lg:top-6 ${review ? "h-[58svh] min-h-[380px] lg:h-[min(72dvh,720px)]" : "h-[46svh] min-h-[300px] lg:h-[min(80dvh,760px)]"}`}
           >
             <div className="p-grain" aria-hidden />
             {!noWebgl && (
@@ -535,7 +569,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                 design={designMemo}
                 savedPoint={savedPoint}
                 readOnly={review}
-                painMap={step === "placement"}
+                painMap={step === "placement" && !d.placement}
                 onZoneTap={onZoneTap}
                 onPlace={onPlace}
                 onUnsupported={() => setNoWebgl(true)}
@@ -574,10 +608,6 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                     <p className="p-stamp text-accent">{b.review.sheet}</p>
                     <p className="p-display mt-1.5 text-[1.6rem] lg:text-[2rem]">{placement.label[locale]}</p>
                   </div>
-                  <p className="shrink-0 rounded-[10px] bg-soot/70 px-3 py-2 text-right backdrop-blur">
-                    <span className="t-num block text-[1.25rem] leading-none lg:text-[1.5rem]">{placement.fullCoverage ? b.size.fullTitle : `${w} × ${h} cm`}</span>
-                    <span className="p-stamp mt-1.5 block text-bone-dim">{placement.fullCoverage ? stepNames.placement : stepNames.size}</span>
-                  </p>
                 </div>
                 <p className="p-stamp pointer-events-none absolute right-5 bottom-5 rounded-[10px] bg-soot/70 px-3 py-2 text-right text-bone-dim backdrop-blur" aria-hidden>
                   {figureLabel}
@@ -586,7 +616,6 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
             ) : placement ? (
               <p className="p-quote pointer-events-none absolute top-3 right-3 left-3 text-right text-[1.25rem] lg:text-[1.45rem]" aria-hidden>
                 {placement.label[locale]}
-                {!placement.fullCoverage && d.step >= 2 ? <span className="t-num ml-2 font-sans text-[0.85rem] text-ash not-italic">{w} × {h} cm</span> : null}
               </p>
             ) : null}
           </div>
@@ -598,7 +627,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
             shell.current = el;
           }}
           className="min-w-0 scroll-mt-4 pt-4 pb-32 lg:pt-0" aria-labelledby={`${uid}-title`}>
-          {restored && d.step > 0 && (
+          {restored && (
             <p className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-line px-4 py-3 text-[0.9rem] text-ash" role="status">
               {b.draftRestored}
               <button type="button" className="link text-[0.9rem]" onClick={startOver}>
@@ -611,9 +640,10 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
             <div id={`${uid}-title`}>
               <StylePicker
                 // Only the styles this artist takes requests for; an artist who hasn't chosen yet shows them all.
-                styles={(artist.styles.length ? STYLES.filter((x) => artist.styles.includes(x.slug)) : STYLES.filter((x) => x.slug !== "other")).map((x) => ({
+                // The artist's styles, and always "something else": a style not listed, or a client who is not sure.
+                styles={[...(artist.styles.length ? STYLES.filter((x) => artist.styles.includes(x.slug) && x.slug !== "other") : STYLES.filter((x) => x.slug !== "other")), STYLE_BY_SLUG.get("other")!].map((x) => ({
                   slug: x.slug,
-                  label: x.label[locale],
+                  label: x.slug === "other" ? b.style.other : x.label[locale],
                   image: styleImages[x.slug] ?? null,
                 }))}
                 value={d.style}
@@ -700,90 +730,6 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                   </details>
                 ))}
               </div>
-            </div>
-          )}
-
-          {step === "size" && placement && (
-            <div className="grid gap-7">
-              {placement.fullCoverage ? (
-                <>
-                  <StepHead id={`${uid}-title`} title={b.size.fullTitle} lead={fill(b.size.fullBody, { artist: artist.name })} />
-                </>
-              ) : (
-                <>
-                  <StepHead id={`${uid}-title`} title={b.size.title} lead={b.size.lead} />
-                  <div className="grid gap-2">
-                    <label htmlFor={`${uid}-size`} className="t-label">
-                      {b.size.label}
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        id={`${uid}-size`}
-                        type="range"
-                        min={MIN_DESIGN_CM}
-                        max={maxSizeFor(placement.slug)}
-                        value={Math.min(d.size, maxSizeFor(placement.slug))}
-                        onChange={(e) => set("size", Number(e.target.value))}
-                        className="w-full"
-                      />
-                      <output htmlFor={`${uid}-size`} className="t-num shrink-0 text-[1.6rem] font-medium whitespace-nowrap">
-                        {w} × {h} cm
-                      </output>
-                    </div>
-                    <p className="text-ash">{b.size.bands[sizeBand(d.size)]}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span className="t-label" id={`${uid}-shape`}>
-                      {b.size.shape}
-                    </span>
-                    <div className="seg" role="group" aria-labelledby={`${uid}-shape`}>
-                      {(["tall", "square", "wide"] as Shape[]).map((s) => (
-                        <button key={s} type="button" aria-pressed={d.shape === s} onClick={() => set("shape", s)}>
-                          {b.size[s]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <label htmlFor={`${uid}-rot`} className="t-label">
-                      {b.size.rotation}
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input id={`${uid}-rot`} type="range" min={-90} max={90} step={5} value={d.rotation} onChange={(e) => set("rotation", Number(e.target.value))} className="w-full" />
-                      <output htmlFor={`${uid}-rot`} className="t-num w-12 shrink-0 text-right">
-                        {d.rotation}°
-                      </output>
-                    </div>
-                  </div>
-                  {/* Fine moves, a few millimetres at a time, for the exact spot. */}
-                  <div className="grid gap-2">
-                    <span className="t-label">{b.size.nudge}</span>
-                    <div className="grid w-fit grid-cols-3 gap-1.5" role="group" aria-label={b.size.nudge}>
-                      {(
-                        [
-                          ["up", "↑", "col-start-2", b.size.up],
-                          ["left", "←", "col-start-1 row-start-2", b.size.left],
-                          ["right", "→", "col-start-3 row-start-2", b.size.right],
-                          ["down", "↓", "col-start-2 row-start-3", b.size.down],
-                        ] as const
-                      ).map(([dir, arrow, cls, label]) => (
-                        <button
-                          key={dir}
-                          type="button"
-                          className={`chip h-11 w-11 justify-center p-0 text-[1.1rem] ${cls}`}
-                          aria-label={label}
-                          title={label}
-                          onClick={() => viewer.current?.engine?.nudge(dir)}
-                        >
-                          <span aria-hidden>{arrow}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-[0.9rem] text-ash">{b.size.tapToMove}</p>
-                </>
-              )}
-              <p className="text-[0.85rem] text-ash-dim">{fill(b.size.approx, { artist: artist.name })}</p>
             </div>
           )}
 
@@ -889,40 +835,60 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
           {step === "timing" && (
             <div className="grid gap-8">
               <StepHead id={`${uid}-title`} title={b.timing.title} lead={fill(b.timing.lead, { artist: artist.name })} />
+              {/* The city first: home and each guest spot, as tabs; then that city's calendar, as on the artist's agenda. */}
               {stops.length > 0 && (
                 <fieldset className="grid gap-2">
                   <legend className="t-label mb-2">{b.timing.city}</legend>
-                  {/* "Another city" only makes sense for an artist who travels. */}
-                  {(stops.length > 1 ? [...stops, null] : stops).map((s) => {
-                    const value = s ? s.id : "any";
-                    const selected = (d.stopId ?? stops[0]?.id) === value;
-                    return (
-                      <label key={value} className={`flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border px-4 py-3 ${selected ? "border-gilt" : "border-line-strong"}`}>
-                        <input type="radio" name={`${uid}-stop`} checked={selected} onChange={() => set("stopId", value)} />
-                        <span className="min-w-0">
-                          <span className="block">{s ? s.city : b.timing.anyCity}</span>
-                          {s && <span className="block text-[0.85rem] text-ash">{[s.studio, s.home ? null : dateRange(s.startsOn, s.endsOn, locale)].filter(Boolean).join(", ")}</span>}
-                        </span>
-                      </label>
-                    );
-                  })}
+                  <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" role="radiogroup" aria-label={b.timing.city}>
+                    {(stops.length > 1 ? [...stops, null] : stops).map((s) => {
+                      const value = s ? s.id : "any";
+                      const selected = (d.stopId ?? stops[0]?.id) === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setD((p) => ({ ...p, stopId: value, timing: p.timing === "specific" ? null : p.timing, dates: "" }))}
+                          className={`shrink-0 rounded-full border px-4 py-2 text-left ${selected ? "border-bone bg-bone text-ink" : "border-bone/25 text-bone"}`}
+                        >
+                          <span className="block text-[0.95rem] leading-tight font-semibold">{s ? s.city : b.timing.anyCity}</span>
+                          <span className="block text-[0.7rem] opacity-70">{s ? (s.home ? (s.studio ?? b.timing.resident) : dateRange(s.startsOn, s.endsOn, locale)) : b.timing.anyCityHint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </fieldset>
               )}
-              <fieldset className="grid gap-2">
-                <legend className="t-label mb-2">{b.timing.when}</legend>
-                <div id={`${uid}-timing`} tabIndex={-1} role="radiogroup" className="flex flex-wrap gap-2">
-                  {(["asap", "flexible", "specific"] as const).map((v) => (
-                    <button key={v} type="button" role="radio" aria-checked={d.timing === v} className="chip" onClick={() => set("timing", v)}>
-                      {b.timing[v]}
-                    </button>
-                  ))}
+              <fieldset className="grid gap-3">
+                <legend className="t-label mb-1">{b.timing.when}</legend>
+                <div id={`${uid}-timing`} tabIndex={-1} className="grid gap-3">
+                  {chosenStop && (
+                    <>
+                      <p className="text-[0.92rem] text-bone/80">{b.timing.pickDay}</p>
+                      <div>
+                        <PaperCalendar
+                          key={chosenStop.id}
+                          locale={locale}
+                          labels={{ prevMonth: t.artist.panel.spots.prevMonth, nextMonth: t.artist.panel.spots.nextMonth }}
+                          taken={new Set(taken[chosenStop.id] ?? [])}
+                          from={chosenStop.home ? todayIso : (chosenStop.startsOn ?? todayIso)}
+                          to={chosenStop.home ? null : (chosenStop.endsOn ?? chosenStop.startsOn)}
+                          city={chosenStop.city}
+                          art={calendar.art}
+                          quote={calendar.quote}
+                          selected={d.timing === "specific" ? d.dates : null}
+                          onPick={(day) => setD((p) => ({ ...p, timing: "specific", dates: day }))}
+                        />
+                      </div>
+                      {d.timing === "specific" && d.dates && <p className="text-[0.95rem] text-bone">{fill(b.timing.picked, { date: prettyDates(d.dates, locale) })}</p>}
+                    </>
+                  )}
+                  <button type="button" role="radio" aria-checked={d.timing === "flexible"} className="chip justify-start" onClick={() => setD((p) => ({ ...p, timing: "flexible", dates: "" }))}>
+                    {b.timing.noDate}
+                  </button>
                 </div>
                 <FieldError message={show("timing")} />
-                {d.timing === "specific" && (
-                  <Field id={`${uid}-dates`} label={b.timing.dates} hint={b.timing.datesHint}>
-                    <input id={`${uid}-dates`} className="input" value={d.dates} maxLength={500} onChange={(e) => set("dates", e.target.value)} aria-describedby={`${uid}-dates-hint`} />
-                  </Field>
-                )}
               </fieldset>
               <fieldset className="grid gap-2">
                 <legend className="t-label mb-2">{b.timing.budget}</legend>
@@ -976,25 +942,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                       <PainLegend title={b.placement.painLegend} hint={b.placement.painHint} locale={locale} compact />
                     </div>
                   </ReviewRow>
-                  {placement && (
-                    <ReviewRow label={stepNames.size} edit={placement.fullCoverage ? undefined : () => editFrom(2)} editLabel={t.common.edit}>
-                      {placement.fullCoverage ? (
-                        <Spec label={stepNames.size}>{b.size.fullTitle}</Spec>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                          <Spec label={stepNames.size}>
-                            <span className="t-num">{w} × {h} cm</span>
-                            <span className="block text-[0.85rem] text-ash">{b.size.bands[sizeBand(d.size)]}</span>
-                          </Spec>
-                          <Spec label={b.size.shape}>{b.size[d.shape]}</Spec>
-                          <Spec label={b.size.rotation}>
-                            <span className="t-num">{d.rotation}°</span>
-                          </Spec>
-                        </div>
-                      )}
-                    </ReviewRow>
-                  )}
-                  <ReviewRow label={stepNames.idea} edit={() => editFrom(3)} editLabel={t.common.edit}>
+                  <ReviewRow label={stepNames.idea} edit={() => editFrom(2)} editLabel={t.common.edit}>
                     <div className="grid gap-4">
                       <Spec label={b.idea.description}>
                         <span className="block whitespace-pre-line">{d.description.trim()}</span>
@@ -1030,7 +978,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                       <Spec label={b.review.experience}>{[d.firstTattoo ? b.review.firstTattoo : b.review.notFirst, d.coverup ? b.review.coverup : null].filter(Boolean).join(" · ")}</Spec>
                     </div>
                   </ReviewRow>
-                  <ReviewRow label={stepNames.timing} edit={() => editFrom(4)} editLabel={t.common.edit}>
+                  <ReviewRow label={stepNames.timing} edit={() => editFrom(3)} editLabel={t.common.edit}>
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                       {stops.length > 0 && (
                         <Spec label={b.review.city}>
@@ -1038,10 +986,7 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
                           {chosenStop && !chosenStop.home && <span className="block text-[0.85rem] text-ash">{dateRange(chosenStop.startsOn, chosenStop.endsOn, locale)}</span>}
                         </Spec>
                       )}
-                      <Spec label={b.review.when}>
-                        {d.timing ? b.timing[d.timing] : null}
-                        {d.timing === "specific" && d.dates.trim() && <span className="block text-[0.85rem] text-ash">{d.dates.trim()}</span>}
-                      </Spec>
+                      <Spec label={b.review.when}>{d.timing === "specific" && d.dates.trim() ? prettyDates(d.dates.trim(), locale) : d.timing ? b.timing[d.timing] : null}</Spec>
                       <Spec label={b.review.budget}>
                         <span className="t-num">{budgetLabel}</span>
                       </Spec>
@@ -1097,9 +1042,9 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, fl
               {t.common.back}
             </button>
           ) : (
-            <Link href={`/${artist.slug}#deck`} className="btn btn-ghost">
+            <BackToArtist slug={artist.slug} className="btn btn-ghost">
               {t.common.cancel}
-            </Link>
+            </BackToArtist>
           )}
           {step === "review" ? (
             <button type="button" className="btn btn-accent min-w-48" onClick={send} disabled={sending} aria-busy={sending}>

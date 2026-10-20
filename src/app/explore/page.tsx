@@ -96,7 +96,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
   return (
     <div className="poster relative min-h-dvh" style={{ "--accent": BRAND.accent } as React.CSSProperties}>
       <div className="p-grain" aria-hidden />
-      <WorldBar back={from ? { href: `/${from.slug}#deck`, label: from.display_name } : null} search={false} next="/explore" />
+      <WorldBar back={from ? { href: `/${from.slug}`, label: from.display_name } : null} search={false} next="/explore" />
 
       <main className="relative mx-auto w-full max-w-[1280px] px-4 pt-4 pb-20">
         <h1 className="p-display text-[clamp(3.2rem,16vw,6rem)] text-bone">{x.title}</h1>

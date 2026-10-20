@@ -11,67 +11,42 @@ export interface MagChapter {
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * The digital magazine: full-screen chapters that slide sideways. A wheel,
- * the arrow keys and a mouse drag turn one chapter at a time; a progress
- * bar at the foot shows where you are. `initialKey` opens on a chapter
- * without animation; `onChange` hears every turn, for the URL.
+ * The digital magazine: full-screen chapters that slide sideways. The thumb
+ * drags the run of pages and lets go; it settles on the nearest page, a flick
+ * carrying one further. A wheel and the arrow keys turn one at a time; a
+ * progress bar at the foot shows where you are. The run is moved with a
+ * transform, never native scrolling, so every phone turns pages the same way.
+ * `initialKey` opens on a chapter; `onChange` hears every turn, for the URL.
  */
 export function Mag({ chapters, labels, initialKey, onChange, className = "h-[calc(100dvh-4.2rem)] min-h-[520px]" }: { chapters: MagChapter[]; labels: { page: string; next: string; prev: string }; initialKey?: string; onChange?: (key: string) => void; className?: string }) {
-  const scroller = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const start = Math.max(0, initialKey ? chapters.findIndex((c) => c.key === initialKey) : 0);
   const [i, setI] = useState(start);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const n = chapters.length;
   const lock = useRef(0);
-  const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean; vertical: boolean; t: number; vx: number; lastX: number } | null>(null);
   const reported = useRef(start);
-  const opened = useRef(start);
 
-  const go = useCallback(
-    (k: number) => {
-      const el = scroller.current;
-      if (!el) return;
-      const to = Math.max(0, Math.min(n - 1, k));
-      el.scrollTo({ left: to * el.clientWidth, behavior: reduced() ? "auto" : "smooth" });
-    },
-    [n],
-  );
+  const go = useCallback((k: number) => setI(Math.max(0, Math.min(n - 1, k))), [n]);
 
-  // Open on the asked-for chapter, before anything paints.
+  // A mouse wheel turns chapters one at a time.
   useEffect(() => {
-    const el = scroller.current;
-    const k = opened.current;
-    if (!el || k === 0) return;
-    el.scrollTo({ left: k * el.clientWidth, behavior: "auto" });
-  }, []);
-
-  // Which chapter is in view, and the reveal class on each one.
-  useEffect(() => {
-    const el = scroller.current;
+    const el = stage.current;
     if (!el) return;
-    const onScroll = () => setI(Math.round(el.scrollLeft / Math.max(1, el.clientWidth)));
-    el.addEventListener("scroll", onScroll, { passive: true });
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((e) => e.target.classList.toggle("is-in", e.isIntersecting)),
-      { root: el, threshold: 0.45 },
-    );
-    el.querySelectorAll(".mag-ch").forEach((s) => io.observe(s));
-    // A mouse wheel turns chapters one at a time.
     const onWheel = (e: WheelEvent) => {
       const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
       if (Math.abs(d) < 8) return;
       e.preventDefault();
-      const now = performance.now();
+      const now = e.timeStamp;
       if (now - lock.current < 650) return;
       lock.current = now;
-      go(Math.round(el.scrollLeft / el.clientWidth) + (d > 0 ? 1 : -1));
+      go(i + (d > 0 ? 1 : -1));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      el.removeEventListener("wheel", onWheel);
-      io.disconnect();
-    };
-  }, [go]);
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [go, i]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,48 +64,86 @@ export function Mag({ chapters, labels, initialKey, onChange, className = "h-[ca
     onChange(chapters[i].key);
   }, [i, onChange, chapters]);
 
-  // Mouse drag: the chapters follow the pointer, then settle on the nearest one.
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType !== "mouse" || !scroller.current) return;
-    drag.current = { x: e.clientX, left: scroller.current.scrollLeft, moved: false };
-    scroller.current.style.scrollSnapType = "none";
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  const onDown = (e: React.PointerEvent) => {
+    if (n < 2 || e.button > 0) return;
+    drag.current = { x: e.clientX, y: e.clientY, moved: false, vertical: false, t: e.timeStamp, vx: 0, lastX: e.clientX };
   };
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
-    const el = scroller.current;
-    if (!d || !el) return;
-    const dx = e.clientX - d.x;
-    if (Math.abs(dx) > 6) d.moved = true;
-    el.scrollLeft = d.left - dx;
+    const el = stage.current;
+    if (!d || !el || d.vertical) return;
+    const mx = e.clientX - d.x;
+    const my = e.clientY - d.y;
+    if (!d.moved) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      // A vertical start is the page scrolling, not a turn.
+      if (Math.abs(my) > Math.abs(mx)) {
+        d.vertical = true;
+        return;
+      }
+      d.moved = true;
+      el.setPointerCapture(e.pointerId);
+      setDragging(true);
+    }
+    const now = e.timeStamp;
+    d.vx = (e.clientX - d.lastX) / Math.max(1, now - d.t);
+    d.t = now;
+    d.lastX = e.clientX;
+    // The ends resist.
+    const w = el.clientWidth;
+    const over = (i === 0 && mx > 0) || (i === n - 1 && mx < 0);
+    setDx(over ? mx * 0.3 : Math.max(-w, Math.min(w, mx)));
   };
-  const onPointerUp = (e: React.PointerEvent) => {
+  const onUp = () => {
     const d = drag.current;
-    const el = scroller.current;
+    const el = stage.current;
     drag.current = null;
-    if (!d || !el) return;
-    el.style.scrollSnapType = "";
-    const dx = e.clientX - d.x;
-    const from = Math.round(d.left / el.clientWidth);
-    go(Math.abs(dx) > 60 ? from - Math.sign(dx) : from);
+    setDragging(false);
+    if (!d || !el || !d.moved) {
+      setDx(0);
+      return;
+    }
+    const w = el.clientWidth;
+    const flick = Math.abs(d.vx) > 0.35;
+    const far = Math.abs(dx) > w * 0.28;
+    if ((flick || far) && dx < 0) go(i + 1);
+    else if ((flick || far) && dx > 0) go(i - 1);
+    setDx(0);
+  };
+  // A drag must not land as a click on whatever is under the thumb.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (dragging || Math.abs(dx) > 0) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
   };
 
   return (
     <div className={`mag-root flex flex-col ${className}`} data-active={chapters[i]?.key}>
       <div
-        ref={scroller}
-        className="mag-scroll relative min-h-0 flex-1 touch-pan-x select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        ref={stage}
+        className="mag-stage relative min-h-0 flex-1 touch-pan-y select-none overflow-hidden"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onClickCapture={onClickCapture}
         onDragStart={(e) => e.preventDefault()}
       >
-        {chapters.map((c) => (
-          <div key={c.key} data-key={c.key} className="h-full w-full flex-none snap-start">
-            {c.node}
-          </div>
-        ))}
+        <div
+          className="flex h-full w-full"
+          style={{
+            transform: `translate3d(calc(${-i * 100}% + ${dx}px), 0, 0)`,
+            transition: dragging || reduced() ? "none" : "transform 520ms var(--ease-out-quart)",
+            willChange: "transform",
+          }}
+        >
+          {chapters.map((c, k) => (
+            <div key={c.key} data-key={c.key} className={`h-full w-full flex-none ${Math.abs(k - i) <= 1 ? "" : "invisible"}`}>
+              <div className={`mag-page h-full w-full ${k === i ? "is-current" : ""}`}>{c.node}</div>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="flex items-center gap-3 px-3 py-2">
         <button type="button" className="btn btn-ghost btn-sm text-bone disabled:opacity-25" onClick={() => go(i - 1)} disabled={i === 0} aria-label={labels.prev}>

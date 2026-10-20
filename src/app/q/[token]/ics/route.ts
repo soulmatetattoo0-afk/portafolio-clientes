@@ -1,3 +1,4 @@
+import { dict, fill } from "@/i18n";
 import { env } from "@/lib/env";
 import { placeLine } from "@/lib/format";
 import { calendar } from "@/lib/ics";
@@ -16,7 +17,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/q/[token]/ics">
       uid: `${quote.id}@brief`,
       start,
       end: new Date(start.getTime() + hours * 3600_000),
-      summary: `Tattoo with ${quote.artist_name}: ${placementLabel(quote.placement, quote.client_locale)}`,
+      summary: fill(dict(quote.client_locale).quote.calendarTitle, { artist: quote.artist_name, placement: placementLabel(quote.placement, quote.client_locale) }),
       location: placeLine(ap.studio_name, ap.address, ap.city),
       url: `${env.appUrl}/q/${token}`,
     },

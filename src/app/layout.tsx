@@ -35,8 +35,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDict();
   return {
     metadataBase: new URL(env.appUrl),
-    title: { default: t.meta.title, template: "%s | Vanta" },
+    title: { default: t.meta.title, template: "%s | VANTA" },
     description: t.meta.description,
+    icons: { icon: [{ url: "/icons/icon-192.png", type: "image/png" }], apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }] },
+    appleWebApp: { capable: true, title: "VANTA", statusBarStyle: "black-translucent" },
   };
 }
 
@@ -53,6 +55,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const { locale } = await getDict();
   return (
     <html lang={locale} className={`${cinzel.variable} ${cormorant.variable} ${instrument.variable} ${shoulders.variable} ${pirata.variable} ${instrumentSerif.variable} ${script.variable}`}>
+      <head>
+        {/* The magazine's lettering: a shelf of faces the artist picks from. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Oswald:wght@600&family=Playfair+Display:wght@700&family=Abril+Fatface&family=Permanent+Marker&family=Special+Elite&family=UnifrakturMaguntia&family=Monoton&family=Righteous&family=Caveat:wght@700&family=Dancing+Script:wght@700&family=Rubik+Mono+One&display=swap"
+        />
+      </head>
       <body className="flex min-h-dvh flex-col">{children}</body>
     </html>
   );

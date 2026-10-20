@@ -7,9 +7,11 @@ import { live } from "@/lib/env";
 
 import { enterDemoClient } from "./actions";
 import { AccountForm } from "./AccountForm";
-import { SignInForm } from "./SignInForm";
 
-export const metadata = { title: "Sign in", robots: { index: false } };
+export async function generateMetadata() {
+  const { t } = await getDict();
+  return { title: t.me.signin.title, robots: { index: false } };
+}
 
 export default async function ClientSignInPage({ searchParams }: PageProps<"/me/signin">) {
   const sp = await searchParams;
@@ -43,16 +45,15 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
             who: t.me.account.who,
             submitCreate: t.me.account.submitCreate,
             submitEnter: t.me.account.submitEnter,
+              forgot: t.me.account.forgot,
           }}
         />
-        <p className="p-stamp -mb-3 text-bone-dim">{s.or}</p>
-        {live.auth ? (
-          <SignInForm next={next} labels={{ email: s.email, send: s.send, google: s.google, apple: s.apple, or: s.or }} />
-        ) : (
-          <form action={enterDemoClient} className="grid gap-4">
+        {/* The seeded demo client: only on a laptop. */}
+        {!live.auth && !process.env.VERCEL && (
+          <form action={enterDemoClient} className="grid gap-4 border-t border-line pt-6">
             <input type="hidden" name="next" value={next} />
             <p className="text-bone-dim">{s.demoLead}</p>
-            <button type="submit" className="btn btn-primary w-full">
+            <button type="submit" className="btn btn-secondary w-full">
               {s.demo}
             </button>
           </form>

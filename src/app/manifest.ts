@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 /** Installable from the artist's link: no store needed to get the app on the home screen. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Vanta",
-    short_name: "Vanta",
-    description: "Find your artist. See the work, read the magazine, book the session.",
+    name: "VANTA",
+    short_name: "VANTA",
+    description: "Find your tattoo artist, read their magazine and book your session.",
     start_url: "/?source=pwa",
     scope: "/",
     display: "standalone",

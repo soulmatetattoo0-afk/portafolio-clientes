@@ -1,153 +1,87 @@
 import Link from "next/link";
 
-import { fill } from "@/i18n";
+import { PushPrompt } from "@/components/PushPrompt";
 import { getDict } from "@/i18n/server";
-import { followedSpots, listFollowed, listMyAppointments, listOpenQuotes, requireClient } from "@/lib/client";
-import { dateLong, dateRange, money, placeLine, sessionTime } from "@/lib/format";
+import { styleLabel } from "@/lib/catalog";
+import { listMyAppointments, listMyBriefs, requireClient } from "@/lib/client";
+import { relativeTime, sessionTime } from "@/lib/format";
 import { placementLabel } from "@/lib/messages";
-
-import { AccentDot, Empty, SectionHead } from "./ui";
+import { vapidKeys } from "@/lib/push";
 
 export const metadata = { robots: { index: false } };
 
-export default async function OverviewPage() {
+type Tab = "all" | "pending" | "answered";
+
+/** Mensajes: every artist the client wrote to; the open chats first, the pending quotes after. */
+export default async function MessagesPage({ searchParams }: PageProps<"/me">) {
   const me = await requireClient("/me");
-  const [{ t, locale }, { upcoming }, quotes, spots, followed] = await Promise.all([getDict(), listMyAppointments(me.userId), listOpenQuotes(me.userId), followedSpots(me.userId), listFollowed(me.userId)]);
-  const o = t.me.overview;
-  const next = upcoming[0] ?? null;
-  const first = me.name?.split(" ")[0];
-
+  const sp = await searchParams;
+  const tab: Tab = sp.tab === "pending" || sp.tab === "answered" ? sp.tab : "all";
+  const [{ t, locale }, briefs, appointments] = await Promise.all([getDict(), listMyBriefs(me.userId), listMyAppointments(me.userId)]);
+  const m = t.v2.me;
+  const answered = (b: (typeof briefs)[number]) => b.status !== "new" || b.last_actor === "artist";
+  const sorted = [...briefs].sort((a, b) => Number(answered(b)) - Number(answered(a)));
+  const list = sorted.filter((b) => (tab === "pending" ? !answered(b) : tab === "answered" ? answered(b) : true));
+  const next = appointments.upcoming[0];
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-10">
-      <h1 className="p-display text-[clamp(2.8rem,13vw,4.4rem)] text-bone">{first ? fill(o.title, { name: first }) : o.titleAnon}</h1>
-
-      {/* The lead object: the next session, in that artist's own colour. */}
-      <section aria-labelledby="next">
-        <SectionHead id="next">{o.next}</SectionHead>
-        {next ? (
-          (() => {
-            const { day, time } = sessionTime(next.starts_at, next.timezone, locale);
-            const where = placeLine(next.studio_name, next.address, next.city);
-            return (
-              <article className="relative overflow-hidden rounded-[18px] border border-line-strong bg-ink-2 p-5" style={{ ["--accent" as string]: next.artist_accent ?? undefined }}>
-                <div className="p-halftone" aria-hidden />
-                <div className="relative">
-                  <p className="p-display text-[clamp(2.4rem,11vw,3.6rem)] text-accent">{day}</p>
-                  <p className="mt-1 text-[1.1rem] text-bone">
-                    {time}
-                    {next.placement ? `, ${placementLabel(next.placement, locale).toLowerCase()}` : ""}
-                  </p>
-                  <p className="mt-3 flex items-center gap-2 text-bone">
-                    <AccentDot accent={next.artist_accent} />
-                    {fill(t.me.appointments.with, { artist: next.artist_name })}
-                  </p>
-                  {where && <p className="mt-1 text-bone-dim">{where}</p>}
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {next.quote_token && (
-                      <>
-                        <a href={`/q/${next.quote_token}/ics`} className="btn btn-accent">
-                          {o.addToCalendar}
-                        </a>
-                        <Link href={`/q/${next.quote_token}`} className="btn btn-secondary">
-                          {o.openBooking}
-                        </Link>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })()
+    <div className="min-h-dvh">
+      <header className="v2-top">
+        <h1 className="p-display flex-1 text-[1.8rem] uppercase leading-none">{m.messages}</h1>
+      </header>
+      <main className="mx-auto w-full max-w-2xl">
+        <div className="v2-seg px-4 pt-2 pb-3" role="tablist">
+          {(["all", "pending", "answered"] as Tab[]).map((k) => (
+            <Link key={k} href={k === "all" ? "/me" : `/me?tab=${k}`} role="tab" aria-selected={tab === k}>
+              {k === "all" ? m.all : k === "pending" ? m.pending : m.answered}
+            </Link>
+          ))}
+        </div>
+        <div className="px-4">
+          <PushPrompt vapidKey={vapidKeys().publicKey} className="mb-3" labels={{ title: t.push.title, body: t.push.body, enable: t.push.enable, on: t.push.on, denied: t.push.denied, ios: t.push.ios }} />
+          {next && next.brief_id && (
+            <Link href={`/c/${briefs.find((b) => b.id === next.brief_id)?.chat_token ?? ""}`} className="v2-sheet mb-3 flex items-center justify-between gap-3 px-4 py-3" style={{ borderColor: next.artist_accent ?? "var(--accent)" }}>
+              <span>
+                <span className="p-stamp block text-bone/60">{m.next}</span>
+                <span className="block text-[1.05rem] font-semibold">{next.artist_name}</span>
+                <span className="text-[0.85rem] text-bone-dim">
+                  {sessionTime(next.starts_at, next.timezone, locale).day} · {sessionTime(next.starts_at, next.timezone, locale).time}
+                  {next.city ? ` · ${next.city}` : ""}
+                </span>
+              </span>
+              <span aria-hidden>›</span>
+            </Link>
+          )}
+        </div>
+        {list.length === 0 ? (
+          <p className="px-5 pt-4 text-bone-dim">{briefs.length === 0 ? m.empty : m.emptyTab}</p>
         ) : (
-          <p className="text-bone-dim">{o.noNext}</p>
-        )}
-      </section>
-
-      {quotes.length > 0 && (
-        <section aria-labelledby="quotes">
-          <SectionHead id="quotes">{o.quotes}</SectionHead>
-          <ul className="grid gap-3">
-            {quotes.map((q) => (
-              <li key={q.token} className="rounded-[14px] border border-line-strong p-4">
-                <p className="p-quote text-[1.35rem] leading-tight text-bone">{fill(o.quoteLine, { artist: q.artist_name, placement: placementLabel(q.placement, locale).toLowerCase() })}</p>
-                <p className="mt-2 text-[0.92rem] text-bone-dim">
-                  {fill(o.deposit, { amount: money(q.deposit_cents, q.currency, locale) })}. {fill(o.validUntil, { date: dateLong(q.expires_at, locale) })}. {q.ref}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={`/q/${q.token}`} className="btn btn-primary">
-                    {o.pay}
-                  </Link>
-                  <Link href={`/me/briefs/${q.brief_id}`} className="btn btn-secondary">
-                    {o.seeBrief}
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section aria-labelledby="spots">
-        <SectionHead id="spots">{o.spots}</SectionHead>
-        {spots.length ? (
-          <ul className="divide-y divide-line border-y border-line">
-            {spots.map((s) => (
-              <li key={s.id}>
-                <Link href={`/${s.artist_slug}#spots`} className="flex items-center justify-between gap-4 py-3.5">
-                  <span className="min-w-0">
-                    <span className="block truncate text-[1.05rem] text-bone">{s.city}</span>
-                    <span className="mt-0.5 flex items-center gap-2 text-[0.9rem] text-bone-dim">
-                      <AccentDot accent={s.artist_accent} />
-                      <span className="truncate">{s.artist_name}</span>
+          <ul className="divide-y divide-bone/10 border-y border-bone/10">
+            {list.map((b) => (
+              <li key={b.id}>
+                <Link href={`/c/${b.chat_token}`} className="flex items-center gap-3 px-4 py-3.5">
+                  {b.artist_portrait_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={b.artist_portrait_url} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" />
+                  ) : (
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full p-display text-[1.3rem]" style={{ background: b.artist_accent ?? "var(--accent)" }}>{b.artist_name[0]}</span>
+                  )}
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={`truncate ${b.unread ? "font-semibold text-bone" : "text-bone/90"}`}>{b.artist_name}</span>
+                      <span className="shrink-0 text-[0.72rem] text-bone-dim">{relativeTime(b.last_at ?? b.created_at, locale)}</span>
+                    </span>
+                    <span className="truncate text-[0.85rem] text-bone-dim">{b.last_body ? `${b.last_actor === "client" ? `${t.me.briefs.you}: ` : ""}${b.last_body}` : `${placementLabel(b.placement, locale)} · ${styleLabel(b.style, locale)}`}</span>
+                    <span className="flex items-center gap-2 text-[0.7rem] uppercase tracking-[0.1em]">
+                      <span className={b.status === "booked" ? "text-[var(--color-olive,#6f8f5c)]" : answered(b) ? "text-bone-dim" : "text-accent"}>{b.status === "booked" ? m.reserved : answered(b) ? m.answered1 : m.waiting}</span>
+                      {b.unread && <span className="rounded-full bg-accent px-2 py-0.5 text-[0.62rem] font-bold normal-case tracking-normal text-bone">{t.me.briefs.newReply}</span>}
                     </span>
                   </span>
-                  <span className="shrink-0 text-right text-[0.9rem] text-bone-dim">
-                    {dateRange(s.starts_on, s.ends_on, locale)}
-                    {s.status === "booking" && <span className="p-stamp mt-0.5 block text-accent">{t.me.saved.booking}</span>}
-                  </span>
                 </Link>
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="text-bone-dim">{o.noSpots}</p>
         )}
-      </section>
-
-      <section aria-labelledby="following">
-        <SectionHead
-          id="following"
-          aside={
-            followed.length > 0 && (
-              <Link href="/me/saved" className="p-stamp py-1 text-accent">
-                {o.seeAll}
-              </Link>
-            )
-          }
-        >
-          {o.following}
-        </SectionHead>
-        {followed.length ? (
-          <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-            {followed.map((a) => (
-              <li key={a.id} className="w-[9.5rem] shrink-0">
-                <Link href={`/${a.slug}`} className="block rounded-[14px] border border-line-strong bg-ink-2 p-3.5 transition-colors hover:border-bone-dim">
-                  <AccentDot accent={a.accent} />
-                  <span className="p-display mt-3 block text-[1.35rem] leading-[0.95] text-bone">{a.display_name}</span>
-                  <span className="mt-1 block truncate text-[0.85rem] text-bone-dim">{a.home_city ?? ""}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty text={o.noFollowing} cta={{ href: "/explore", label: o.findArtists }} />
-        )}
-      </section>
-
-      <section aria-labelledby="issue">
-        <SectionHead id="issue">{o.issue}</SectionHead>
-        <p className="p-quote text-[1.25rem] text-bone-dim">{o.issueSoon}</p>
-      </section>
+      </main>
     </div>
   );
 }

@@ -1,0 +1,16 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ executablePath: process.env.CHROME });
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "es-CL", isMobile: true, hasTouch: true });
+const p = await ctx.newPage();
+await p.goto("http://localhost:3000/login", { waitUntil: "networkidle" });
+await p.getByRole("button", { name: "Entrar al estudio de demostración" }).click();
+await p.waitForTimeout(2000);
+await p.goto("http://localhost:3000/studio/agenda", { waitUntil: "networkidle" });
+await p.waitForTimeout(1200);
+const btn = p.getByRole("button", { name: /^\d{4}-\d{2}-\d{2}: 1$/ }).first();
+console.log("marked day", await btn.getAttribute("aria-label"));
+await btn.click();
+await p.waitForTimeout(800);
+console.log("sheet", await p.locator("dialog p").first().innerText());
+await p.screenshot({ path: process.argv[2] + "/agenda-dia-con-sesion.jpg", type: "jpeg", quality: 74 });
+await b.close();

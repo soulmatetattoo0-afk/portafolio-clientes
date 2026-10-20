@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const supabase = await supabaseServer();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) return NextResponse.redirect(`${env.appUrl}${failed}`);
-  if (!client) return NextResponse.redirect(`${env.appUrl}/studio`);
+  if (!client) return NextResponse.redirect(`${env.appUrl}${safeNext(url.searchParams.get("next"), "/studio")}`);
   const lang = (await cookies()).get(LOCALE_COOKIE)?.value;
   await ensureClientUser(data.user.id, data.user.email ?? "", lang === "es" ? "es" : "en");
   return NextResponse.redirect(`${env.appUrl}${next}`);

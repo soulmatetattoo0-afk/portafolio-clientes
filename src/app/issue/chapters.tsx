@@ -3,8 +3,6 @@ import Link from "next/link";
 import { Ch } from "@/components/mag/Chapter";
 import { Fig } from "@/components/mag/Fig";
 import { Head } from "@/components/mag/Head";
-import { ArtistCard } from "@/components/world/ArtistCard";
-import { SpotCard } from "@/components/world/SpotCard";
 import { fill, type Locale } from "@/i18n";
 import type { Dict } from "@/i18n/en";
 import { BRAND } from "@/lib/brand";
@@ -12,8 +10,8 @@ import type { Story } from "@/lib/issue/types";
 
 /**
  * The chapters of an issue that are not a piece: the cover, the word from
- * the desk, the city dispatch, the notes from the art world, who is new and
- * the colophon. Each is one full-screen page in container units, so it reads
+ * the desk, the news from the tattoo world, the artist the issue introduces,
+ * the agenda and the colophon. Each is one full-screen page in container units, so it reads
  * the same in the reader on a phone and as a cover on the archive shelf.
  */
 
@@ -23,9 +21,9 @@ const d = (ms: number) => ({ "--d": `${ms}ms` }) as React.CSSProperties;
 export const two = (n: number) => String(n).padStart(2, "0");
 
 /** A word or a number set huge and faint at the foot of a page, the way a magazine fills a quiet corner. */
-function Ghost({ children, right = false }: { children: React.ReactNode; right?: boolean }) {
+function Ghost({ children, right = false, tone = "bone" }: { children: React.ReactNode; right?: boolean; tone?: "ink" | "bone" }) {
   return (
-    <span aria-hidden className={`p-display pointer-events-none absolute -bottom-[1.2cqh] ${right ? "-right-[2cqw]" : "-left-[1cqw]"} text-[min(40cqw,26cqh)] leading-[0.8] whitespace-nowrap text-ink opacity-[0.07] select-none`}>
+    <span aria-hidden className={`p-display pointer-events-none absolute -bottom-[1.2cqh] ${right ? "-right-[2cqw]" : "-left-[1cqw]"} text-[min(40cqw,26cqh)] leading-[0.8] whitespace-nowrap ${tone === "ink" ? "text-bone opacity-[0.06]" : "text-ink opacity-[0.07]"} select-none`}>
       {children}
     </span>
   );
@@ -100,105 +98,122 @@ export function Editorial({ story, folio, locale }: { story: Story; folio: strin
   );
 }
 
-/** The city dispatch: who is passing through, as rows you can tap, and the way to the whole city. */
-export function CityDispatch({ story, folio, locale, t }: { story: Story; folio: string; locale: Locale; t: T }) {
-  const city = story.city?.name ?? "";
-  const spots = story.spots ?? [];
+/** A reported note: where and when, a big title, the deck in italics, the story, and the sources to read it whole. */
+export function NewsNote({ story, folio, tone, t }: { story: Story; folio: string; tone: "ink" | "bone"; t: T }) {
+  const sources = story.sources ?? [];
+  const fg = tone === "ink" ? "text-bone" : "text-ink";
   return (
-    <Ch tone="bone">
-      <Ghost>{city}</Ghost>
-      <div className="absolute inset-0 mx-auto flex max-w-[72rem] flex-col p-[5cqw] pt-[4cqh]">
-        <Head kicker={story.kicker} folio={folio} />
-        <h2 data-r style={d(80)} className="p-display mt-[1.6cqh] text-[min(15cqw,9cqh)] text-ink">
+    <Ch tone={tone}>
+      {story.place && <Ghost tone={tone}>{story.place.split(",")[0]}</Ghost>}
+      <div className="absolute inset-0 mx-auto flex max-w-[72rem] flex-col p-[6cqw] pt-[4cqh] @3xl:px-[10cqw]">
+        <Head kicker={story.kicker} folio={folio} compact />
+        <p data-r style={d(40)} className={`p-stamp mt-[2cqh] flex flex-wrap items-baseline gap-x-3 border-y py-[0.8cqh] text-[clamp(0.55rem,2.6cqw,0.72rem)] ${tone === "ink" ? "border-bone/30 text-bone/80" : "border-ink/25 text-ink/75"}`}>
+          {story.place && <span>{story.place}</span>}
+          {story.date && <span className="text-accent">{story.date}</span>}
+        </p>
+        <h2 data-r style={d(80)} className={`p-display mt-[2cqh] text-[min(12.5cqw,7.6cqh)] leading-[0.9] ${fg} @3xl:max-w-[16ch]`}>
           {story.title}
         </h2>
-        <p data-r style={d(160)} className="p-quote mt-[1.6cqh] max-w-[30ch] text-[min(5.6cqw,3.3cqh)] leading-[1.18] text-ink/85">
-          {story.body}
-        </p>
-        {spots.length ? (
-          <ul data-r style={d(240)} className="mt-[2.4cqh] flex min-h-0 flex-col gap-[1cqh] overflow-hidden @3xl:grid @3xl:grid-cols-2 @3xl:gap-3">
-            {spots.slice(0, 4).map((s, i) => (
-              <SpotCard key={s.stop.id} spot={s} locale={locale} lead={i === 0} />
-            ))}
-          </ul>
-        ) : (
-          <p data-r style={d(240)} className="p-quote mt-[3cqh] border-y border-ink/25 py-[2cqh] text-[min(5.6cqw,3.3cqh)] text-ink/70">
-            {fill(t.city.empty, { city })}
+        <span aria-hidden data-r style={d(140)} className="mt-[1.8cqh] block h-[3px] w-[18cqw] shrink-0 bg-accent" />
+        {story.deck && (
+          <p data-r style={d(180)} className={`p-quote mt-[1.8cqh] text-[min(5.6cqw,3.3cqh)] leading-[1.18] ${tone === "ink" ? "text-bone/90" : "text-ink/90"} @3xl:max-w-[40ch]`}>
+            {story.deck}
           </p>
         )}
-        {story.href && (
-          <Link data-r style={d(320)} href={story.href} className="p-stamp mt-auto flex min-h-11 items-center justify-between border-t-2 border-ink pt-[1cqh] text-[clamp(0.55rem,2.7cqw,0.72rem)] text-ink">
-            <span>{fill(t.city.more, { city })}</span>
-            <span aria-hidden className="text-[1.2rem] leading-none text-accent">→</span>
-          </Link>
+        <p data-r style={d(240)} className={`mt-[1.8cqh] min-h-0 overflow-hidden text-[min(3.9cqw,2.25cqh)] leading-[1.5] ${tone === "ink" ? "text-bone/80" : "text-ink/80"} @3xl:max-w-[60ch]`}>
+          {story.body}
+        </p>
+        {sources.length > 0 && (
+          <p data-r style={d(300)} className={`p-stamp mt-auto flex flex-wrap items-center gap-x-3 border-t pt-[1cqh] text-[clamp(0.52rem,2.5cqw,0.68rem)] ${tone === "ink" ? "border-bone/30 text-bone/70" : "border-ink/25 text-ink/70"}`}>
+            <span>{sources.length > 1 ? t.reader.sources : t.reader.source}</span>
+            {sources.map((src) => (
+              <a key={src.url} href={src.url} target="_blank" rel="noopener noreferrer" className={`inline-flex min-h-11 items-center gap-1 underline underline-offset-4 ${tone === "ink" ? "decoration-bone/40 text-bone" : "decoration-ink/40 text-ink"}`}>
+                {src.name}
+                <span aria-hidden className="text-accent">↗</span>
+              </a>
+            ))}
+          </p>
         )}
       </div>
     </Ch>
   );
 }
 
-/** A note from the art world: a big title, the story in italics, the year it happened set huge behind it. */
-export function WorldNote({ story, folio, t }: { story: Story; folio: string; t: T }) {
-  const year = story.line?.match(/\d{4}/)?.[0];
+/** House news about an artist on VANTA: their photograph across the top, who they are, and the two doors into their page. */
+export function Feature({ story, folio, t }: { story: Story; folio: string; t: T }) {
+  const artist = story.artist;
   return (
-    <Ch tone="ink">
-      {year && (
-        <span aria-hidden className="p-display pointer-events-none absolute -right-[3cqw] -bottom-[2cqh] text-[min(52cqw,34cqh)] leading-[0.8] text-accent opacity-[0.16] select-none">
-          {year}
-        </span>
-      )}
-      <div className="absolute inset-0 mx-auto flex max-w-[72rem] flex-col p-[6cqw] pt-[4cqh] @3xl:px-[10cqw]">
-        <Head kicker={story.kicker} folio={folio} />
-        <h2 data-r style={d(80)} className="p-display mt-[2.4cqh] text-[min(13.5cqw,8.4cqh)] text-bone @3xl:max-w-[14ch]">
-          {story.title}
-        </h2>
-        <span aria-hidden data-r style={d(140)} className="mt-[2.4cqh] block h-[3px] w-[18cqw] bg-accent" />
-        <p data-r style={d(200)} className="p-quote mt-[2.4cqh] text-[min(5.9cqw,3.6cqh)] leading-[1.22] text-bone/90 @3xl:max-w-[38ch]">
-          {story.body}
-        </p>
-        <div data-r style={d(300)} className="mt-auto flex items-end justify-between gap-4 pt-[2cqh]">
-          {story.line && <p className="p-stamp text-[clamp(0.55rem,2.6cqw,0.72rem)] text-bone/75">{story.line}</p>}
-          {story.sample && <span className="p-stamp -rotate-[4deg] border border-accent px-2 py-1 text-[0.6rem] text-accent">{t.reader.sample}</span>}
+    <Ch tone="ink" accent={story.accent}>
+      <div className="absolute inset-0 flex flex-col @3xl:flex-row">
+        <Fig src={story.image} pos={story.pos} title={story.title} caption={story.line} className="h-[46%] w-full shrink-0 @3xl:h-full @3xl:w-1/2" />
+        <div className="flex min-h-0 flex-1 flex-col p-[6cqw] pt-[2.4cqh] @3xl:p-[4cqw]">
+          <Head kicker={story.kicker} folio={folio} compact />
+          {story.place && (
+            <p data-r style={d(40)} className="p-stamp mt-[1.4cqh] text-[clamp(0.55rem,2.6cqw,0.72rem)] text-bone/70">
+              {story.place}
+            </p>
+          )}
+          <h2 data-r style={d(80)} className="p-display mt-[0.8cqh] text-[min(13cqw,7cqh)] leading-[0.88] text-accent">
+            {story.title}
+          </h2>
+          {story.deck && (
+            <p data-r style={d(160)} className="p-quote mt-[1.4cqh] text-[min(5.2cqw,3cqh)] leading-[1.18] text-bone/90">
+              {story.deck}
+            </p>
+          )}
+          <p data-r style={d(220)} className="mt-[1.4cqh] min-h-0 overflow-hidden text-[min(3.8cqw,2.2cqh)] leading-[1.5] text-bone/80 @3xl:max-w-[52ch]">
+            {story.body}
+          </p>
+          {artist && (
+            <div data-r style={d(300)} className="mt-auto flex flex-wrap gap-2 pt-[1.6cqh]">
+              <Link href={`/${artist.slug}#bio`} className="btn bg-accent text-ink hover:opacity-90">
+                {t.feature.read}
+              </Link>
+              {artist.accepting && (
+                <Link href={`/${artist.slug}/request`} className="btn border border-bone/60 text-bone hover:bg-bone/10">
+                  {t.feature.request}
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Ch>
   );
 }
 
-/** Who just arrived: their covers in a grid, as on a contributors' page. */
-export function NewIn({ story, folio, locale, t }: { story: Story; folio: string; locale: Locale; t: T }) {
-  const artists = (story.artists ?? []).slice(0, 6);
+/** What is coming: dates set large down the left, the event and the place beside them. */
+export function Agenda({ story, folio }: { story: Story; folio: string }) {
+  const events = story.events ?? [];
   return (
     <Ch tone="bone">
-      {artists.length > 0 && <Ghost right>{two(artists.length)}</Ghost>}
       <div className="absolute inset-0 mx-auto flex max-w-[72rem] flex-col p-[5cqw] pt-[4cqh]">
-        <Head kicker={story.kicker} folio={folio} />
+        <Head kicker={story.kicker} folio={folio} compact />
         <h2 data-r style={d(80)} className="p-display mt-[1.6cqh] text-[min(15cqw,9cqh)] text-ink">
           {story.title}
         </h2>
-        <p data-r style={d(160)} className="p-quote mt-[1.2cqh] text-[min(5.4cqw,3.2cqh)] leading-[1.18] text-ink/80">
+        <p data-r style={d(160)} className="p-quote mt-[1.2cqh] max-w-[36ch] text-[min(5cqw,3cqh)] leading-[1.18] text-ink/80">
           {story.body}
         </p>
-        <ul data-r style={d(240)} className="mt-[2.4cqh] grid min-h-0 grid-cols-3 gap-[2.4cqw] @3xl:grid-cols-6 [&_article]:w-full">
-          {artists.map((a) => (
-            <li key={a.id} className="min-w-0">
-              <ArtistCard artist={a} locale={locale} compact />
+        <ol data-r style={d(240)} className="mt-[2cqh] min-h-0 overflow-hidden border-t-2 border-ink">
+          {events.map((e) => (
+            <li key={e.name} className="grid grid-cols-[minmax(0,0.34fr)_minmax(0,1fr)] items-baseline gap-[3cqw] border-b border-ink/20 py-[1.2cqh]">
+              <span className="p-display text-[min(6.4cqw,3.8cqh)] leading-none text-accent tabular-nums">{e.date}</span>
+              <span className="min-w-0">
+                <span className="p-display block text-[min(5.4cqw,3.2cqh)] leading-[0.95] text-ink">{e.name}</span>
+                <span className="p-stamp mt-[0.5cqh] block text-[clamp(0.5rem,2.4cqw,0.66rem)] text-ink/60">{e.place}</span>
+              </span>
             </li>
           ))}
-        </ul>
-        {story.href && (
-          <Link data-r style={d(320)} href={story.href} className="p-stamp mt-auto flex min-h-11 items-center justify-between border-t-2 border-ink pt-[1cqh] text-[clamp(0.55rem,2.7cqw,0.72rem)] text-ink">
-            <span>{t.newIn.more}</span>
-            <span aria-hidden className="text-[1.2rem] leading-none text-accent">→</span>
-          </Link>
-        )}
+        </ol>
+        {story.line && <p data-r style={d(320)} className="p-stamp mt-auto pt-[1.2cqh] text-[clamp(0.5rem,2.3cqw,0.64rem)] text-ink/55">{story.line}</p>}
       </div>
     </Ch>
   );
 }
 
 /** The colophon, on the house colour: thanks, who made it, the two things to do next, and when the next one comes. */
-export function Colophon({ story, no, number, month, locale, t, contributors, share }: { story: Story; no: string; number: number; month: string; locale: Locale; t: T; contributors: string[]; share: { onShare: () => void; copied: boolean } }) {
+export function Colophon({ story, no, number, month, locale, t, contributors, share }: { story: Story; no: string; number: number; month: string; locale: Locale; t: T; contributors: { name: string; url: string }[]; share: { onShare: () => void; copied: boolean } }) {
   return (
     <Ch tone="accent">
       <div className="absolute inset-0 mx-auto flex max-w-[72rem] flex-col p-[6cqw] pt-[4cqh]">
@@ -222,11 +237,13 @@ export function Colophon({ story, no, number, month, locale, t, contributors, sh
         {contributors.length > 0 && (
           <div data-r style={d(260)} className="mt-[2.4cqh] border-t border-ink/30 pt-[1.4cqh]">
             <p className="p-stamp text-[clamp(0.52rem,2.5cqw,0.68rem)] text-ink/70">{t.colophon.contributors}</p>
-            <p className="p-display mt-[0.8cqh] text-[min(6.2cqw,3.8cqh)] leading-[1.02] text-ink">
+            <p className="p-display mt-[0.8cqh] text-[min(4.6cqw,2.7cqh)] leading-[1.15] text-ink">
               {contributors.map((c, i) => (
-                <span key={c}>
+                <span key={c.url}>
                   <span className="whitespace-nowrap">
-                    {c}
+                    <a href={c.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      {c.name}
+                    </a>
                     {i < contributors.length - 1 && <span className="text-ink/45"> /</span>}
                   </span>{" "}
                 </span>
@@ -236,10 +253,10 @@ export function Colophon({ story, no, number, month, locale, t, contributors, sh
         )}
         <div data-r style={d(300)} className="mt-auto flex flex-col gap-[1.4cqh]">
           <div className="flex flex-wrap gap-2">
-            <Link href={story.href ?? "/artists"} className="btn bg-ink text-bone hover:bg-ink/85">
+            <Link href={story.href ?? "/artists"} className="btn btn-sm bg-ink text-bone hover:bg-ink/85">
               {t.colophon.send}
             </Link>
-            <button type="button" onClick={share.onShare} className="btn border border-ink/70 text-ink hover:bg-ink/10" aria-live="polite">
+            <button type="button" onClick={share.onShare} className="btn btn-sm border border-ink/70 text-ink hover:bg-ink/10" aria-live="polite">
               {share.copied ? t.reader.copied : t.colophon.share}
             </button>
           </div>

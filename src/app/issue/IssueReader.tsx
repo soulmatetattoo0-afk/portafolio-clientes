@@ -14,7 +14,7 @@ import { STYLE_BY_SLUG } from "@/lib/catalog";
 import type { Story } from "@/lib/issue/types";
 import { PLACEMENT_BY_SLUG, ZONE_BY_SLUG } from "@/mannequin/catalog";
 
-import { CityDispatch, Colophon, Editorial, IssueCover, NewIn, WorldNote, two } from "./chapters";
+import { Agenda, Colophon, Editorial, Feature, IssueCover, NewsNote, two } from "./chapters";
 
 /** What the server hands the reader: the issue without its Date, already in the reader's language. */
 export interface ReaderIssue {
@@ -90,7 +90,10 @@ export function IssueReader({ issue, locale, t, appUrl, initialKey }: { issue: R
   }, [appUrl, base, key, issue.no, issue.title, r.share]);
 
   const folio = `${BRAND.name} · ${issue.no} · ${issue.month}`;
-  const contributors = Array.from(new Set(issue.stories.flatMap((s) => (s.kind === "piece" && s.artist ? [s.artist.display_name] : []))));
+  // The colophon credits the outlets the news came from, each once, by its home page.
+  const contributors = Array.from(
+    new Map(issue.stories.flatMap((s) => s.sources ?? []).map((src) => [src.name, { name: src.name, url: new URL(src.url).origin }])).values(),
+  );
   const styleOf = (s: string | null) => (s ? (STYLE_BY_SLUG.get(s)?.label[locale] ?? s) : null);
   const place = (s: string | null) => (s ? ((PLACEMENT_BY_SLUG.get(s) ?? ZONE_BY_SLUG.get(s))?.label[locale] ?? s) : null);
 
@@ -98,6 +101,7 @@ export function IssueReader({ issue, locale, t, appUrl, initialKey }: { issue: R
   {
     let tone: Tone = "ink";
     let piece = 0;
+    let news = 0;
     for (const s of issue.stories) {
       if (s.kind === "piece" && s.piece && s.artist) {
         piece += 1;
@@ -151,18 +155,18 @@ export function IssueReader({ issue, locale, t, appUrl, initialKey }: { issue: R
           <IssueCover story={s} no={issue.no} month={issue.month} t={t} />
         ) : s.kind === "editorial" ? (
           <Editorial story={s} folio={folio} locale={locale} />
-        ) : s.kind === "city" ? (
-          <CityDispatch story={s} folio={folio} locale={locale} t={t} />
-        ) : s.kind === "world" ? (
-          <WorldNote story={s} folio={folio} t={t} />
-        ) : s.kind === "new_in" ? (
-          <NewIn story={s} folio={folio} locale={locale} t={t} />
+        ) : s.kind === "news" ? (
+          <NewsNote story={s} folio={folio} tone={news++ % 2 === 0 ? "ink" : "bone"} t={t} />
+        ) : s.kind === "feature" ? (
+          <Feature story={s} folio={folio} t={t} />
+        ) : s.kind === "agenda" ? (
+          <Agenda story={s} folio={folio} />
         ) : s.kind === "colophon" ? (
           <Colophon story={s} no={issue.no} number={issue.number} month={issue.month} locale={locale} t={t} contributors={contributors} share={{ onShare, copied }} />
         ) : null;
       if (!node) continue;
-      tone = s.kind === "cover" || s.kind === "world" ? "ink" : "bone";
-      chapters.push({ key: s.id, label: s.kind === "cover" ? issue.no : s.kicker, node });
+      tone = s.kind === "cover" || s.kind === "feature" || (s.kind === "news" && news % 2 === 1) ? "ink" : "bone";
+      chapters.push({ key: s.id, label: s.kind === "cover" ? issue.no : s.kind === "news" ? `${s.kicker} · ${s.place ?? ""}` : s.kicker, node });
     }
   }
 

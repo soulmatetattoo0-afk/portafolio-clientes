@@ -1,36 +1,19 @@
 import { DemoBanner } from "@/components/Chrome";
-import { BottomTabs } from "@/components/world/BottomTabs";
-import { WorldBar } from "@/components/world/WorldBar";
 import { getDict } from "@/i18n/server";
 import { BRAND } from "@/lib/brand";
+import { getClientUser, listFollowed, unreadChats } from "@/lib/client";
+import { ClientTabs } from "@/v2/Shell";
 
-import { MeTabs } from "./MeTabs";
-
-/**
- * The client's own space. The poster theme in the house accent; each page
- * gates itself with requireClient so the way back is the page that was asked for.
- */
+/** The client's app: Mensajes and Perfil, with the way back to the artist they came from. */
 export default async function MeLayout({ children }: LayoutProps<"/me">) {
-  const { t } = await getDict();
-  const n = t.me.nav;
+  const [{ t }, me] = await Promise.all([getDict(), getClientUser()]);
+  const [unread, followed] = me ? await Promise.all([unreadChats(me.userId), listFollowed(me.userId)]) : [0, []];
+  const tabs = t.v2.tabs;
   return (
-    <div className="poster relative flex min-h-dvh flex-col" style={{ ["--accent" as string]: BRAND.accent }}>
-      <div className="p-grain" aria-hidden />
+    <div className="poster v2-page relative flex min-h-dvh flex-col" style={{ ["--accent" as string]: BRAND.accent }}>
       <DemoBanner />
-      <WorldBar />
-      <MeTabs
-        label={n.label}
-        tabs={[
-          { href: "/me", label: n.overview },
-          { href: "/me/briefs", label: n.briefs },
-          { href: "/me/saved", label: n.saved },
-          { href: "/me/appointments", label: n.appointments },
-          { href: "/me/alerts", label: n.alerts },
-          { href: "/me/settings", label: n.settings },
-        ]}
-      />
-      <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 pt-6 pb-24">{children}</main>
-      <BottomTabs />
+      {children}
+      {me && <ClientTabs slug={followed[0]?.slug ?? null} labels={{ page: tabs.page, messages: tabs.messages, profile: tabs.profile, bar: t.me.nav.label }} badge={unread} />}
     </div>
   );
 }

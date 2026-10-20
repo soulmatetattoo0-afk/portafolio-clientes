@@ -19,7 +19,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-from skimage.measure import marching_cubes
 
 sys.path.insert(0, str(Path(__file__).parent))
 from body import ZONES, Body, female, field, classify, male  # noqa: E402
@@ -40,6 +39,9 @@ def prim_zrange(pr):
 
 
 def sample_volume(body: Body, h: float) -> tuple[np.ndarray, np.ndarray]:
+    # Only the procedural builder needs scikit-image; human.py imports this module for the shared steps.
+    from skimage.measure import marching_cubes  # noqa: PLC0415
+
     xs = np.arange(BOUNDS[0][0], BOUNDS[0][1] + h, h)
     ys = np.arange(BOUNDS[1][0], BOUNDS[1][1] + h, h)
     zs = np.arange(BOUNDS[2][0], BOUNDS[2][1] + h, h)
@@ -113,7 +115,7 @@ def split_by_zone(V, F, N, labels):
     uniq, inv = np.unique(key.ravel(), return_inverse=True)
     src = uniq // 64
     zone = (uniq % 64).astype(np.float32)
-    return V[src], inv.reshape(F.shape), N[src], zone
+    return V[src], inv.reshape(F.shape), N[src], zone, src
 
 
 def blender_reset():
@@ -248,7 +250,7 @@ def build(body: Body, h: float, out: Path, preview: Path | None):
     centers, fn, _ = face_data(V, F)
     labels = smooth_labels(F, classify(body, centers, fn), iters=10)
     N = vertex_normals(V, F)
-    Vs, Fs, Ns, zone = split_by_zone(V, F, N, labels)
+    Vs, Fs, Ns, zone, _ = split_by_zone(V, F, N, labels)
     print(f"[{body.name}] decimated: {len(F)} tris, {len(Vs)} verts after zone split")
 
     out.mkdir(parents=True, exist_ok=True)

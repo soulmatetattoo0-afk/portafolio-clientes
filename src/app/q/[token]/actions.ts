@@ -10,7 +10,9 @@ import { getLocale } from "@/i18n/server";
 import { confirmBooking } from "@/lib/booking";
 import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
-import { env, live } from "@/lib/env";
+import { demoMode, env, live } from "@/lib/env";
+import { money } from "@/lib/format";
+import { notifyEach } from "@/lib/push";
 import { createDepositCheckout } from "@/lib/payments";
 import { feeBpsFor } from "@/lib/plan";
 import { placementLabel } from "@/lib/messages";
@@ -27,7 +29,8 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   if (!quote) return { error: t.common.error };
   const q = t.quote;
   if (quote.status === "withdrawn") return { error: fill(q.withdrawn, { artist: quote.artist_name }) };
-  if (quote.status === "paid") redirect(`/q/${token}`);
+  const back = form.get("from") === "studio" ? "?from=studio" : "";
+  if (quote.status === "paid") redirect(`/q/${token}${back}`);
   if (new Date(quote.expires_at).getTime() < Date.now()) return { error: q.expired };
   if (form.get("agree") !== "on") return { error: q.agreeRequired };
   const slotId = String(form.get("slot") ?? "");
@@ -35,9 +38,10 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   if (live.payments && (!quote.stripe_account_id || !quote.stripe_charges_enabled)) return { error: fill(q.paymentsOff, { artist: quote.artist_name }) };
 
   const db = await getDb();
-  // Hold the date for 30 minutes while the client pays; an expired hold is free again.
+  // Hold the date while the client pays: 30 minutes on a card, a week when the artist confirms a direct payment.
+  const direct = !live.payments && !demoMode;
   const held = await db.one(
-    `update quote_slots set status = 'held', hold_expires_at = now() + interval '31 minutes'
+    `update quote_slots set status = 'held', hold_expires_at = now() + ${direct ? "interval '7 days'" : "interval '31 minutes'"}
       where id = $1 and quote_id = $2 and (status = 'offered' or (status = 'held' and hold_expires_at < now()))
       returning id`,
     [slotId, quote.id],
@@ -45,6 +49,19 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   if (!held) return { error: q.slotTaken };
   const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   await db.query(`update quotes set accepted_at = now(), accepted_ip = $2 where id = $1`, [quote.id, ip]);
+
+  if (direct) {
+    // No card payments yet: the client asks to book in the chat; the artist confirms once the money arrives.
+    const ct = dict(locale).chat.direct;
+    const body = fill(ct.request, { amount: money(quote.deposit_cents, quote.currency, locale), artist: quote.artist_name });
+    const b = await db.one<{ id: string; studio_id: string; client: string }>(`select b.id, b.studio_id, c.name as client from briefs b join clients c on c.id = b.client_id where b.chat_token = $1`, [quote.chat_token]);
+    if (b) {
+      await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, data) values ($1, $2, 'message', 'client', $3, $4)`, [b.studio_id, b.id, body, JSON.stringify({ direct: quote.id })]);
+      const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [b.studio_id]);
+      after(() => notifyEach(members, (l) => ({ title: fill(dict(l).chat.direct.pushTitle, { name: b.client }), body: money(quote.deposit_cents, quote.currency, l), url: `/studio/chats/${b.id}`, tag: `direct:${b.id}` })));
+    }
+    redirect(`/c/${quote.chat_token}${back}`);
+  }
 
   if (!live.payments) {
     // Demo mode: the deposit is simulated and the booking confirms immediately.
@@ -59,7 +76,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
     after(async () => {
       await flushOutbox(await getDb());
     });
-    redirect(`/q/${token}`);
+    redirect(`/q/${token}${back}`);
   }
 
   const checkout = await createDepositCheckout({
@@ -74,7 +91,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
     successUrl: `${env.appUrl}/q/${token}?checkout=success`,
     cancelUrl: `${env.appUrl}/q/${token}?checkout=cancelled`,
     locale,
-    feeBps: feeBpsFor(quote.plan, env.platformFeeBps),
+    feeBps: feeBpsFor(quote.plan, { basic: env.platformFeeBps, full: env.platformFeeFullBps }),
   });
   await db.query(
     `insert into payments (studio_id, quote_id, provider, checkout_id, amount_cents, application_fee_cents, currency, status)

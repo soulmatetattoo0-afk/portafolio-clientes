@@ -1,7 +1,9 @@
 /**
- * What each tier can do. Basic is free: a page, a gallery, a listing, an
- * inbox, and quotes with deposits that carry the platform fee. Full removes
- * the fee and opens the rest. Founding and the earlier plans count as full.
+ * What each tier can do. Basic is free: a page and its magazine, a gallery,
+ * a listing, the chat and the agenda, five new requests a day. Full ($20 a
+ * month) lifts the limit and opens the rest. Every payment made in the app
+ * (deposit and balance) carries VANTA's fee: the full one on Basic, a smaller
+ * one on Full. Founding and the earlier plans count as full.
  */
 export type Plan = "basic" | "full" | "founding" | "artist" | "pro" | "studio";
 export type Feature = "no_fee" | "flash" | "spots" | "magazine" | "submit" | "alerts_fanout";
@@ -9,13 +11,14 @@ export type Feature = "no_fee" | "flash" | "spots" | "magazine" | "submit" | "al
 export const isFull = (plan: string | null | undefined) => plan !== "basic";
 
 export function can(plan: string | null | undefined, feature: Feature): boolean {
-  void feature; // every gated feature is "full only" today; the switch stays for the day a feature splits
+  // The magazine is the artist's page itself: every plan edits it.
+  if (feature === "magazine") return true;
   return isFull(plan);
 }
 
-/** Basis points of platform fee a deposit carries for this plan. */
-export function feeBpsFor(plan: string | null | undefined, platformFeeBps: number): number {
-  return can(plan, "no_fee") ? 0 : platformFeeBps;
+/** Basis points of platform fee a payment in the app carries for this plan. */
+export function feeBpsFor(plan: string | null | undefined, fees: { basic: number; full: number }): number {
+  return isFull(plan) ? fees.full : fees.basic;
 }
 
 /**

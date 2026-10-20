@@ -1,11 +1,25 @@
-import type { ArtistCard } from "@/lib/queries";
-import type { SpotCard } from "@/lib/search";
-
-/** What a story in the issue is. The cover is a story too, so the hero can carry it. */
-export type StoryKind = "cover" | "editorial" | "piece" | "city" | "world" | "new_in" | "colophon";
+/**
+ * What a story in the issue is. The cover is a story too, so the hero can
+ * carry it. `news` is a reported note from the tattoo world with its sources,
+ * `feature` is house news about an artist on VANTA, `agenda` is what is coming.
+ */
+export type StoryKind = "cover" | "editorial" | "news" | "feature" | "agenda" | "piece" | "colophon";
 
 /** The spread it lays out on; the pieces reuse the artist magazine's spreads. */
-export type Template = "cover" | "split" | "split-r" | "bleed" | "quote" | "list" | "grid" | "text";
+export type Template = "cover" | "split" | "split-r" | "bleed" | "quote" | "list" | "text";
+
+/** Where a reported story comes from: the outlet and the page. */
+export interface Source {
+  name: string;
+  url: string;
+}
+
+/** One date on the agenda. */
+export interface AgendaEvent {
+  date: string;
+  name: string;
+  place: string;
+}
 
 /** The artist a story is about, enough for a byline, a link and an accent. */
 export interface StoryArtist {
@@ -36,11 +50,12 @@ export interface Story {
   line?: string;
   artist?: StoryArtist;
   piece?: { title: string; style: string | null; placement: string | null; color_mode: "black_grey" | "color" | null; is_healed: boolean };
-  spots?: SpotCard[];
-  artists?: ArtistCard[];
-  city?: { slug: string; name: string };
-  /** Sample content from the desk, until the editorial desk exists. Shown with a stamp. */
-  sample?: boolean;
+  /** A reported story: where and when it happened, the one-line deck, and who reported it. */
+  place?: string;
+  date?: string;
+  deck?: string;
+  sources?: Source[];
+  events?: AgendaEvent[];
   /** Where the story points beyond the issue. */
   href?: string;
 }

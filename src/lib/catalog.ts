@@ -81,6 +81,15 @@ export const TRADES: { slug: Trade; label: L; plural: L; bookingMode: BookingMod
 export const TRADE_BY_SLUG = new Map(TRADES.map((t) => [t.slug, t]));
 export const isTrade = (s: unknown): s is Trade => typeof s === "string" && TRADE_BY_SLUG.has(s as Trade);
 
+/** The time zone a city keeps, for the cities VANTA opens with; anything else falls back to the country's main one. */
+export function timezoneFor(country: "cl" | "us" | "mx", city: string): string {
+  if (country === "cl") return "America/Santiago";
+  if (country === "mx") return "America/Mexico_City";
+  if (["Chicago", "Austin", "Houston"].includes(city)) return "America/Chicago";
+  if (["Los Angeles", "San Francisco", "Las Vegas", "Seattle", "Portland"].includes(city)) return "America/Los_Angeles";
+  return "America/New_York";
+}
+
 /** Countries open in search for now, each with its cities: pick the country, then the city. */
 export const COUNTRIES: { code: "cl" | "us" | "mx"; label: L; cities: string[] }[] = [
   { code: "cl", label: { en: "Chile", es: "Chile" }, cities: ["Santiago", "Valparaíso", "Viña del Mar", "Concepción", "La Serena", "Antofagasta", "Temuco", "Puerto Montt"] },

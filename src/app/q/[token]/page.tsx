@@ -6,19 +6,22 @@ import { PolicyList } from "@/components/Policy";
 import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { colorLabel, styleLabel } from "@/lib/catalog";
-import { getClientUser, ownsBrief } from "@/lib/client";
 import { getDb } from "@/lib/db";
-import { live } from "@/lib/env";
+import { live, manualPayments } from "@/lib/env";
 import { cmLabel, dateLong, money, moneyRange, placeLine, requestTime, sessionTime } from "@/lib/format";
 import { placementLabel } from "@/lib/messages";
 import { getQuoteByToken } from "@/lib/queries";
 
 import { AwaitPayment, PayForm } from "./PayForm";
 
-export const metadata = { title: "Quote", robots: { index: false, follow: false } };
+export async function generateMetadata() {
+  const { t } = await getDict();
+  return { title: t.quote.pageTitle, robots: { index: false, follow: false } };
+}
 
 export default async function QuotePage({ params, searchParams }: PageProps<"/q/[token]">) {
   const [{ token }, sp] = await Promise.all([params, searchParams]);
+  const back = sp.from === "studio" ? "?from=studio" : "";
   const quote = await getQuoteByToken(token);
   if (!quote) notFound();
   const { t, locale } = await getDict();
@@ -30,28 +33,23 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
   const now = requestTime();
   const expired = quote.status !== "paid" && new Date(quote.expires_at).getTime() < now;
   const placement = placementLabel(quote.placement, locale);
-  // The token is the key; a signed-in owner also gets the way back to their space.
-  const me = await getClientUser();
-  const mine = me ? await ownsBrief(me.userId, quote.brief_id) : false;
+  // The offer lives inside the artist's app: their colour, and the arrow back to the chat it came from.
   const header = (
     <PublicBar>
-      <Link href={`/${quote.artist_slug}`} className="t-inscription truncate py-2 text-[0.8rem] tracking-[0.24em] text-gilt">
-        {quote.artist_name.toUpperCase()}
+      <Link href={`/c/${quote.chat_token}${back}`} className="flex min-w-0 items-center gap-3 py-2 text-bone" aria-label={t.chat.backToChat}>
+        <span aria-hidden className="text-[1.3rem] leading-none">←</span>
+        <span className="p-display truncate text-[1.2rem] leading-none">{quote.artist_name}</span>
       </Link>
-      {mine && (
-        <Link href="/me/briefs" className="btn btn-ghost btn-sm shrink-0">
-          {q.myRequests}
-        </Link>
-      )}
     </PublicBar>
   );
+  const theme = { ["--accent" as string]: quote.artist_accent ?? "#d8552f" };
 
   if (quote.appointment) {
     const ap = quote.appointment;
     const { day, time } = sessionTime(ap.starts_at, ap.timezone, locale);
     const where = placeLine(ap.studio_name, ap.address, ap.city);
     return (
-      <>
+      <div className="poster flex min-h-dvh flex-col" style={theme}>
         <DemoBanner />
         {header}
         <main className="mx-auto grid w-full max-w-2xl flex-1 content-start gap-10 px-4 pt-10 pb-20 sm:px-6 sm:pt-16">
@@ -78,11 +76,9 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
             <a href={`/q/${token}/ics`} className="btn btn-secondary">
               {t.booked.addToCalendar}
             </a>
-            {mine && (
-              <Link href="/me/appointments" className="btn btn-secondary">
-                {q.seeAppointments}
-              </Link>
-            )}
+            <Link href={`/c/${quote.chat_token}${back}`} className="btn btn-secondary">
+              {t.chat.backToChat}
+            </Link>
           </div>
           <section>
             <h2 className="t-heading mb-4">{t.booked.prepTitle}</h2>
@@ -97,7 +93,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
             <p className="mt-6 text-[0.9rem] text-ash">{t.booked.reminder}</p>
           </section>
         </main>
-      </>
+      </div>
     );
   }
 
@@ -106,7 +102,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
   const sessionsLabel = fill(quote.sessions === 1 ? q.sessions : q.sessionsPlural, { n: quote.sessions });
 
   return (
-    <>
+    <div className="poster flex min-h-dvh flex-col" style={theme}>
       <DemoBanner />
       {header}
       <main className="mx-auto grid w-full max-w-5xl flex-1 gap-10 px-4 pt-8 pb-20 sm:px-6 sm:pt-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16">
@@ -160,6 +156,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                 <p className="rounded-[var(--radius-md)] border border-line p-5 text-ash">{fill(q.noDates, { artist: quote.artist_name })}</p>
               ) : (
                 <PayForm
+                  from={sp.from === "studio" ? "studio" : undefined}
                   token={token}
                   policyTitle={q.policy}
                   policy={<PolicyList policy={quote.policy} t={t} />}
@@ -174,7 +171,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                     chooseDate: q.chooseDate,
                     chooseDateHint: q.chooseDateHint,
                     agree: q.agree,
-                    pay: fill(live.payments ? q.pay : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
+                    pay: fill(live.payments ? q.pay : manualPayments ? q.payDirect : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
                     redirecting: q.redirecting,
                     dateRequired: q.dateRequired,
                     agreeRequired: q.agreeRequired,
@@ -189,7 +186,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
           )}
         </section>
       </main>
-    </>
+    </div>
   );
 }
 

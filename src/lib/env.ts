@@ -19,8 +19,12 @@ export const env = {
   supabaseServiceKey: read("SUPABASE_SERVICE_ROLE_KEY"),
   stripeSecretKey: read("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: read("STRIPE_WEBHOOK_SECRET"),
+  /** The second endpoint, for VANTA's own account: the artists' subscriptions. */
+  stripeBillingWebhookSecret: read("STRIPE_BILLING_WEBHOOK_SECRET"),
   /** Platform fee on deposits, in basis points (300 = 3%). 0 while on subscriptions. */
-  platformFeeBps: Number(read("PLATFORM_FEE_BPS") ?? "0"),
+  /** VANTA's share of every payment made in the app (deposit and balance), in basis points: Basic, then Full. */
+  platformFeeBps: Number(read("PLATFORM_FEE_BPS") ?? "500"),
+  platformFeeFullBps: Number(read("PLATFORM_FEE_FULL_BPS") ?? "300"),
   resendApiKey: read("RESEND_API_KEY"),
   emailFrom: read("EMAIL_FROM") ?? "Vanta <bookings@example.com>",
   /** Comma-separated emails that may open the editor's desk (/admin). Local mode: the demo member. */
@@ -57,7 +61,14 @@ export const DEMO_EMAIL = "demo@vanta.local";
 export const DEMO_CLIENT_EMAIL = "daniel@example.com";
 /** TATTOO BY SOVA, the first artist account; local mode can sign in as her too. */
 export const SOVA_USER_ID = "00000000-0000-4000-8000-000000000003";
-export const SOVA_EMAIL = "sova@vanta.local";
+export const SOVA_EMAIL = "tattoo.by.sova@gmail.com";
 
-/** True when anything runs on a local stand-in; the UI labels demo behaviour. */
-export const demoMode = !live.db || !live.auth || !live.payments;
+/**
+ * The demo: the embedded database (laptops, previews without a database) or a
+ * deployment that asks for it with VANTA_DEMO=1. Only here do the scripted
+ * moments run (the client who books by themself, the canned replies, the
+ * seeded studio) and payments are simulated. Never in production.
+ */
+export const demoMode = !live.db || read("VANTA_DEMO") === "1";
+/** A real deployment without Stripe yet: the client pays the artist directly and the artist confirms it in the app. */
+export const manualPayments = !demoMode && !live.payments;

@@ -78,6 +78,9 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
           if (!latest.current.readOnly) latest.current.onPlace?.(p);
         },
       });
+      // A handle for poking the figure from the console while developing.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (process.env.NODE_ENV !== "production") (window as any).__mannequin = engineRef.current;
     });
     return () => {
       disposed = true;
@@ -126,7 +129,11 @@ export const Mannequin = forwardRef<MannequinHandle, MannequinProps>(function Ma
         else {
           e.setDesignSize(p.design.widthCm, p.design.heightCm, p.design.rotationDeg);
           if (p.savedPoint) e.placeAt(p.savedPoint.point, p.savedPoint.normal);
-          else e.placeAtCenter();
+          else {
+            // First time on the area: the patch lands in its middle and the camera closes in on it.
+            e.placeAtCenter();
+            if (p.mode === "place") e.focusDesign();
+          }
         }
         a.design = key;
       }

@@ -30,6 +30,12 @@ export function dateLong(date: Date | string, locale: Locale = "en", timezone?: 
   return new Intl.DateTimeFormat(tag(locale), { weekday: "long", month: "long", day: "numeric", timeZone: timezone }).format(d);
 }
 
+/** A requested date as the client picked it on the calendar (YYYY-MM-DD) in words; anything else as written. */
+export function prettyDates(s: string | null | undefined, locale: Locale = "en") {
+  if (!s) return "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Intl.DateTimeFormat(tag(locale), { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${s}T12:00:00Z`)) : s;
+}
+
 /** "October 2026", for an issue's date line. */
 export function monthYear(date: Date | string, locale: Locale = "en") {
   const d = typeof date === "string" ? new Date(date) : date;

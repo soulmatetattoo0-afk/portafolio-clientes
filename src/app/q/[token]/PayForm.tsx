@@ -21,6 +21,7 @@ export function PayForm(props: {
   labels: { chooseDate: string; chooseDateHint: string; agree: string; pay: string; redirecting: string; dateRequired: string; agreeRequired: string; taken: string };
   policy: React.ReactNode;
   policyTitle: string;
+  from?: string;
 }) {
   const [state, action, pending] = useActionState<PayState, FormData>(startDeposit.bind(null, props.token), { error: null });
   const [slot, setSlot] = useState<string | null>(props.slots.find((s) => s.available)?.id ?? null);
@@ -45,6 +46,7 @@ export function PayForm(props: {
       }}
       className="grid gap-8"
     >
+      {props.from && <input type="hidden" name="from" value={props.from} />}
       <fieldset className="grid gap-2">
         <legend className="t-heading mb-1">{l.chooseDate}</legend>
         <p className="mb-2 text-[0.9rem] text-ash">{l.chooseDateHint}</p>

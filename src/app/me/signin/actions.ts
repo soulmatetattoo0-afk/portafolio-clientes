@@ -6,53 +6,15 @@ import { z } from "zod";
 
 import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
-import { setDevSession, supabaseServer } from "@/lib/auth";
+import { getSession, setDevSession, supabaseServer } from "@/lib/auth";
 import { ensureClientUser, safeNext } from "@/lib/client";
 import { getDb } from "@/lib/db";
 import { checkPassword, hashPassword } from "@/lib/password";
 import { DEMO_CLIENT_EMAIL, DEMO_CLIENT_USER_ID, env, live } from "@/lib/env";
 import { allow } from "@/lib/ratelimit";
 
-export interface SignInState {
-  sent: string | null;
-  error: string | null;
-}
-
+/** Where Supabase sends people back after an email link (confirming the account, a password reset). */
 const callback = (next: string) => `${env.appUrl}/auth/callback?intent=client&next=${encodeURIComponent(next)}`;
-
-/** Live auth: a magic link that lands on the callback with the client intent. */
-export async function sendClientLink(_prev: SignInState, form: FormData): Promise<SignInState> {
-  const t = dict(await getLocale());
-  const email = z.string().trim().toLowerCase().email().safeParse(form.get("email"));
-  if (!email.success) return { sent: null, error: t.brief.contact.emailInvalid };
-  if (!live.auth) return { sent: null, error: t.common.error };
-  if (!(await allow("client-login", 5, 900))) return { sent: null, error: t.common.error };
-  const supabase = await supabaseServer();
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.data,
-    options: { emailRedirectTo: callback(safeNext(form.get("next"))), shouldCreateUser: true },
-  });
-  if (error) return { sent: null, error: t.common.error };
-  return { sent: fill(t.me.signin.sent, { email: email.data }), error: null };
-}
-
-/** Live auth: hand off to Google or Apple; a provider that isn't switched on shows a plain message. */
-export async function signInWithProvider(_prev: SignInState, form: FormData): Promise<SignInState> {
-  const t = dict(await getLocale());
-  const provider = form.get("provider") === "apple" ? "apple" : "google";
-  if (!live.auth) return { sent: null, error: t.common.error };
-  if (!(await allow("client-login", 10, 900))) return { sent: null, error: t.common.error };
-  let url: string | null = null;
-  try {
-    const supabase = await supabaseServer();
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: callback(safeNext(form.get("next"))) } });
-    if (error || !data.url) return { sent: null, error: t.me.signin.providerOff };
-    url = data.url;
-  } catch {
-    return { sent: null, error: t.me.signin.providerOff };
-  }
-  redirect(url);
-}
 
 /** Local mode only: sign in as the seeded demo client. */
 export async function enterDemoClient(form: FormData) {
@@ -129,4 +91,40 @@ export async function signInClient(_prev: AccountState, form: FormData): Promise
   if (!row || !(await checkPassword(password, row.password_hash))) return { error: t.wrong, sent: null };
   await setDevSession(row.user_id, row.email);
   redirect(next);
+}
+
+/** A new password for whoever is signed in: after a reset link, or from their settings. */
+export async function changePassword(_prev: AccountState, form: FormData): Promise<AccountState> {
+  const locale = await getLocale();
+  const t = dict(locale).me.account;
+  const session = await getSession();
+  if (!session) return { error: t.failed, sent: null };
+  const password = Password.safeParse(form.get("password"));
+  if (!password.success) return { error: t.passwordShort, sent: null };
+  if (password.data !== form.get("confirm")) return { error: t.mismatch, sent: null };
+  if (!(await allow("password", 10, 3600))) return { error: t.tryLater, sent: null };
+  if (live.auth) {
+    const supabase = await supabaseServer();
+    const { error } = await supabase.auth.updateUser({ password: password.data });
+    if (error) return { error: t.failed, sent: null };
+    return { error: null, sent: t.passwordSaved };
+  }
+  // Local accounts keep their hash on the account row; a seeded page's owner gets one on first change.
+  await ensureClientUser(session.userId, session.email, locale);
+  const db = await getDb();
+  await db.query(`update client_users set password_hash = $2 where user_id = $1`, [session.userId, await hashPassword(password.data)]);
+  return { error: null, sent: t.passwordSaved };
+}
+
+/** Forgotten password: a link to the account's email that signs in and opens the new-password page. */
+export async function requestPasswordReset(_prev: AccountState, form: FormData): Promise<AccountState> {
+  const t = dict(await getLocale()).me.account;
+  const email = z.string().trim().toLowerCase().email().safeParse(form.get("email"));
+  if (!email.success) return { error: t.emailInvalid, sent: null };
+  if (!live.auth) return { error: t.forgotLocal, sent: null };
+  if (!(await allow("reset", 5, 3600))) return { error: t.tryLater, sent: null };
+  const supabase = await supabaseServer();
+  await supabase.auth.resetPasswordForEmail(email.data, { redirectTo: callback("/account/password") });
+  // The same answer whether or not the account exists.
+  return { error: null, sent: t.forgotSent };
 }

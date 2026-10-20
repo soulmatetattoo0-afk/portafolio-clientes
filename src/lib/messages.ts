@@ -39,7 +39,7 @@ export function newBriefToArtist(a: { to: string; artist: string; client: string
     to: a.to,
     subject: fill(t.subject, { name: a.client, placement: placementLabel(a.brief.placement, a.locale) }),
     blocks: [
-      { heading: fill(t.intro, { name: a.client }), rows: briefRows(a.brief, a.locale), cta: { label: t.cta, href: `${env.appUrl}/studio?brief=${a.briefId}` } },
+      { heading: fill(t.intro, { name: a.client }), rows: briefRows(a.brief, a.locale), cta: { label: t.cta, href: `${env.appUrl}/studio/chats/${a.briefId}` } },
     ],
     footer: footer(a.artist, a.locale),
   };
@@ -147,7 +147,7 @@ export function bookedToArtist(to: string, b: BookingInfo, briefId: string, loca
   return {
     to,
     subject: fill(t.subject, { name: b.client, date }),
-    blocks: [{ paragraphs: [fill(t.intro, { name: b.client, amount: money(b.deposit, b.currency, locale) })], rows: whenWhere(b, locale), cta: { label: dict(locale).email.newBrief.cta, href: `${env.appUrl}/studio?brief=${briefId}` } }],
+    blocks: [{ paragraphs: [fill(t.intro, { name: b.client, amount: money(b.deposit, b.currency, locale) })], rows: whenWhere(b, locale), cta: { label: dict(locale).email.newBrief.cta, href: `${env.appUrl}/studio/chats/${briefId}` } }],
     footer: footer(b.artist, locale),
   };
 }
@@ -229,7 +229,7 @@ export function chatToArtist(a: { to: string; client: string; artist: string; me
   return {
     to: a.to,
     subject: fill(t.toArtistSubject, { name: a.client }),
-    blocks: [{ paragraphs: [a.message], cta: { label: t.open, href: `${env.appUrl}/studio?brief=${a.briefId}` } }],
+    blocks: [{ paragraphs: [a.message], cta: { label: t.open, href: `${env.appUrl}/studio/chats/${a.briefId}` } }],
     footer: footer(a.artist, a.locale),
   };
 }

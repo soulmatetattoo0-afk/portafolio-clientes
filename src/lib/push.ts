@@ -61,3 +61,10 @@ export async function notify(userIds: (string | null | undefined)[], msg: PushMe
     }),
   );
 }
+
+/** One notification per person in their own language: the studio's members may not share one. */
+export async function notifyEach(people: { user_id: string | null; locale: "en" | "es" | null }[], build: (locale: "en" | "es") => PushMessage) {
+  const by = new Map<"en" | "es", string[]>();
+  for (const p of people) if (p.user_id) by.set(p.locale ?? "en", [...(by.get(p.locale ?? "en") ?? []), p.user_id]);
+  await Promise.all([...by].map(([locale, ids]) => notify(ids, build(locale))));
+}

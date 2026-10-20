@@ -6,7 +6,7 @@ import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { getClientUser, getMyContact } from "@/lib/client";
 import { env, live } from "@/lib/env";
-import { getArtistBySlug, listFlash, listPortfolio, listStops } from "@/lib/queries";
+import { getArtistBySlug, listFlash, listPortfolio, listStops, listTakenDays } from "@/lib/queries";
 
 import { BriefWizard } from "./BriefWizard";
 
@@ -30,6 +30,9 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   const styleImages: Record<string, string> = {};
   for (const p of portfolio) if (p.style && p.url && !styleImages[p.style]) styleImages[p.style] = p.url;
   const picked = flashAll.find((f) => f.id === sp.flash && f.status === "available") ?? null;
+  const taken = await listTakenDays(artist.id, stops);
+  const pieces = portfolio.filter((p) => p.url);
+  const calendar = { art: artist.calendar_art_url ?? pieces[(new Date().getUTCMonth() + pieces.length) % Math.max(1, pieces.length)]?.url ?? null, quote: artist.cover_quote?.trim() || artist.headline?.trim() || null };
   return (
     <>
       <DemoBanner />
@@ -43,7 +46,11 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
           .filter((s) => s.status === "booking" || s.status === "announced")
           .map((s) => ({ id: s.id, city: s.city, studio: s.studio_name, startsOn: s.starts_on, endsOn: s.ends_on, home: s.is_home }))}
         storage={live.storage ? { url: env.supabaseUrl!, anonKey: env.supabaseAnonKey! } : null}
+        taken={taken}
+        calendar={calendar}
         me={me}
+        preferredStop={typeof sp.stop === "string" ? sp.stop : null}
+        preferredDay={typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : null}
       />
     </>
   );

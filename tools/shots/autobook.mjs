@@ -1,0 +1,61 @@
+// The artist's road in the demo, alone: accept Sofía's quote, send the message, evaluate, wait for the
+// client's booking to arrive by itself, see the toast, then "Sesión terminada" and the care letters.
+//   CHROME=<chromium> node tools/shots/autobook.mjs <out> [base-url]
+import { createHash } from "node:crypto";
+import { chromium } from "playwright";
+const uid = (n) => { const h = createHash("sha1").update(`vanta-demo:${n}`).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+const out = process.argv[2];
+const base = process.argv[3] ?? "http://localhost:3000";
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? undefined, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "es-CL", isMobile: true, hasTouch: true });
+const p = await ctx.newPage();
+p.setDefaultTimeout(20000);
+const errors = [];
+p.on("pageerror", (e) => errors.push(`pageerror ${e.message}`));
+p.on("response", (r) => { if (r.status() >= 500) errors.push(`${r.status()} ${r.url()}`); });
+let n = 0;
+const shot = async (name, full = false) => { n++; await p.screenshot({ path: `${out}/${String(n).padStart(2, "0")}-${name}.jpg`, type: "jpeg", quality: 74, fullPage: full }); };
+const go = async (href, ms = 1500) => { await p.goto(`${base}${href}`, { waitUntil: "load", timeout: 90000 }); await p.waitForTimeout(ms); };
+const wait = (ms) => p.waitForTimeout(ms);
+const tap = async (loc) => { await loc.first().scrollIntoViewIfNeeded(); await loc.first().click(); };
+
+const chat = `/studio/chats/${uid("brief:sofia")}`;
+await go(chat, 2000);
+await tap(p.getByRole("button", { name: "Aceptar y abrir chat" }));
+await wait(500);
+await shot("aceptar-caja-de-texto");
+await tap(p.getByRole("button", { name: "Enviar mensaje" }));
+await wait(3000);
+await shot("conversacion-automatica", true);
+await tap(p.getByRole("button", { name: "Ver proyecto" }));
+await wait(600);
+const sheet = p.getByRole("dialog", { name: "El proyecto" });
+await tap(sheet.getByRole("button", { name: "Evaluar cotización" }));
+await wait(500);
+const d = new Date(Date.now() + 13 * 86400000).toISOString().slice(0, 10);
+await sheet.locator("input[type=date]").fill(d);
+const nums = sheet.locator("input[type=number]");
+await nums.nth(1).fill("900");
+await nums.nth(2).fill("1");
+await nums.nth(3).fill("100");
+await shot("evaluar-en-ver-proyecto", true);
+await tap(sheet.getByRole("button", { name: "Enviar cotización al cliente" }));
+await wait(3000);
+await shot("cotizacion-enviada-esperando", true);
+await p.keyboard.press("Escape");
+// The client books by themself after half a minute; the room refreshes and says so.
+await wait(34000);
+await shot("reserva-realizada-toast");
+await go(chat, 2000);
+await shot("reserva-realizada-chat", true);
+await tap(p.getByRole("button", { name: "Ver proyecto" }));
+await wait(600);
+await shot("ver-proyecto-sesion-terminada");
+await tap(sheet.getByRole("button", { name: /Sesión terminada/ }));
+await wait(3000);
+await shot("cobro-enviado");
+await p.keyboard.press("Escape");
+await go(chat, 2000);
+await shot("chat-con-carta-de-cuidados", true);
+console.log("errors", errors.length, errors.slice(0, 8).join("\n"));
+await browser.close();

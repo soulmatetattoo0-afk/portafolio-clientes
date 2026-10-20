@@ -3,7 +3,9 @@ import { dict, fill, type Locale } from "@/i18n";
 import type { Db } from "./db";
 import { enqueueEmail } from "./email";
 import { bookedToArtist, bookedToClient, reminderToClient, type BookingInfo } from "./messages";
-import { notify } from "./push";
+import { sessionTime } from "./format";
+import { sendCareSheet } from "./care";
+import { notify, notifyEach } from "./push";
 
 export class SlotTakenError extends Error {
   constructor() {
@@ -14,7 +16,7 @@ export class SlotTakenError extends Error {
 interface ConfirmArgs {
   quoteId: string;
   slotId: string;
-  provider: "stripe" | "demo";
+  provider: "stripe" | "demo" | "manual";
   checkoutId: string;
   paymentIntentId?: string | null;
   amountCents: number;
@@ -159,11 +161,17 @@ async function queueBookingEmails(db: Db, appointmentId: string) {
   if (r.artist_email) {
     await enqueueEmail(db, bookedToArtist(r.artist_email, info, r.brief_id, r.artist_locale ?? "en"), { studioId: r.studio_id, template: "booked_artist", dedupeKey: `booked-artist:${appointmentId}` });
   }
+  // The artist's sheet of what to do before the session lands in the chat right away.
+  await sendCareSheet(db, r.brief_id, "pre").catch(() => undefined);
   // Both sides hear it on their phones.
-  const members = await db.query<{ user_id: string }>(`select user_id from members where studio_id = $1`, [r.studio_id]);
-  const when = info.startsAt.toISOString().slice(0, 10);
-  await notify([r.client_user], { title: fill(dict(r.client_locale).push.booked, { name: r.artist }), body: when, url: r.chat_token ? `/c/${r.chat_token}` : "/me/appointments", tag: `booked:${appointmentId}` });
-  await notify(members.map((m) => m.user_id), { title: fill(dict(r.artist_locale ?? "en").push.booked, { name: r.client }), body: when, url: "/studio/agenda", tag: `booked:${appointmentId}` });
+  const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [r.studio_id]);
+  // "Sat, Oct 17 · 3:00 PM" in each reader's language, on the studio's clock.
+  const when = (l: Locale) => {
+    const { day, time } = sessionTime(info.startsAt, info.timezone, l);
+    return `${day} · ${time}`;
+  };
+  await notify([r.client_user], { title: fill(dict(r.client_locale).push.booked, { name: r.artist }), body: when(r.client_locale), url: r.chat_token ? `/c/${r.chat_token}` : "/me/appointments", tag: `booked:${appointmentId}` });
+  await notifyEach(members, (l) => ({ title: fill(dict(l).push.booked, { name: r.client }), body: when(l), url: "/studio/pagina/fechas", tag: `booked:${appointmentId}` }));
   for (const days of [3, 1] as const) {
     const at = new Date(info.startsAt.getTime() - days * 24 * 3600 * 1000);
     if (at.getTime() > Date.now()) {

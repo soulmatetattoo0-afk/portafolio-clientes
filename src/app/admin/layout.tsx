@@ -33,7 +33,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
           </div>
           <AdminNav items={[{ href: "/admin/plans", label: a.nav.plans }]} />
           <div className="mt-auto hidden gap-1 pt-6 lg:grid">
-            <Link href="/studio/settings" className="btn btn-ghost btn-sm justify-start">
+            <Link href="/studio/ajustes" className="btn btn-ghost btn-sm justify-start">
               {t.studio.nav.settings}
             </Link>
             <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />

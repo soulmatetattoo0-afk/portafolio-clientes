@@ -25,7 +25,7 @@ export default async function SentPage({ params, searchParams }: PageProps<"/[ar
       <DemoBanner />
       <div className="poster flex flex-1 flex-col" style={{ ["--accent" as string]: artist.accent ?? "#d8552f" }}>
       <PublicBar>
-        <Link href={`/${artist.slug}#deck`} className="p-stamp truncate py-2 text-bone">
+        <Link href={`/${artist.slug}`} className="p-stamp truncate py-2 text-bone">
           {artist.display_name.toUpperCase()}
         </Link>
       </PublicBar>
@@ -57,7 +57,7 @@ export default async function SentPage({ params, searchParams }: PageProps<"/[ar
               {s.createAccount}
             </Link>
           )}
-          <Link href={`/${artist.slug}#deck`} className={mine || !me ? "btn btn-secondary" : "btn btn-primary"}>
+          <Link href={`/${artist.slug}`} className={mine || !me ? "btn btn-secondary" : "btn btn-primary"}>
             {fill(s.backToArtist, { artist: artist.display_name })}
           </Link>
         </div>

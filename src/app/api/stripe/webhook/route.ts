@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 
+import { recordBalance } from "@/lib/balance";
 import { confirmBooking } from "@/lib/booking";
 import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
@@ -28,6 +29,21 @@ export async function POST(request: Request) {
       case "checkout.session.async_payment_succeeded": {
         const s = event.data.object as Stripe.Checkout.Session;
         if (s.payment_status !== "paid") break;
+        if (s.metadata?.kind === "balance") {
+          const pi = typeof s.payment_intent === "string" ? s.payment_intent : (s.payment_intent?.id ?? null);
+          const pending = await db.one<{ application_fee_cents: number }>(`select application_fee_cents from payments where checkout_id = $1`, [s.id]);
+          if (s.metadata.appointment_id)
+            await recordBalance(db, {
+              appointmentId: s.metadata.appointment_id,
+              provider: "stripe",
+              checkoutId: s.id,
+              paymentIntentId: pi,
+              amountCents: s.amount_total ?? 0,
+              currency: s.currency ?? "usd",
+              feeCents: pending?.application_fee_cents ?? 0,
+            });
+          break;
+        }
         const quoteId = s.metadata?.quote_id;
         const slotId = s.metadata?.slot_id;
         if (!quoteId || !slotId) break;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { useSubmit } from "@/components/useSubmit";
@@ -17,9 +18,20 @@ export interface AccountLabels {
   who: string;
   submitCreate: string;
   submitEnter: string;
+  forgot?: string;
 }
 
 const EMPTY: AccountState = { error: null, sent: null };
+
+/** A username as it may be typed: "Tattoo By Sova" becomes "tattoo_by_sova". */
+const toUsername = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9._]/g, "")
+    .slice(0, 24);
 
 /** The account: create one (username, email, password) or sign in with it. */
 export function AccountForm({ next, labels, initial = "create" }: { next: string; labels: AccountLabels; initial?: "create" | "enter" }) {
@@ -50,7 +62,21 @@ export function AccountForm({ next, labels, initial = "create" }: { next: string
         <form onSubmit={submitUp} className="grid gap-4">
           <input type="hidden" name="next" value={next} />
           <Field id="acc-username" label={labels.username} hint={labels.usernameHint}>
-            <input id="acc-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required minLength={3} maxLength={24} pattern="[A-Za-z0-9._]{3,24}" className="input" />
+            <input
+              id="acc-username"
+              name="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              minLength={3}
+              maxLength={24}
+              pattern="[a-z0-9._]{3,24}"
+              className="input"
+              onChange={(e) => {
+                e.target.value = toUsername(e.target.value);
+              }}
+            />
           </Field>
           <Field id="acc-email" label={labels.email}>
             <input id="acc-email" name="email" type="email" inputMode="email" autoComplete="email" required className="input" />
@@ -76,6 +102,11 @@ export function AccountForm({ next, labels, initial = "create" }: { next: string
           <button type="submit" className="btn btn-primary w-full" aria-busy={inPending} disabled={inPending}>
             {labels.submitEnter}
           </button>
+          {labels.forgot && (
+            <Link href="/account/forgot" className="justify-self-start text-[0.88rem] text-bone-dim underline underline-offset-4">
+              {labels.forgot}
+            </Link>
+          )}
         </form>
       )}
     </div>
