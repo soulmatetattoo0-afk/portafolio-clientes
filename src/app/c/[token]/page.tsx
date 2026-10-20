@@ -39,8 +39,8 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
   const accent = thread.artist.accent ?? "#d8552f";
 
   return (
-    <div className={`poster min-h-dvh ${me ? "v2-page" : ""}`} style={{ ["--accent" as string]: accent }}>
-      <header className="sticky top-0 z-20 border-b border-line bg-ink/90 backdrop-blur">
+    <div className={`poster v2-chat min-h-dvh ${me || fromStudio ? "v2-page" : ""}`} style={{ ["--accent" as string]: accent }}>
+      <header className="sticky top-0 z-20 border-b border-bone/[0.07] bg-[#1f1b18]/94 backdrop-blur">
         <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),0.6rem)] pb-2.5">
           <Link href={`/${thread.artist.slug}`} className="text-[1.3rem] leading-none text-bone" aria-label={thread.artist.name}>
             ←
@@ -51,7 +51,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
           )}
           <div className="min-w-0 flex-1">
             <p className="p-display truncate text-[1.35rem] leading-none">{thread.artist.name}</p>
-            <p className="mt-1 truncate text-[0.78rem] text-bone-dim">{c.subtitle}</p>
+            <p className="mt-1 truncate text-[0.78rem] text-bone/55">{c.subtitle}</p>
           </div>
           <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
         </div>
@@ -69,8 +69,8 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
           names={{ client: thread.client.name, artist: thread.artist.name }}
           t={c}
           locale={locale}
-          pinned={<RequestCard card={thread.card} t={t} locale={locale} artist={thread.artist.name} />}
-          project={<RequestCard card={thread.card} t={t} locale={locale} artist={thread.artist.name} compact />}
+          pinned={<RequestCard card={thread.card} t={t} locale={locale} artist={thread.artist.name} client={thread.client.name} />}
+          project={<RequestCard card={thread.card} t={t} locale={locale} artist={thread.artist.name} client={thread.client.name} compact />}
           artistHref={`/${thread.artist.slug}`}
           justSent={justSent}
           balance={thread.balance}

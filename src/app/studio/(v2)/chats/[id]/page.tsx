@@ -35,14 +35,15 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
   const bookedOn = chat.balance ? (() => { const s = sessionTime(new Date(chat.balance.startsAt), stops[0]?.timezone ?? "America/New_York", locale); return `${s.day} · ${s.time}`; })() : null;
   const ct = dict(brief.client_locale);
   return (
-    <div className="v2-page min-h-dvh">
+    <div className="v2-page v2-chat min-h-dvh">
       <header className="v2-top">
-        <Link href="/studio/chats" className="grid h-11 w-11 place-items-center text-bone" aria-label={c.back}>
+        <Link href="/studio/chats" className="grid h-11 w-9 place-items-center text-bone" aria-label={c.back}>
           <span aria-hidden className="text-[1.4rem]">←</span>
         </Link>
+        <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent p-display text-[1.2rem] text-bone">{brief.client_name[0]}</span>
         <div className="min-w-0 flex-1">
-          <p className="p-display truncate text-[1.35rem] uppercase leading-none">{brief.client_name}</p>
-          <p className="truncate text-[0.75rem] text-bone-dim">
+          <p className="p-display truncate text-[1.25rem] uppercase leading-none">{brief.client_name}</p>
+          <p className="mt-0.5 truncate text-[0.75rem] text-bone/55">
             {brief.ref} · {stage === "new" ? c.waiting : stage === "offered" ? c.sent : stage === "booked" ? c.booked : stage === "paid" ? c.paid : stage === "closed" ? t.studio.brief.events.declined : c.open}
           </p>
         </div>
@@ -71,8 +72,8 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
           toast={c.bookedToast}
           waitingForClient={stage === "offered"}
           locale={locale}
-          pinned={<RequestCard card={chat.card} t={t} locale={locale} artist={artist.display_name} figure />}
-          project={<RequestCard card={chat.card} t={t} locale={locale} artist={artist.display_name} compact figure />}
+          pinned={<RequestCard card={chat.card} t={t} locale={locale} artist={artist.display_name} client={brief.client_name} figure />}
+          project={<RequestCard card={chat.card} t={t} locale={locale} artist={artist.display_name} client={brief.client_name} compact figure />}
           afterPinned={
             <QuoteActions
               briefId={brief.id}

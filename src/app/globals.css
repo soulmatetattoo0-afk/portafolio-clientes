@@ -1005,6 +1005,47 @@
     color: var(--color-ink);
     border-color: var(--color-bone);
   }
+  /* The Sala's notebook: ruled in blue, a margin in the artist's colour, the spiral on top. */
+  .v2-notebook {
+    --line: 2.25rem;
+    position: relative;
+    border-radius: 4px 4px 12px 12px;
+    color: #2b2420;
+    padding: 3rem 0.75rem 1.1rem 3.2rem;
+    background-color: #f4eedf;
+    background-image:
+      linear-gradient(90deg, transparent 2.55rem, rgb(200 35 30 / 0.55) 2.55rem, rgb(200 35 30 / 0.55) 2.65rem, transparent 2.65rem),
+      repeating-linear-gradient(180deg, transparent 0, transparent 2.18rem, rgb(70 104 150 / 0.24) 2.18rem, rgb(70 104 150 / 0.24) 2.25rem);
+    background-position: 0 0, 0 3rem;
+    background-size: 100% 100%, 100% calc(100% - 4.1rem);
+    background-repeat: no-repeat, no-repeat;
+    box-shadow: 0 26px 44px -22px rgb(0 0 0 / 0.9);
+  }
+  /* The chats: a warm room lit from above in the artist's colour, never flat black. */
+  .v2-chat {
+    background:
+      radial-gradient(130% 38% at 50% 0%, color-mix(in oklab, var(--accent, #c8231e) 14%, transparent), transparent 72%),
+      linear-gradient(180deg, #1f1b18 0%, #1a1714 40%, #171412 100%);
+    background-attachment: fixed;
+    color: var(--color-bone);
+  }
+  .v2-chat .v2-top {
+    background: rgb(31 27 24 / 0.94);
+    border-bottom: 1px solid rgb(239 231 216 / 0.07);
+  }
+  .v2-chat .v2-sheet {
+    background: #27231f;
+    border-color: rgb(239 231 216 / 0.1);
+  }
+  .v2-composer {
+    bottom: 0;
+  }
+  .v2-page .v2-composer {
+    bottom: var(--v2-bar);
+  }
+  .v2-composer-fade {
+    background: linear-gradient(to top, #171412 62%, rgb(23 20 18 / 0));
+  }
   .v2-sheet {
     border-radius: 22px;
     border: 1px solid rgb(239 231 216 / 0.12);

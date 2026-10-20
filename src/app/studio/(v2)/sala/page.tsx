@@ -29,7 +29,7 @@ export default async function RoomPage() {
   const db = await getDb();
   const nowMs = requestTime();
   const monthKey = new Date(nowMs).toISOString().slice(0, 7);
-  const [day, queue, notes, portfolio, stops, caja] = await Promise.all([
+  const [day, queue, notes, portfolio, stops, caja, visits, visitDays] = await Promise.all([
     db.query<{ id: string; brief_id: string | null; starts_at: Date; timezone: string; hours: number; client: string; style: string | null; city: string | null; today: boolean }>(
       `select ap.id, ap.brief_id, ap.starts_at, ap.timezone, extract(epoch from ap.ends_at - ap.starts_at)::float / 3600 as hours, c.name as client, b.style, ap.city,
               (ap.starts_at at time zone ap.timezone)::date = (now() at time zone ap.timezone)::date as today
@@ -48,6 +48,15 @@ export default async function RoomPage() {
     listPortfolio(member.artistId, { publishedOnly: true }),
     listStops(member.artistId, { publicOnly: true }),
     loadCaja(db, member.studioId, member.artistId, monthKey),
+    // Visits to the artist's page this month, and the same stretch of last month to compare.
+    db.one<{ month: number; prev: number; today: number }>(
+      `select coalesce(sum(n) filter (where day >= date_trunc('month', current_date)::date), 0)::int as month,
+              coalesce(sum(n) filter (where day >= (date_trunc('month', current_date) - interval '1 month')::date and day <= (current_date - interval '1 month')::date), 0)::int as prev,
+              coalesce(sum(n) filter (where day = current_date), 0)::int as today
+         from page_views where artist_id = $1 and day >= (date_trunc('month', current_date) - interval '1 month')::date`,
+      [member.artistId],
+    ),
+    db.query<{ d: number; n: number }>(`select extract(day from day)::int as d, n from page_views where artist_id = $1 and day >= date_trunc('month', current_date)::date`, [member.artistId]),
   ]);
 
   const now = new Date(nowMs);
@@ -65,6 +74,13 @@ export default async function RoomPage() {
   const barMax = Math.max(1, ...bars);
   const waitingAgo = queue?.oldest ? agoLabel(queue.oldest, locale, nowMs) : null;
   const next = upcoming[0];
+  const seen = visits ?? { month: 0, prev: 0, today: 0 };
+  const diff = seen.month - seen.prev;
+  const todayNum = Number(new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: "UTC" }).format(now));
+  const monthDays = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const perDay = new Map(visitDays.map((v) => [v.d, v.n]));
+  const dayMax = Math.max(1, ...visitDays.map((v) => v.n));
+  const notebookDay = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: tz }).format(now);
   const tiles: [string, string, React.ReactNode, boolean][] = [
     [r.tile.prices, "/studio/sala/precios", <path key="p" d="M3 10l7-7h7v7l-7 7zM13.5 6.5h.01" />, Boolean(artist.default_deposit_cents)],
     [r.tile.styles, "/studio/sala/estilos", <path key="s" d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z" />, artist.styles.length > 0],
@@ -145,11 +161,43 @@ export default async function RoomPage() {
           </Link>
         </div>
 
-        {/* 03 · Caja */}
+        {/* 03 · who came to see their page this month */}
+        <Link href="/studio/pagina" className="ed-tile block text-left">
+          <span className="relative block p-4">
+            <span className="flex items-start justify-between gap-3">
+              <span className="min-w-0">
+                <Num n={3} />
+                <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{r.visits}</span>
+              </span>
+              <span className="shrink-0 rounded-full bg-bone/10 px-2.5 py-1 text-[0.72rem] text-bone/80">{fill(r.visitsToday, { n: seen.today })}</span>
+            </span>
+            <span className="mt-2 flex items-baseline gap-2">
+              <span className="p-display text-[3rem] leading-[0.85] tabular-nums">{seen.month.toLocaleString(locale)}</span>
+              <span className="text-[0.85rem] text-bone/60">{fill(r.visitsMonth, { month: monthName })}</span>
+            </span>
+            <span className={`mt-1 block text-[0.78rem] ${diff > 0 ? "text-[#b5d1a2]" : diff < 0 ? "text-bone/60" : "text-bone/60"}`}>
+              {diff > 0 ? `▲ ${fill(r.visitsUp, { n: diff })}` : diff < 0 ? `▼ ${fill(r.visitsDown, { n: -diff })}` : r.visitsSame}
+            </span>
+            {/* One bar per day of the month: today in the artist's colour, the days to come as dots. */}
+            <span className="mt-3 flex h-9 items-end gap-[3px]" aria-hidden>
+              {Array.from({ length: monthDays }, (_, i) => {
+                const d = i + 1;
+                const n = perDay.get(d) ?? 0;
+                return d > todayNum ? (
+                  <span key={d} className="h-[3px] flex-1 rounded-full bg-bone/12" />
+                ) : (
+                  <span key={d} className={`flex-1 rounded-t-[2px] ${d === todayNum ? "bg-accent" : "bg-bone/45"}`} style={{ height: `${Math.max(6, (n / dayMax) * 100)}%` }} />
+                );
+              })}
+            </span>
+          </span>
+        </Link>
+
+        {/* 04 · Caja */}
         <Link href="/studio/sala/caja" className="ed-tile block text-left">
           <span className="relative flex items-end justify-between gap-4 p-4">
             <span className="min-w-0">
-              <Num n={3} />
+              <Num n={4} />
               <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{fill(r.cajaOf, { month: monthName })}</span>
               <span className="p-display mt-2 block text-[2.6rem] leading-[0.85] tabular-nums">{fmt(profit)}</span>
               <span className="mt-1 block text-[0.75rem] text-bone/60">{fill(r.cajaLine, { income: fmt(caja.totals.income), expenses: fmt(caja.totals.expenses) })}</span>
@@ -165,10 +213,10 @@ export default async function RoomPage() {
           </span>
         </Link>
 
-        {/* 04 · who comes next, or the route */}
+        {/* 05 · who comes next, or the route */}
         <section className="ed-tile p-4">
           <span className="relative block">
-            <Num n={4} />
+            <Num n={5} />
             <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{guest.length > 0 ? r.route : r.nextSessions}</span>
             {guest.length > 0 ? (
               <ul className="mt-3 grid divide-y divide-bone/10">
@@ -205,22 +253,22 @@ export default async function RoomPage() {
           </span>
         </section>
 
-        {/* 05 · Taller */}
-        <section className="ed-tile p-4">
-          <span className="relative block">
-            <Num n={5} />
-            <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{r.workshop}</span>
-            <span className="mt-1 block text-[0.8rem] text-bone/60">{r.workshopSub}</span>
-            <span className="mt-3 block">
-              <Sketchbook notes={notes} t={t} />
-            </span>
-          </span>
-        </section>
-
-        {/* 06 · Ajustes */}
+        {/* 06 · Notas: the notebook */}
         <section className="mt-2">
           <div className="px-1">
             <Num n={6} />
+            <p className="p-display mt-1 text-[1.4rem] uppercase leading-none">{r.workshop}</p>
+            <p className="mt-1 text-[0.8rem] text-bone/60">{r.workshopSub}</p>
+          </div>
+          <div className="mt-6">
+            <Sketchbook notes={notes} t={t} today={notebookDay} />
+          </div>
+        </section>
+
+        {/* 07 · Ajustes */}
+        <section className="mt-4">
+          <div className="px-1">
+            <Num n={7} />
             <p className="p-display mt-1 text-[1.4rem] uppercase leading-none">{r.machines}</p>
           </div>
           <ul className="mt-3 grid grid-cols-3 gap-2.5">
@@ -245,6 +293,6 @@ export default async function RoomPage() {
 
 function agoLabel(d: Date | string, locale: string, now: number) {
   const mins = Math.max(1, Math.round((now - new Date(d).getTime()) / 60000));
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "narrow" });
   return mins < 60 ? rtf.format(-mins, "minute") : mins < 48 * 60 ? rtf.format(-Math.round(mins / 60), "hour") : rtf.format(-Math.round(mins / 1440), "day");
 }

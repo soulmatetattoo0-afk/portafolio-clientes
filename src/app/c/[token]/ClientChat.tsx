@@ -44,7 +44,7 @@ export function ClientChat({ token, items, names, t, locale, pinned, project, ar
         </div>
       )}
       {balance && !balance.paid && balance.requested && direct && (
-        <p className="mb-3 rounded-[16px] border border-bone/15 bg-ink-2 px-4 py-3 text-[0.92rem] leading-snug text-bone/85">
+        <p className="mb-3 rounded-[16px] border border-bone/15 bg-[#27231f] px-4 py-3 text-[0.92rem] leading-snug text-bone/85">
           {fill(t.direct.balanceAmount, { artist: names.artist, amount: balance.amountCents !== null ? money(balance.amountCents, balance.currency, locale) : "" })}
           <span className="mt-1 block text-[0.82rem] text-bone-dim">{fill(t.direct.balance, { artist: names.artist })}</span>
         </p>
@@ -92,7 +92,7 @@ function PayBalance({ token, balance, t, artist, locale }: { token: string; bala
       }
     });
   return (
-    <div className="mb-4 grid gap-2 rounded-[20px] border border-bone/15 bg-ink-2 p-4">
+    <div className="mb-4 grid gap-2 rounded-[20px] border border-bone/15 bg-[#27231f] p-4">
       <p className="text-[0.92rem] leading-snug text-bone/85">{fill(t.lead, { artist })}</p>
       <button type="button" onClick={pay} disabled={pending} className="p-key h-[76px] w-full" data-down={pending} aria-label={fill(t.payAmount, { amount: money(balance.amountCents, balance.currency, locale) })}>
         <span className="p-key-side" aria-hidden />
