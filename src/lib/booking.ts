@@ -172,7 +172,7 @@ async function queueBookingEmails(db: Db, appointmentId: string) {
     return `${day} · ${time}`;
   };
   await notify([r.client_user], { title: fill(dict(r.client_locale).push.booked, { name: r.artist }), body: when(r.client_locale), url: r.chat_token ? `/c/${r.chat_token}` : "/me/appointments", tag: `booked:${appointmentId}` });
-  await notifyEach(members, (l) => ({ title: fill(dict(l).push.booked, { name: r.client }), body: when(l), url: "/studio/pagina/fechas", tag: `booked:${appointmentId}` }));
+  await notifyEach(members, (l) => ({ title: fill(dict(l).push.booked, { name: r.client }), body: when(l), url: `/studio/chats/${r.brief_id}`, tag: `booked:${appointmentId}` }));
   for (const days of [3, 1] as const) {
     const at = new Date(info.startsAt.getTime() - days * 24 * 3600 * 1000);
     if (at.getTime() > Date.now()) {

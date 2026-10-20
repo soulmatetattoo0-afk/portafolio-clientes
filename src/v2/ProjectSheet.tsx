@@ -21,7 +21,7 @@ import { ConfirmForm, type QuoteStage } from "./QuoteActions";
  * left, and, once the session is done, the one button that sends the client
  * the link for the rest. In the demo, a way to open the client's chat and pay.
  */
-export function ProjectSheet({ briefId, card, balance, stage, bookedOn, chatToken, demo, direct = false, stops, defaults, t, locale }: { direct?: boolean; briefId: string; card: ChatCard; balance: Balance | null; stage: QuoteStage; bookedOn: string | null; chatToken: string; demo: boolean; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null; date?: string | null; stopId?: string | null; client?: string }; t: Dict; locale: Locale }) {
+export function ProjectSheet({ briefId, card, balance, stage, bookedOn, chatToken, demo, direct = false, stops, defaults, t, locale, trigger }: { trigger?: React.ReactNode; direct?: boolean; briefId: string; card: ChatCard; balance: Balance | null; stage: QuoteStage; bookedOn: string | null; chatToken: string; demo: boolean; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null; date?: string | null; stopId?: string | null; client?: string }; t: Dict; locale: Locale }) {
   const c = t.v2.chats;
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -52,9 +52,15 @@ export function ProjectSheet({ briefId, card, balance, stage, bookedOn, chatToke
     });
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded-full border border-bone/30 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-bone">
-        {c.project}
-      </button>
+      {trigger ? (
+        <button type="button" onClick={() => setOpen(true)} className="min-w-0 flex-1 text-left" aria-label={c.projectTitle}>
+          {trigger}
+        </button>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded-full border border-bone/30 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-bone">
+          {c.project}
+        </button>
+      )}
       {open &&
         createPortal(
           <div role="dialog" aria-modal="true" aria-label={c.projectTitle} className="poster studio fixed inset-0 z-[80] overflow-y-auto bg-ink text-bone">

@@ -12,6 +12,13 @@ import { paysDirect } from "@/lib/env";
 import { vapidKeys } from "@/lib/push";
 import { ArtistTabs, ClientTabs } from "@/v2/Shell";
 
+import { BarAction, BarSummary, type BarTone } from "@/v2/ProjectBar";
+import { fill } from "@/i18n";
+import { styleLabel } from "@/lib/catalog";
+import { money, sessionTime } from "@/lib/format";
+import { placementLabel } from "@/lib/messages";
+
+import { payBalance } from "./actions";
 import { ClientChat } from "./ClientChat";
 
 export async function generateMetadata({ params }: PageProps<"/c/[token]">): Promise<Metadata> {
@@ -37,6 +44,31 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
   const unread = me ? await unreadChats(me.userId) : 0;
   const c = t.chat;
   const accent = thread.artist.accent ?? "#d8552f";
+  // Where the project stands, seen from the client's side, and their next step.
+  const direct = paysDirect(thread.artist.charges);
+  const suffix = fromStudio ? "?from=studio" : "";
+  const answered = thread.items.some((i) => i.actor === "artist");
+  const offers = thread.items.filter((i) => i.kind === "offer" && i.offer).map((i) => i.offer!);
+  const open = [...offers].reverse().find((o) => (o.status === "sent" || o.status === "viewed") && !o.expired);
+  const bookedOffer = [...offers].reverse().find((o) => o.status === "paid");
+  const requested = open && thread.items.some((i) => i.request);
+  const when = bookedOffer?.starts_at && bookedOffer.timezone ? sessionTime(new Date(bookedOffer.starts_at), bookedOffer.timezone, locale) : null;
+  const b = thread.balance;
+  const rest = b?.amountCents != null ? money(b.amountCents, b.currency, locale) : "";
+  const bar: { status: string; tone: BarTone; action?: React.ComponentProps<typeof BarAction> } =
+    b?.paid
+      ? { status: c.bar.paid, tone: "gold" }
+      : b
+        ? b.open && b.amountCents != null && !direct
+          ? { status: fill(c.bar.booked, { date: when ? `${when.day} · ${when.time}` : "" }), tone: "green", action: { label: fill(c.bar.payRest, { amount: rest }), action: payBalance.bind(null, token) } }
+          : { status: b.requested && direct ? fill(c.bar.payDirect, { amount: rest, artist: thread.artist.name }) : fill(c.bar.booked, { date: when ? `${when.day} · ${when.time}` : "" }), tone: b.requested ? "amber" : "green" }
+        : requested
+          ? { status: fill(c.bar.requested, { artist: thread.artist.name, amount: open ? money(open.deposit_cents, open.currency, locale) : "" }), tone: "amber" }
+          : open
+            ? { status: c.bar.offer, tone: "new", action: { label: c.bar.reserve, href: `/q/${open.token}${suffix}` } }
+            : answered
+              ? { status: c.bar.open, tone: "info" }
+              : { status: fill(c.bar.waiting, { artist: thread.artist.name }), tone: "info" };
 
   return (
     <div className={`poster v2-chat min-h-dvh ${me || fromStudio ? "v2-page" : ""}`} style={{ ["--accent" as string]: accent }}>
@@ -54,6 +86,11 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
             <p className="mt-1 truncate text-[0.78rem] text-bone/55">{c.subtitle}</p>
           </div>
           <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
+        </div>
+        {/* The project pinned under the artist's name, VANTA's word on it, and the client's next step. */}
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 border-t border-bone/[0.07] px-3 py-2">
+          <RequestCard card={thread.card} t={t} locale={locale} artist={thread.artist.name} client={thread.client.name} bar={<BarSummary title={`${styleLabel(thread.card.style, locale)} · ${placementLabel(thread.card.placement, locale)}`} status={bar.status} tone={bar.tone} placement={thread.card.placement} body={thread.card.body} />} />
+          {bar.action && <BarAction {...bar.action} />}
         </div>
       </header>
 

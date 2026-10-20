@@ -30,7 +30,10 @@ export function RequestCard({
   client,
   compact = false,
   figure = false,
+  bar,
 }: {
+  /** Pinned under the name as the chat scrolls: this slim bar opens the letter. */
+  bar?: React.ReactNode;
   card: ChatCard;
   t: Dict;
   locale: Locale;
@@ -58,13 +61,17 @@ export function RequestCard({
     <CardDialog
       label={c.pinned}
       className={
-        compact
+        bar
+          ? "min-w-0 flex-1 text-left"
+          : compact
           ? `group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[6px] border border-[#2b2420]/15 bg-[#f3ecdf] py-2 pr-3 pl-2 text-left text-[#2b2420] transition-transform active:scale-[0.98]`
           : `group relative block w-full overflow-hidden rounded-[6px] bg-[#f3ecdf] text-left text-[#2b2420] shadow-[0_26px_44px_-20px_rgb(0_0_0/0.85)] transition-transform active:scale-[0.985]`
       }
       dialogClassName={`m-auto max-h-[90dvh] w-[min(30rem,calc(100vw-1.25rem))] overflow-y-auto overscroll-contain rounded-[8px] bg-[#f3ecdf] p-0 text-[#2b2420] shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] backdrop:bg-black/75 backdrop:backdrop-blur-sm`}
       trigger={
-        compact ? (
+        bar ? (
+          bar
+        ) : compact ? (
           <>
             <BodyChart placement={card.placement} body={card.body} views={[views[0] ?? "front"]} className="w-7 shrink-0" />
             <span className="min-w-0 flex-1 overflow-hidden">

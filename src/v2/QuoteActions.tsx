@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { cancelBooking, confirmDirectDeposit, confirmQuote, declineBrief, finishTattoo, markBalancePaid, moveBooking, sendArtistMessage } from "@/app/studio/_legacy/actions";
 import { fill, type Dict, type Locale } from "@/i18n";
@@ -23,6 +23,17 @@ export function QuoteActions({ briefId, stage, clientName, stops, defaults, bala
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const first = clientName.split(" ")[0];
+  const box = useRef<HTMLDivElement>(null);
+  // The red key in the pinned bar opens the step here, under the letter.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const m = (e as CustomEvent<"accept" | "confirm">).detail;
+      setMode(m);
+      requestAnimationFrame(() => box.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+    window.addEventListener("vanta:quote", on);
+    return () => window.removeEventListener("vanta:quote", on);
+  }, []);
   const run = (fn: () => Promise<{ error?: string } | void>) =>
     start(async () => {
       setError(null);
@@ -37,7 +48,7 @@ export function QuoteActions({ briefId, stage, clientName, stops, defaults, bala
   const balanceAmount = balance && balance.amountCents !== null ? money(balance.amountCents, balance.currency, locale) : null;
 
   return (
-    <div className="v2-sheet mt-2 grid gap-3 p-3">
+    <div ref={box} className="v2-sheet mt-2 grid scroll-mt-36 gap-3 p-3">
       {stage === "new" && mode !== "accept" && mode !== "decline" && (
         <div className="grid gap-2">
           <button type="button" className="v2-btn" data-tone="accent" onClick={() => setMode("accept")}>

@@ -7,6 +7,8 @@ import type { Dict, Locale } from "@/i18n";
 import { fill } from "@/i18n";
 import type { ChatItem } from "@/lib/chat";
 
+import { VantaMark } from "@/components/brand/VantaLogo";
+
 import { CareLetter } from "./CareLetter";
 import { PickDays } from "./PickDays";
 import { money, moneyRange, sessionTime } from "@/lib/format";
@@ -148,6 +150,7 @@ export function Thread({
               divider,
               <li key={m.id} className="my-3 flex justify-center">
                 <div className="w-[min(92%,360px)] rounded-[16px] border-[3px] border-double border-[#8fb07a]/80 bg-[#8fb07a]/10 px-4 py-3 text-center">
+                  <p className="mb-1.5 flex items-center justify-center gap-1.5 text-[0.55rem] font-semibold uppercase tracking-[0.3em] text-bone/45"><VantaMark className="h-2.5 w-auto" /> VANTA</p>
                   <p className="p-display flex items-center justify-center gap-2 text-[1.45rem] uppercase leading-none tracking-[0.02em] text-[#c3dcae]">
                     <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-[#8fb07a] font-sans text-[0.8rem] font-bold text-[#14120f]">
                       ✓
@@ -168,6 +171,7 @@ export function Thread({
               divider,
               <li key={m.id} className="my-3 flex justify-center">
                 <div className="w-[min(92%,360px)] rounded-[16px] border-[3px] border-double border-[#e8c46b] bg-[#e8c46b]/10 px-4 py-3.5 text-center shadow-[0_0_40px_-12px_rgb(232_196_107/0.55)]">
+                  <p className="mb-1.5 flex items-center justify-center gap-1.5 text-[0.55rem] font-semibold uppercase tracking-[0.3em] text-bone/45"><VantaMark className="h-2.5 w-auto" /> VANTA</p>
                   <p className="p-display text-[1.5rem] uppercase leading-none tracking-[0.02em] text-[#f2d27a]">{t.balance.banner}</p>
                   {m.amount && <p className="mt-1.5 font-[family-name:var(--font-cinzel)] text-[1.6rem] font-bold text-[#f2d27a] tabular-nums">{money(m.amount.cents, m.amount.currency, locale)}</p>}
                   <p className="mt-1 text-[0.82rem] leading-snug text-bone/70">{side === "artist" ? t.balance.bannerArtist : fill(t.balance.bannerClient, { artist: names.artist })}</p>
@@ -181,6 +185,7 @@ export function Thread({
               divider,
               <li key={m.id} className="my-3 flex justify-center">
                 <div className="w-[min(92%,360px)] rounded-[16px] border border-[#e8c46b]/45 bg-[#e8c46b]/[0.07] px-4 py-3 text-center">
+                  <p className="mb-1.5 flex items-center justify-center gap-1.5 text-[0.55rem] font-semibold uppercase tracking-[0.3em] text-bone/45"><VantaMark className="h-2.5 w-auto" /> VANTA</p>
                   <p className="p-display text-[1.2rem] uppercase leading-none text-[#f2d27a]">{t.direct.requestedTitle}</p>
                   <p className="mt-1.5 text-[0.84rem] leading-snug text-bone/75">
                     {fill(side === "artist" ? t.direct.requestedArtist : t.direct.requestedClient, { name: names.client.split(" ")[0], artist: names.artist, amount: m.amount ? money(m.amount.cents, m.amount.currency, locale) : "" })}
