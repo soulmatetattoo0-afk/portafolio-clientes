@@ -1,13 +1,16 @@
 import { getDict } from "@/i18n/server";
-import { requireMember } from "@/lib/auth";
+import { getMember, getSession, requireMember } from "@/lib/auth";
 import { loadCaja } from "@/lib/caja";
 import { styleLabel } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
+import { live } from "@/lib/env";
 import { getArtistById } from "@/lib/queries";
 
 /** The month's Caja as a spreadsheet (CSV): every deposit, session and expense, for the accountant. */
 export async function GET(request: Request) {
-  const member = await requireMember();
+  // Signed out, or not an artist: back to the sign-in, as a plain redirect (no page to render here).
+  const member = live.auth ? await getMember(await getSession()) : await requireMember();
+  if (!member) return Response.redirect(new URL("/login", request.url), 303);
   const m = new URL(request.url).searchParams.get("m") ?? "";
   const key = /^\d{4}-\d{2}$/.test(m) ? m : new Date().toISOString().slice(0, 7);
   const [{ t, locale }, artist] = await Promise.all([getDict(), getArtistById(member.artistId)]);
