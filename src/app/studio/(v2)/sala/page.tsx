@@ -201,7 +201,7 @@ export default async function RoomPage() {
               <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{fill(r.cajaOf, { month: monthName })}</span>
               <span className="p-display mt-2 block text-[2.6rem] leading-[0.85] tabular-nums">{fmt(profit)}</span>
               <span className="mt-1 block text-[0.75rem] text-bone/60">{fill(r.cajaLine, { income: fmt(caja.totals.income), expenses: fmt(caja.totals.expenses) })}</span>
-              {caja.collect.n > 0 && <span className="mt-1 block text-[0.75rem] font-semibold text-accent">{fill(r.toCollect, { n: caja.collect.n, amount: fmt(caja.collect.cents) })}</span>}
+              {caja.forecast.bookings > 0 && <span className="mt-1 block text-[0.75rem] font-semibold text-bone/90">{fill(caja.forecast.bookings === 1 ? r.forecastOne : r.forecast, { n: caja.forecast.bookings, amount: fmt(caja.forecast.total) })}</span>}
             </span>
             <span className="flex h-16 shrink-0 items-end gap-1" aria-hidden>
               {bars.map((v, i) => (

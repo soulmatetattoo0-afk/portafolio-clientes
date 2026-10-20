@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { confirmDirectDeposit, confirmQuote, declineBrief, finishTattoo, markBalancePaid, sendArtistMessage } from "@/app/studio/_legacy/actions";
+import { cancelBooking, confirmDirectDeposit, confirmQuote, declineBrief, finishTattoo, markBalancePaid, moveBooking, sendArtistMessage } from "@/app/studio/_legacy/actions";
 import { fill, type Dict, type Locale } from "@/i18n";
 import type { Balance } from "@/lib/balance";
 import { money } from "@/lib/format";
@@ -16,10 +16,10 @@ export type QuoteStage = "new" | "open" | "offered" | "booked" | "paid" | "close
  * deposit: the client gets the booking link), and when the tattoo is done,
  * collect the balance. Each state says where things stand.
  */
-export function QuoteActions({ briefId, stage, clientName, stops, defaults, balance, bookedOn, currency, template, direct = false, t, locale }: { briefId: string; stage: QuoteStage; direct?: boolean; clientName: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null }; balance: Balance | null; bookedOn: string | null; currency: string; template: string; t: Dict; locale: Locale }) {
+export function QuoteActions({ briefId, stage, clientName, stops, defaults, balance, bookedOn, booking, currency, template, direct = false, t, locale }: { briefId: string; stage: QuoteStage; direct?: boolean; booking?: { date: string; time: string; hours: number; deposit: string } | null; clientName: string; stops: { id: string; label: string }[]; defaults: { deposit: number | null; hours: number | null; start: string | null }; balance: Balance | null; bookedOn: string | null; currency: string; template: string; t: Dict; locale: Locale }) {
   const c = t.v2.chats;
   const router = useRouter();
-  const [mode, setMode] = useState<"accept" | "decline" | "confirm" | null>(null);
+  const [mode, setMode] = useState<"accept" | "decline" | "confirm" | "move" | "cancel" | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const first = clientName.split(" ")[0];
@@ -108,6 +108,33 @@ export function QuoteActions({ briefId, stage, clientName, stops, defaults, bala
           <button type="button" className={direct || balance?.requested ? "v2-btn" : "h-10 text-[0.85rem] text-bone-dim underline underline-offset-4"} data-tone={direct || balance?.requested ? "ghost" : undefined} disabled={pending} onClick={() => run(() => markBalancePaid(briefId))}>
             {direct ? c.directBalance : c.cash}
           </button>
+          {/* The date itself: move it, or call it off. */}
+          {!balance?.requested && mode === null && booking && (
+            <div className="mt-1 grid grid-cols-2 gap-2 border-t border-bone/10 pt-3">
+              <button type="button" className="h-10 rounded-full border border-bone/20 text-[0.85rem] font-semibold text-bone" onClick={() => setMode("move")}>
+                {c.moveBooking}
+              </button>
+              <button type="button" className="h-10 rounded-full border border-bone/20 text-[0.85rem] font-semibold text-bone/80" onClick={() => setMode("cancel")}>
+                {c.cancelBooking}
+              </button>
+            </div>
+          )}
+          {mode === "move" && booking && <MoveForm initial={booking} name={first} pending={pending} t={t} onCancel={() => setMode(null)} onSubmit={(v) => run(() => moveBooking(briefId, v))} />}
+          {mode === "cancel" && booking && (
+            <div className="grid gap-2 border-t border-bone/10 pt-3">
+              <p className="p-display text-[1.3rem] leading-none">{c.cancelTitle}</p>
+              <p className="text-[0.85rem] leading-snug text-bone-dim">{fill(c.cancelLead, { name: first })}</p>
+              <button type="button" className="v2-btn" data-tone="accent" disabled={pending} onClick={() => run(() => cancelBooking(briefId, true))}>
+                {fill(c.cancelRefund, { amount: booking.deposit })}
+              </button>
+              <button type="button" className="v2-btn" data-tone="ghost" disabled={pending} onClick={() => run(() => cancelBooking(briefId, false))}>
+                {c.cancelKeep}
+              </button>
+              <button type="button" className="h-10 text-[0.85rem] text-bone-dim underline underline-offset-4" onClick={() => setMode(null)}>
+                {c.keepBooking}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {stage === "paid" && (
@@ -221,6 +248,48 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
       <div className="flex gap-2">
         <button type="submit" className="v2-btn flex-1" data-tone="accent" disabled={pending || !ready}>
           {c.send}
+        </button>
+        <button type="button" className="v2-btn" data-tone="ghost" onClick={onCancel}>
+          {c.cancel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Move a booked session: the same fields as the confirmation, filled with the current date. */
+function MoveForm({ initial, name, pending, t, onCancel, onSubmit }: { initial: { date: string; time: string; hours: number }; name: string; pending: boolean; t: Dict; onCancel: () => void; onSubmit: (v: { date: string; time: string; hours: number }) => void }) {
+  const c = t.v2.chats;
+  const [v, setV] = useState({ date: initial.date, time: initial.time, hours: String(initial.hours) });
+  const today = new Date().toISOString().slice(0, 10);
+  const ready = /^\d{4}-\d{2}-\d{2}$/.test(v.date) && /^\d{2}:\d{2}$/.test(v.time) && Number(v.hours) >= 0.5;
+  return (
+    <form
+      className="grid gap-3 border-t border-bone/10 pt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) onSubmit({ date: v.date, time: v.time, hours: Number(v.hours) });
+      }}
+    >
+      <p className="p-display text-[1.3rem] leading-none">{c.moveTitle}</p>
+      <p className="text-[0.85rem] text-bone-dim">{fill(c.moveLead, { name })}</p>
+      <div className="grid grid-cols-3 gap-2">
+        <label className="v2-field col-span-3">
+          <span>{c.date}</span>
+          <input type="date" className="v2-input" min={today} value={v.date} onChange={(e) => setV((p) => ({ ...p, date: e.target.value }))} required />
+        </label>
+        <label className="v2-field col-span-2">
+          <span>{c.time}</span>
+          <input type="time" className="v2-input" value={v.time} onChange={(e) => setV((p) => ({ ...p, time: e.target.value }))} required />
+        </label>
+        <label className="v2-field">
+          <span>{c.hours}</span>
+          <input type="number" className="v2-input" min={0.5} max={14} step={0.5} value={v.hours} onChange={(e) => setV((p) => ({ ...p, hours: e.target.value }))} />
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" className="v2-btn flex-1" data-tone="accent" disabled={pending || !ready}>
+          {c.moveSave}
         </button>
         <button type="button" className="v2-btn" data-tone="ghost" onClick={onCancel}>
           {c.cancel}

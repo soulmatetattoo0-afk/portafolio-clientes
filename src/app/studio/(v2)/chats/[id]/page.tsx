@@ -10,7 +10,7 @@ import { requireMember } from "@/lib/auth";
 import { getChat } from "@/lib/chat";
 import { getDb } from "@/lib/db";
 import { demoAutoBook } from "@/lib/demo";
-import { sessionTime } from "@/lib/format";
+import { money, sessionTime } from "@/lib/format";
 import { getArtistById, getBrief, listStops } from "@/lib/queries";
 import { ArtistTabs } from "@/v2/Shell";
 import { demoMode, paysDirect } from "@/lib/env";
@@ -34,6 +34,17 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
     brief.status === "declined" || brief.status === "archived" ? "closed" : chat.balance?.paid ? "paid" : chat.balance ? "booked" : !answered ? "new" : offered ? "offered" : "open";
   const bookedOn = chat.balance ? (() => { const s = sessionTime(new Date(chat.balance.startsAt), stops[0]?.timezone ?? "America/New_York", locale); return `${s.day} · ${s.time}`; })() : null;
   const ct = dict(brief.client_locale);
+  // The booked date as the move form starts from it, in the artist's time zone.
+  const tz = stops[0]?.timezone ?? "America/New_York";
+  const booking = chat.balance
+    ? (() => {
+        const start = new Date(chat.balance.startsAt);
+        const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(start);
+        const get = (k: string) => parts.find((p) => p.type === k)?.value ?? "";
+        const hours = Math.max(0.5, Math.round(((new Date(chat.balance.endsAt).getTime() - start.getTime()) / 3600000) * 2) / 2);
+        return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}`, hours, deposit: money(chat.balance.depositCents, chat.balance.currency, locale) };
+      })()
+    : null;
   return (
     <div className="v2-page v2-chat min-h-dvh">
       <header className="v2-top">
@@ -83,6 +94,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
               defaults={{ deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null }}
               balance={chat.balance}
               bookedOn={bookedOn}
+              booking={booking}
               currency={brief.currency}
               template={fill(ct.templates.accept, { name: brief.client_name.split(" ")[0] })}
               direct={paysDirect(artist.stripe_charges_enabled)}

@@ -946,6 +946,7 @@ async function tellClient(member: Member, appointmentId: string, write: (a: { da
   const body = write({ date, time: sessionTime(ap.starts_at, ap.timezone, ap.locale).time, locale: ap.locale });
   await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body) values ($1, $2, 'message', 'artist', $3)`, [member.studioId, ap.brief_id, body]);
   after(() => notify([ap.client_user], { title: ap.artist, body, url: `/c/${ap.chat_token}`, tag: `chat:${ap.brief_id}` }));
+  after(() => emailChat(db, ap.brief_id!, "client", "message", body).catch(() => undefined));
 }
 
 /** Move a session to another day or hour; a booked client hears it in the chat. */
@@ -979,6 +980,46 @@ export async function cancelSession(appointmentId: string): Promise<{ error?: st
   await tellClient(member, appointmentId, ({ date, locale }) => fill(dict(locale).agenda.cancelledMsg, { date }));
   await setAppointmentStatus(appointmentId, "cancelled");
   revalidatePath("/studio/agenda");
+}
+
+/** From the chat: move the booked session of this request to another day or hour. */
+export async function moveBooking(briefId: string, input: z.input<typeof Session>): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  const db = await getDb();
+  const ap = await db.one<{ id: string }>(`select id from appointments where brief_id = $1 and studio_id = $2 and status = 'confirmed' order by starts_at desc limit 1`, [briefId, member.studioId]);
+  if (!ap) return { error: dict(await getLocale()).agenda.invalid };
+  const r = await moveSession(ap.id, input);
+  if (r?.error) return r;
+  revalidatePath(`/studio/chats/${briefId}`);
+}
+
+/**
+ * From the chat: cancel the booked session. The client hears it in the chat.
+ * When the artist gives the deposit back (their cancellation, per the booking
+ * policy), the deposit leaves the Caja and the message says so.
+ */
+export async function cancelBooking(briefId: string, refund: boolean): Promise<{ error?: string } | void> {
+  const member = await requireMember();
+  const db = await getDb();
+  const ap = await db.one<{ id: string; quote_id: string | null; deposit_cents: number | null; currency: string | null }>(
+    `select ap.id, ap.quote_id, q.deposit_cents, q.currency from appointments ap left join quotes q on q.id = ap.quote_id
+      where ap.brief_id = $1 and ap.studio_id = $2 and ap.status in ('confirmed', 'completed') order by ap.starts_at desc limit 1`,
+    [briefId, member.studioId],
+  );
+  if (!ap) return { error: dict(await getLocale()).agenda.invalid };
+  await tellClient(member, ap.id, ({ date, locale }) => {
+    const l = dict(locale);
+    const back = refund && ap.deposit_cents ? ` ${fill(l.chat.refundNote, { amount: money(ap.deposit_cents, ap.currency ?? "usd", locale) })}` : "";
+    return `${fill(l.agenda.cancelledMsg, { date })}${back}`;
+  });
+  await setAppointmentStatus(ap.id, "cancelled");
+  if (refund) {
+    await db.query(
+      `update payments set status = 'refunded' where studio_id = $1 and kind = 'deposit' and status = 'paid' and (appointment_id = $2 or ($3::uuid is not null and quote_id = $3::uuid))`,
+      [member.studioId, ap.id, ap.quote_id],
+    );
+  }
+  revalidatePath("/studio", "layout");
 }
 
 /** The weekdays the artist never works (ISO: 1 = Monday … 7 = Sunday). */

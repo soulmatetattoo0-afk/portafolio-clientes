@@ -26,7 +26,10 @@ export const env = {
   platformFeeBps: Number(read("PLATFORM_FEE_BPS") ?? "500"),
   platformFeeFullBps: Number(read("PLATFORM_FEE_FULL_BPS") ?? "300"),
   resendApiKey: read("RESEND_API_KEY"),
-  emailFrom: read("EMAIL_FROM") ?? "Vanta <bookings@example.com>",
+  /** Until VANTA has its own domain: mail goes out through a Gmail account with an app password. */
+  smtpUser: read("SMTP_USER"),
+  smtpPass: read("SMTP_PASS"),
+  emailFrom: read("EMAIL_FROM") ?? (read("SMTP_USER") ? `VANTA <${read("SMTP_USER")}>` : "Vanta <bookings@example.com>"),
   /** Comma-separated emails that may open the editor's desk (/admin). Local mode: the demo member. */
   adminEmails: (read("ADMIN_EMAILS") ?? "")
     .split(",")
@@ -49,7 +52,7 @@ export const live = {
   auth: Boolean(env.supabaseUrl && env.supabaseAnonKey),
   storage: Boolean(env.supabaseUrl && env.supabaseServiceKey),
   payments: Boolean(env.stripeSecretKey),
-  email: Boolean(env.resendApiKey),
+  email: Boolean(env.resendApiKey || (env.smtpUser && env.smtpPass)),
 };
 
 /** The member that local mode signs in as (seeded with the demo studio). */

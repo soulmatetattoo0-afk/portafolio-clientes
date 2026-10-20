@@ -25,7 +25,6 @@ export interface BookMonth {
   deposits: number;
   sessions: number;
   expenses: number;
-  toCollect: { n: number; cents: number };
   prev: string;
   next: string | null;
 }
@@ -35,10 +34,11 @@ const CATEGORIES: ExpenseCategory[] = ["supplies", "rent", "ads", "travel", "oth
 /**
  * Caja, in the language of the artist's page: the month's profit on the red
  * band, three doors for deposits, sessions and expenses, six months as plain
- * bars, what's still to collect, and every movement by day. Expenses go in
+ * bars, the month's estimate once every booking is tattooed, and every
+ * movement by day (downloadable for the accountant). Expenses go in
  * from a sheet at the thumb, each in its category.
  */
-export function CajaBook({ month, bars, moves, pending: owed, currency, t, locale }: { month: BookMonth; bars: { key: string; label: string; income: number; expense: number; current: boolean }[]; moves: BookMove[]; pending: { id: string; brief_id: string; who: string; cents: number; requested: boolean; dayLabel: string }[]; currency: string; t: Dict; locale: Locale }) {
+export function CajaBook({ month, bars, moves, forecast, exportHref, currency, t, locale }: { month: BookMonth; bars: { key: string; label: string; income: number; expense: number; current: boolean }[]; moves: BookMove[]; forecast: { bookings: number; remaining: number; total: number } | null; exportHref: string; currency: string; t: Dict; locale: Locale }) {
   const c = t.v2.caja;
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -105,40 +105,42 @@ export function CajaBook({ month, bars, moves, pending: owed, currency, t, local
         ))}
       </div>
 
-      {/* What is still owed: each charge, a tap away from its chat. */}
-      {owed.length > 0 && (
-        <div className="ed-tile px-4 pt-4 pb-2">
+      {/* The month if every booking is tattooed: what is in, plus what is left on the booked sessions. */}
+      {forecast && (
+        <div className="ed-tile p-4">
           <span className="relative block">
-            <span className="flex items-baseline justify-between gap-3">
-              <span>
-                <span className="p-stamp block text-bone/60">{c.toCollect}</span>
-                <span className="text-[0.92rem]">{fill(owed.length === 1 ? c.toCollectOne : c.toCollectN, { n: owed.length })}</span>
-              </span>
-              <span className="p-display text-[1.7rem] leading-none text-accent tabular-nums">{fmt(month.toCollect.cents)}</span>
-            </span>
-            <span className="mt-1 block text-[0.75rem] text-bone/50">{c.toCollectLead}</span>
-            <ul className="mt-2 grid divide-y divide-bone/10">
-              {owed.map((p) => (
-                <li key={p.id}>
-                  <Link href={`/studio/chats/${p.brief_id}`} className="flex items-center gap-3 py-2.5">
-                    <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${p.requested ? "bg-accent" : "bg-bone/40"}`} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[0.95rem] font-semibold">{p.who}</span>
-                      <span className="block truncate text-[0.76rem] text-bone/55">{p.requested ? c.sentCharge : fill(c.notCharged, { day: p.dayLabel })}</span>
-                    </span>
-                    <span className="shrink-0 text-[1rem] font-semibold tabular-nums text-bone/80">{fmt(p.cents)}</span>
-                    <span aria-hidden className="text-bone/40">›</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <Num n={5} />
+            <span className="p-display mt-1 block text-[1.4rem] uppercase leading-none">{fill(c.forecast, { month: month.label.split(" ")[0] })}</span>
+            {forecast.bookings > 0 ? (
+              <>
+                <span className="p-display mt-2 block text-[2.8rem] leading-[0.85] tabular-nums">{fmt(forecast.total)}</span>
+                <span className="mt-2 block text-[0.85rem] leading-snug text-bone/70">
+                  {fill(forecast.bookings === 1 ? c.forecastOne : c.forecastLine, { n: forecast.bookings, income: fmt(month.income), remaining: fmt(forecast.remaining) })}
+                </span>
+                {/* In the till, and what the booked tattoos will bring. */}
+                <span className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-bone/10" aria-hidden>
+                  <span className="bg-bone" style={{ width: `${forecast.total ? (month.income / forecast.total) * 100 : 0}%` }} />
+                  <span className="bg-accent/70" style={{ width: `${forecast.total ? (forecast.remaining / forecast.total) * 100 : 0}%` }} />
+                </span>
+                <span className="mt-2 flex items-center gap-4 text-[0.72rem] text-bone/60">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm bg-bone" /> {c.forecastIn}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm bg-accent/70" /> {c.forecastLeft}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <span className="mt-2 block text-[0.88rem] text-bone/60">{c.forecastNone}</span>
+            )}
           </span>
         </div>
       )}
 
       {/* Six months */}
       <div className="ed-tile px-4 pt-4 pb-3">
-        <Num n={5} />
+        <Num n={forecast ? 6 : 5} />
         <p className="p-display mt-1 text-[1.5rem] uppercase leading-none">{c.months}</p>
         <div className="mt-4 flex h-28 items-end gap-2">
           {bars.map((b) => (
@@ -163,8 +165,18 @@ export function CajaBook({ month, bars, moves, pending: owed, currency, t, local
 
       {/* Movements */}
       <div className="mt-3 px-1">
-        <Num n={6} />
-        <p className="p-display mt-1 text-[1.5rem] uppercase leading-none">{c.movements}</p>
+        <span className="flex items-end justify-between gap-3">
+          <span>
+            <Num n={forecast ? 7 : 6} />
+            <span className="p-display mt-1 block text-[1.5rem] uppercase leading-none">{c.movements}</span>
+          </span>
+          <a href={exportHref} download className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-bone/25 px-3.5 text-[0.78rem] font-semibold text-bone">
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M10 3v10M5.5 8.5 10 13l4.5-4.5M4 16.5h12" />
+            </svg>
+            {c.export}
+          </a>
+        </span>
       </div>
       {moves.length === 0 ? (
         <p className="px-1 text-[0.92rem] text-bone-dim">{c.empty}</p>

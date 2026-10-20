@@ -1015,6 +1015,10 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, ta
                       <a href="/terminos" target="_blank" rel="noreferrer" className="text-bone underline underline-offset-4">
                         {b.contact.termsLink}
                       </a>
+                      {" · "}
+                      <a href="/privacidad" target="_blank" rel="noreferrer" className="text-bone underline underline-offset-4">
+                        {t.privacy.title}
+                      </a>
                     </p>
                   </div>
                 </>

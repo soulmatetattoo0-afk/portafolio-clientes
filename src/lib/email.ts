@@ -1,3 +1,4 @@
+import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
 import type { Db } from "./db";
@@ -94,7 +95,9 @@ export async function flushOutbox(db: Db, limit = 25) {
       order by send_after limit $1`,
     [limit],
   );
-  const resend = live.email ? new Resend(env.resendApiKey) : null;
+  // Resend once the domain is ours; meanwhile a Gmail account (app password) carries the mail.
+  const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null;
+  const gmail = !resend && live.email ? nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: env.smtpUser!, pass: env.smtpPass! } }) : null;
   let sent = 0;
   for (const m of due) {
     try {
@@ -108,6 +111,8 @@ export async function flushOutbox(db: Db, limit = 25) {
           text: m.text_body,
         });
         if (error) throw new Error(error.message);
+      } else if (gmail) {
+        await gmail.sendMail({ from: env.emailFrom, to: m.to_email, replyTo: m.reply_to ?? undefined, subject: m.subject, html: m.html, text: m.text_body });
       } else {
         console.info(`[email:demo] to=${m.to_email} subject="${m.subject}"`);
       }
