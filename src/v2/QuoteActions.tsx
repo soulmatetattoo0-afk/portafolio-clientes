@@ -94,10 +94,18 @@ export function QuoteActions({ briefId, stage, clientName, stops, defaults, bala
         <div className="grid gap-2">
           <p className="text-center text-[0.85rem] font-semibold text-[var(--color-olive,#6f8f5c)]">{c.depositPaid}</p>
           <p className="text-center text-[0.85rem] text-bone-dim">{fill(c.reserved, { date: bookedOn ?? "" })}</p>
-          <button type="button" className="v2-btn" data-tone="accent" disabled={pending} onClick={() => run(() => finishTattoo(briefId))}>
-            {fill(c.finish, { amount: balanceAmount ?? "" })}
-          </button>
-          <button type="button" className={direct ? "v2-btn" : "h-10 text-[0.85rem] text-bone-dim underline underline-offset-4"} data-tone={direct ? "ghost" : undefined} disabled={pending} onClick={() => run(() => markBalancePaid(briefId))}>
+          {balance?.requested ? (
+            // The charge is out: say so, and keep the way to mark it paid by hand.
+            <>
+              <p className="rounded-[14px] border border-accent/40 bg-accent/10 px-3 py-2.5 text-center text-[0.88rem] font-semibold text-bone">{fill(c.requested, { amount: balanceAmount ?? "" })}</p>
+              <p className="text-center text-[0.8rem] text-bone-dim">{fill(direct ? c.requestedDirect : c.requestedLead, { name: first })}</p>
+            </>
+          ) : (
+            <button type="button" className="v2-btn" data-tone="accent" disabled={pending} onClick={() => run(() => finishTattoo(briefId))}>
+              {fill(c.finish, { amount: balanceAmount ?? "" })}
+            </button>
+          )}
+          <button type="button" className={direct || balance?.requested ? "v2-btn" : "h-10 text-[0.85rem] text-bone-dim underline underline-offset-4"} data-tone={direct || balance?.requested ? "ghost" : undefined} disabled={pending} onClick={() => run(() => markBalancePaid(briefId))}>
             {direct ? c.directBalance : c.cash}
           </button>
         </div>

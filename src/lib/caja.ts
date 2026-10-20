@@ -3,14 +3,14 @@ import type { Db } from "./db";
 /**
  * The artist's books for one month: what the app collected (deposits and
  * session balances, net of VANTA's fee), what they spent, six months of
- * bars, and the sessions done but not paid yet. Seeded demo payments never
+ * bars, and the charges still owed. Seeded demo payments never
  * count, so a new account starts at zero.
  */
 export async function loadCaja(db: Db, studioId: string, artistId: string, monthKey: string) {
   const start = `${monthKey}-01`;
   const net = `(p.amount_cents - coalesce(p.application_fee_cents, 0))`;
   const real = `p.studio_id = $1 and p.status = 'paid' and p.checkout_id not like 'demo_seed_%'`;
-  const [totals, bars, pays, exps, collect] = await Promise.all([
+  const [totals, bars, pays, exps, pending] = await Promise.all([
     db.one<{ income: number; deposits: number; sessions: number; expenses: number }>(
       `select coalesce((select sum(${net}) from payments p where ${real} and date_trunc('month', p.created_at) = $3::date), 0)::int as income,
               coalesce((select sum(${net}) from payments p where ${real} and p.kind = 'deposit' and date_trunc('month', p.created_at) = $3::date), 0)::int as deposits,
@@ -36,14 +36,20 @@ export async function loadCaja(db: Db, studioId: string, artistId: string, month
         where artist_id = $1 and date_trunc('month', day::timestamp) = $2::date order by day desc, created_at desc`,
       [artistId, start],
     ),
-    db.one<{ n: number; cents: number }>(
-      `select count(*)::int as n, coalesce(sum(ap.balance_cents), 0)::int as cents from appointments ap
-        where ap.studio_id = $1 and ap.status in ('confirmed', 'completed') and ap.starts_at < now() and ap.brief_id is not null
-          and not exists (select 1 from payments p where p.appointment_id = ap.id and p.kind = 'balance' and p.status = 'paid')`,
+    // What is still owed: a charge sent (the session marked done) or a session past its day, not paid yet.
+    db.query<{ id: string; brief_id: string; who: string; cents: number; day: string; requested: boolean }>(
+      `select ap.id, ap.brief_id, c.name as who, coalesce(ap.balance_cents, greatest(q.price_min_cents - q.deposit_cents, 0))::int as cents,
+              to_char(ap.starts_at, 'YYYY-MM-DD') as day, ap.status = 'completed' as requested
+         from appointments ap join clients c on c.id = ap.client_id join quotes q on q.id = ap.quote_id
+        where ap.studio_id = $1 and ap.status in ('confirmed', 'completed') and ap.brief_id is not null
+          and (ap.status = 'completed' or ap.starts_at < now())
+          and not exists (select 1 from payments p where p.appointment_id = ap.id and p.kind = 'balance' and p.status = 'paid')
+        order by ap.status = 'completed' desc, ap.starts_at desc`,
       [studioId],
     ),
   ]);
-  return { totals: totals ?? { income: 0, deposits: 0, sessions: 0, expenses: 0 }, bars, pays, exps, collect: collect ?? { n: 0, cents: 0 } };
+  const collect = { n: pending.length, cents: pending.reduce((s, p) => s + p.cents, 0) };
+  return { totals: totals ?? { income: 0, deposits: 0, sessions: 0, expenses: 0 }, bars, pays, exps, pending, collect };
 }
 
 /** "2026-10" → its neighbours. */

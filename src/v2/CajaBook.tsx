@@ -38,7 +38,7 @@ const CATEGORIES: ExpenseCategory[] = ["supplies", "rent", "ads", "travel", "oth
  * bars, what's still to collect, and every movement by day. Expenses go in
  * from a sheet at the thumb, each in its category.
  */
-export function CajaBook({ month, bars, moves, currency, t, locale }: { month: BookMonth; bars: { key: string; label: string; income: number; expense: number; current: boolean }[]; moves: BookMove[]; currency: string; t: Dict; locale: Locale }) {
+export function CajaBook({ month, bars, moves, pending: owed, currency, t, locale }: { month: BookMonth; bars: { key: string; label: string; income: number; expense: number; current: boolean }[]; moves: BookMove[]; pending: { id: string; brief_id: string; who: string; cents: number; requested: boolean; dayLabel: string }[]; currency: string; t: Dict; locale: Locale }) {
   const c = t.v2.caja;
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -105,14 +105,35 @@ export function CajaBook({ month, bars, moves, currency, t, locale }: { month: B
         ))}
       </div>
 
-      {month.toCollect.n > 0 && (
-        <Link href="/studio/chats?tab=accepted" className="ed-tile flex items-center justify-between gap-3 px-4 py-3">
-          <span>
-            <span className="p-stamp block text-bone/60">{c.toCollect}</span>
-            <span className="text-[0.92rem]">{fill(month.toCollect.n === 1 ? c.toCollectOne : c.toCollectN, { n: month.toCollect.n })}</span>
+      {/* What is still owed: each charge, a tap away from its chat. */}
+      {owed.length > 0 && (
+        <div className="ed-tile px-4 pt-4 pb-2">
+          <span className="relative block">
+            <span className="flex items-baseline justify-between gap-3">
+              <span>
+                <span className="p-stamp block text-bone/60">{c.toCollect}</span>
+                <span className="text-[0.92rem]">{fill(owed.length === 1 ? c.toCollectOne : c.toCollectN, { n: owed.length })}</span>
+              </span>
+              <span className="p-display text-[1.7rem] leading-none text-accent tabular-nums">{fmt(month.toCollect.cents)}</span>
+            </span>
+            <span className="mt-1 block text-[0.75rem] text-bone/50">{c.toCollectLead}</span>
+            <ul className="mt-2 grid divide-y divide-bone/10">
+              {owed.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/studio/chats/${p.brief_id}`} className="flex items-center gap-3 py-2.5">
+                    <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${p.requested ? "bg-accent" : "bg-bone/40"}`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.95rem] font-semibold">{p.who}</span>
+                      <span className="block truncate text-[0.76rem] text-bone/55">{p.requested ? c.sentCharge : fill(c.notCharged, { day: p.dayLabel })}</span>
+                    </span>
+                    <span className="shrink-0 text-[1rem] font-semibold tabular-nums text-bone/80">{fmt(p.cents)}</span>
+                    <span aria-hidden className="text-bone/40">›</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </span>
-          <span className="p-display text-[1.5rem] leading-none text-accent tabular-nums">{fmt(month.toCollect.cents)}</span>
-        </Link>
+        </div>
       )}
 
       {/* Six months */}

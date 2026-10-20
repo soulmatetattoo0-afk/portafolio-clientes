@@ -31,6 +31,7 @@ export default async function CajaPage({ searchParams }: PageProps<"/studio/sala
         month={{ key, label: name(key, { month: "long", year: "numeric" }), ...data.totals, toCollect: data.collect, prev, next: next <= now ? next : null }}
         bars={data.bars.map((b) => ({ key: b.m, label: name(b.m, { month: "short" }), income: b.income, expense: b.expense, current: b.m === key }))}
         moves={moves}
+        pending={data.pending.map((p) => ({ ...p, dayLabel: new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${p.day}T12:00:00Z`)) }))}
         currency={artist.currency}
         t={t}
         locale={locale}
