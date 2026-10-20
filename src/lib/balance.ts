@@ -3,6 +3,7 @@ import { dict, fill } from "@/i18n";
 import type { Db } from "./db";
 import { money } from "./format";
 import { sendCareSheet } from "./care";
+import { emailChat } from "./chat-email";
 import { notify, notifyEach } from "./push";
 
 /**
@@ -113,6 +114,7 @@ export async function recordBalance(db: Db, a: RecordArgs) {
   const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [fresh.studio_id]);
   const amount = (l: "en" | "es") => money(a.amountCents, a.currency, l);
   await notifyEach(members, (l) => ({ title: fill(dict(l).push.balancePaid, { name: who.client }), body: amount(l), url: `/studio/chats/${fresh.brief_id}`, tag: `balance:${a.appointmentId}` }));
+  if (a.provider !== "manual") await emailChat(db, fresh.brief_id, "artist", "paid", amount("es"));
   await notify([who.client_user], {
     title: fill(dict(who.client_locale).push.balanceThanks, { name: who.artist }),
     body: amount(who.client_locale),

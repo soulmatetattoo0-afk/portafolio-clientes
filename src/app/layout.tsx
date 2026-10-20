@@ -5,6 +5,7 @@ import { getDict } from "@/i18n/server";
 import { env } from "@/lib/env";
 
 import "./globals.css";
+import { Presence } from "@/components/Presence";
 
 // Every face ships with the app (Google's woff2 files, OFL-licensed), so a build never waits on a font server.
 const cinzel = localFont({ variable: "--font-cinzel", src: "../fonts/cinzel.woff2", weight: "400 900", display: "swap" });
@@ -64,7 +65,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Oswald:wght@600&family=Playfair+Display:wght@700&family=Abril+Fatface&family=Permanent+Marker&family=Special+Elite&family=UnifrakturMaguntia&family=Monoton&family=Righteous&family=Caveat:wght@700&family=Dancing+Script:wght@700&family=Rubik+Mono+One&display=swap"
         />
       </head>
-      <body className="flex min-h-dvh flex-col">{children}</body>
+      <body className="flex min-h-dvh flex-col">
+        {children}
+        <Presence />
+      </body>
     </html>
   );
 }

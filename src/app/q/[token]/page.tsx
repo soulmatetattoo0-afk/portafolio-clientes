@@ -7,7 +7,7 @@ import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { colorLabel, styleLabel } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
-import { live, manualPayments } from "@/lib/env";
+import { live, paysDirect } from "@/lib/env";
 import { cmLabel, dateLong, money, moneyRange, placeLine, requestTime, sessionTime } from "@/lib/format";
 import { placementLabel } from "@/lib/messages";
 import { getQuoteByToken } from "@/lib/queries";
@@ -171,7 +171,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                     chooseDate: q.chooseDate,
                     chooseDateHint: q.chooseDateHint,
                     agree: q.agree,
-                    pay: fill(live.payments ? q.pay : manualPayments ? q.payDirect : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
+                    pay: fill(paysDirect(quote.stripe_charges_enabled) ? q.payDirect : live.payments ? q.pay : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
                     redirecting: q.redirecting,
                     dateRequired: q.dateRequired,
                     agreeRequired: q.agreeRequired,

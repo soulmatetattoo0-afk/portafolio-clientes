@@ -10,8 +10,9 @@ import { getLocale } from "@/i18n/server";
 import { confirmBooking } from "@/lib/booking";
 import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
-import { demoMode, env, live } from "@/lib/env";
+import { env, live, paysDirect } from "@/lib/env";
 import { money } from "@/lib/format";
+import { emailChat } from "@/lib/chat-email";
 import { notifyEach } from "@/lib/push";
 import { createDepositCheckout } from "@/lib/payments";
 import { feeBpsFor } from "@/lib/plan";
@@ -35,11 +36,11 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   if (form.get("agree") !== "on") return { error: q.agreeRequired };
   const slotId = String(form.get("slot") ?? "");
   if (!quote.slots.some((s) => s.id === slotId)) return { error: q.dateRequired };
-  if (live.payments && (!quote.stripe_account_id || !quote.stripe_charges_enabled)) return { error: fill(q.paymentsOff, { artist: quote.artist_name }) };
 
   const db = await getDb();
   // Hold the date while the client pays: 30 minutes on a card, a week when the artist confirms a direct payment.
-  const direct = !live.payments && !demoMode;
+  // Card payments only once the artist's own Stripe can take them; until then the client pays them directly.
+  const direct = paysDirect(quote.stripe_charges_enabled);
   const held = await db.one(
     `update quote_slots set status = 'held', hold_expires_at = now() + ${direct ? "interval '7 days'" : "interval '31 minutes'"}
       where id = $1 and quote_id = $2 and (status = 'offered' or (status = 'held' and hold_expires_at < now()))
@@ -59,6 +60,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
       await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, data) values ($1, $2, 'message', 'client', $3, $4)`, [b.studio_id, b.id, body, JSON.stringify({ direct: quote.id })]);
       const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [b.studio_id]);
       after(() => notifyEach(members, (l) => ({ title: fill(dict(l).chat.direct.pushTitle, { name: b.client }), body: money(quote.deposit_cents, quote.currency, l), url: `/studio/chats/${b.id}`, tag: `direct:${b.id}` })));
+      await emailChat(db, b.id, "artist", "bookRequest", body);
     }
     redirect(`/c/${quote.chat_token}${back}`);
   }

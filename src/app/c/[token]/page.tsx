@@ -8,7 +8,7 @@ import { getDict } from "@/i18n/server";
 import { PushPrompt } from "@/components/PushPrompt";
 import { getChatByToken } from "@/lib/chat";
 import { getClientUser, listFollowed, unreadChats } from "@/lib/client";
-import { manualPayments } from "@/lib/env";
+import { paysDirect } from "@/lib/env";
 import { vapidKeys } from "@/lib/push";
 import { ArtistTabs, ClientTabs } from "@/v2/Shell";
 
@@ -76,7 +76,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
           balance={thread.balance}
           careLabels={{ download: t.care.download, from: t.care.from }}
           linkSuffix={fromStudio ? "?from=studio" : ""}
-          direct={manualPayments}
+          direct={paysDirect(thread.artist.charges)}
         />
       </main>
       {fromStudio ? (

@@ -72,3 +72,5 @@ export const SOVA_EMAIL = "tattoo.by.sova@gmail.com";
 export const demoMode = !live.db || read("VANTA_DEMO") === "1";
 /** A real deployment without Stripe yet: the client pays the artist directly and the artist confirms it in the app. */
 export const manualPayments = !demoMode && !live.payments;
+/** For one artist: direct payments until their own Stripe account can take cards (and always while VANTA has no Stripe). */
+export const paysDirect = (chargesEnabled: boolean) => !demoMode && (!live.payments || !chargesEnabled);

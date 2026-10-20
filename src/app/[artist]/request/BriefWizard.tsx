@@ -1010,6 +1010,12 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, ta
                   <div>
                     <Check id={`${uid}-adult`} checked={d.adult} onChange={(v) => set("adult", v)} label={b.contact.adult} invalid={Boolean(show("adult"))} />
                     <FieldError message={show("adult")} />
+                    <p className="mt-2 text-[0.82rem] leading-snug text-bone-dim">
+                      {b.contact.termsLead}{" "}
+                      <a href="/terminos" target="_blank" rel="noreferrer" className="text-bone underline underline-offset-4">
+                        {b.contact.termsLink}
+                      </a>
+                    </p>
                   </div>
                 </>
               ) : (

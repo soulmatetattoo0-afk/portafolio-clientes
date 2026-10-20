@@ -85,7 +85,7 @@ export interface ChatThread {
   card: ChatCard;
   items: ChatItem[];
   client: { name: string; email: string; locale: Locale };
-  artist: { id: string; slug: string; name: string; accent: string | null; portrait_url: string | null; studio_id: string };
+  artist: { id: string; slug: string; name: string; accent: string | null; portrait_url: string | null; studio_id: string; charges: boolean };
   chat_token: string;
   /** The rest of the tattoo for the booked session, paid from the chat on the day. */
   balance: Balance | null;
@@ -122,8 +122,8 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
       [b.id],
     ),
     db.query<{ id: string; kind: string; path: string }>(`select id, kind, path from brief_files where brief_id = $1 and kind <> 'placement' order by created_at`, [b.id]),
-    db.one<{ id: string; slug: string; display_name: string; accent: string | null; portrait_path: string | null; studio_id: string }>(
-      `select id, slug, display_name, accent, portrait_path, studio_id from artists where id = $1`,
+    db.one<{ id: string; slug: string; display_name: string; accent: string | null; portrait_path: string | null; studio_id: string; stripe_charges_enabled: boolean }>(
+      `select id, slug, display_name, accent, portrait_path, studio_id, stripe_charges_enabled from artists where id = $1`,
       [b.artist_id],
     ),
   ]);
@@ -198,6 +198,7 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
       name: artist!.display_name,
       accent: artist!.accent,
       studio_id: artist!.studio_id,
+      charges: Boolean(artist!.stripe_charges_enabled),
       portrait_url: artist!.portrait_path ? await fileUrl("public", artist!.portrait_path) : null,
     },
     chat_token: b.chat_token,

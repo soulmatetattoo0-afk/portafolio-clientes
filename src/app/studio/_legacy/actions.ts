@@ -15,6 +15,7 @@ import { isTrade, STYLE_BY_SLUG, TIMEZONES, TRADE_BY_SLUG } from "@/lib/catalog"
 import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { confirmBooking } from "@/lib/booking";
+import { emailChat } from "@/lib/chat-email";
 import { demoMode, env, live } from "@/lib/env";
 import { dateLong, money, sessionTime, zonedToUtc } from "@/lib/format";
 import { placeCity } from "@/lib/geo";
@@ -750,8 +751,9 @@ export async function sendArtistMessage(briefId: string, text: string): Promise<
       await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor, body, created_at) values ($1, $2, 'message', 'artist', $3, now() + interval '2 seconds')`, [member.studioId, briefId, ct.demoFollow]);
     }
   });
-  // The client hears in the app: a notification on their phone, the chat badge and the "New" mark.
+  // The client hears in the app: a notification on their phone, the chat badge and the "New" mark; by email when away.
   after(() => notify([brief.client_user], { title: brief.artist_name, body: body.data, url: `/c/${brief.chat_token}`, tag: `chat:${briefId}` }));
+  await emailChat(db, briefId, "client", "message", body.data);
   revalidatePath("/studio", "layout");
 }
 
@@ -804,6 +806,7 @@ export async function offerReservation(briefId: string, input: z.input<typeof Of
     });
     const pt = dict(brief.client_locale);
     after(() => notify([brief.client_user], { title: fill(pt.push.offerFrom, { artist: brief.artist_name }), body: o.message || pt.chat.offerForm.calendarPush, url: `/c/${brief.chat_token}`, tag: `chat:${briefId}` }));
+    await emailChat(db, briefId, "client", "offer", o.message || null);
     revalidatePath("/studio", "layout");
     return;
   }
@@ -841,6 +844,7 @@ export async function offerReservation(briefId: string, input: z.input<typeof Of
   const pt = dict(brief.client_locale).push;
   const when = sessionTime(start, stop.timezone, brief.client_locale);
   after(() => notify([brief.client_user], { title: fill(pt.offerFrom, { artist: brief.artist_name }), body: o.message || `${when.day} · ${when.time}`, url: `/c/${brief.chat_token}`, tag: `chat:${briefId}` }));
+  await emailChat(db, briefId, "client", "offer", o.message || null);
   revalidatePath("/studio", "layout");
 }
 
@@ -1039,6 +1043,7 @@ export async function requestBalance(appointmentId: string): Promise<{ error?: s
   const body = fill(ct.request, { amount });
   await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body) values ($1, $2, 'message', 'artist', $3)`, [member.studioId, ap.brief_id, body]);
   await notify([ap.client_user], { title: fill(ct.requestTitle, { name: ap.artist }), body, url: ap.chat_token ? `/c/${ap.chat_token}` : "/me", tag: `balance:${appointmentId}` });
+  await emailChat(db, ap.brief_id, "client", "payLink", body);
   revalidatePath("/studio");
 }
 

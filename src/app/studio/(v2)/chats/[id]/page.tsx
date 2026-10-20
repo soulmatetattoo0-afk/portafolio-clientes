@@ -13,7 +13,7 @@ import { demoAutoBook } from "@/lib/demo";
 import { sessionTime } from "@/lib/format";
 import { getArtistById, getBrief, listStops } from "@/lib/queries";
 import { ArtistTabs } from "@/v2/Shell";
-import { demoMode, manualPayments } from "@/lib/env";
+import { demoMode, paysDirect } from "@/lib/env";
 import { ProjectSheet } from "@/v2/ProjectSheet";
 import { QuoteActions, type QuoteStage } from "@/v2/QuoteActions";
 
@@ -54,7 +54,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
           bookedOn={bookedOn}
           chatToken={chat.chat_token}
           demo={demoMode}
-          direct={manualPayments}
+          direct={paysDirect(artist.stripe_charges_enabled)}
           stops={stops.map((s) => ({ id: s.id, label: s.is_home ? [s.studio_name, s.city].filter(Boolean).join(", ") : `${s.city}${s.starts_on ? ` · ${s.starts_on}` : ""}` }))}
           defaults={{ deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null }}
           t={t}
@@ -84,7 +84,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
               bookedOn={bookedOn}
               currency={brief.currency}
               template={fill(ct.templates.accept, { name: brief.client_name.split(" ")[0] })}
-              direct={manualPayments}
+              direct={paysDirect(artist.stripe_charges_enabled)}
               t={t}
               locale={locale}
             />

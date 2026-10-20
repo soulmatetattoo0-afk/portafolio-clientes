@@ -23,8 +23,8 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
   return (
     <div className="mx-auto grid w-full max-w-md content-start gap-8 pt-4">
         <div>
-          <h1 className="p-display text-[clamp(2.8rem,13vw,4.2rem)] text-bone">{s.title}</h1>
-          <p className="p-quote mt-3 max-w-[34ch] text-[1.35rem] text-bone/85">{s.lead}</p>
+          <h1 className="p-display text-[clamp(2.8rem,13vw,4.2rem)] text-bone">{typeof sp.for === "string" ? s.bookTitle : s.title}</h1>
+          <p className="p-quote mt-3 max-w-[34ch] text-[1.35rem] text-bone/85">{typeof sp.for === "string" ? s.bookLead.replace("{artist}", sp.for.slice(0, 60)) : s.lead}</p>
         </div>
         {sp.error === "link" && (
           <p role="alert" className="rounded-[14px] border border-ember/50 px-4 py-3 text-[0.92rem] text-ember">

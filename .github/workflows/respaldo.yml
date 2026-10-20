@@ -1,0 +1,50 @@
+# Nightly backup of VANTA's production database (Supabase "vanta"), encrypted, kept 30 days.
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   BACKUP_DATABASE_URL  the Session pooler connection string (port 5432), with the database password
+#   BACKUP_PASSPHRASE    a long passphrase only you keep; without it the backup can't be opened
+# Restore: download the artifact, then
+#   gpg --batch --passphrase "…" -d vanta-YYYY-MM-DD.dump.gpg > vanta.dump
+#   pg_restore --no-owner --clean --if-exists -d "<connection string>" vanta.dump
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: "15 7 * * *" # 07:15 UTC, after midnight in the Americas
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install the Postgres 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Dump and encrypt
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL" || { echo "Falta el secreto BACKUP_DATABASE_URL"; exit 1; }
+          test -n "$PASSPHRASE" || { echo "Falta el secreto BACKUP_PASSPHRASE"; exit 1; }
+          # The transaction pooler (6543) can't run pg_dump; the session pooler (5432) can.
+          url="${DATABASE_URL/:6543\//:5432/}"
+          day="$(date -u +%F)"
+          /usr/lib/postgresql/17/bin/pg_dump "$url" --format=custom --no-owner --no-privileges --schema=public --schema=storage --schema=auth -f "vanta-$day.dump"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASSPHRASE" --symmetric --cipher-algo AES256 -o "vanta-$day.dump.gpg" "vanta-$day.dump"
+          rm "vanta-$day.dump"
+          ls -lh "vanta-$day.dump.gpg"
+          echo "DAY=$day" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vanta-${{ env.DAY }}
+          path: vanta-*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

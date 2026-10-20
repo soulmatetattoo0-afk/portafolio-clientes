@@ -10,9 +10,8 @@ import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { loadBalance, recordBalance } from "@/lib/balance";
 import { getDb } from "@/lib/db";
-import { enqueueEmail, flushOutbox } from "@/lib/email";
-import { demoMode, env, live } from "@/lib/env";
-import { chatToArtist } from "@/lib/messages";
+import { env, live, paysDirect } from "@/lib/env";
+import { emailChat } from "@/lib/chat-email";
 import { createDepositCheckout } from "@/lib/payments";
 import { feeBpsFor } from "@/lib/plan";
 import { notifyEach } from "@/lib/push";
@@ -52,15 +51,8 @@ export async function sendClientMessage(chatToken: string, text: string): Promis
   // The artist hears on their phone, every message (one notification per conversation, replaced as it grows).
   const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [b.studio_id]);
   after(() => notifyEach(members, (l) => ({ title: fill(dict(l).push.newMessageFrom, { name: b.client_name }), body: body.data, url: `/studio/chats/${b.id}`, tag: `chat:${b.id}` })));
-  if (!unread && b.owner_email) {
-    await enqueueEmail(db, chatToArtist({ to: b.owner_email, client: b.client_name, artist: b.artist_name, message: body.data, briefId: b.id, locale: b.owner_locale ?? "en" }), {
-      studioId: b.studio_id,
-      template: "chat_artist",
-    });
-    after(async () => {
-      await flushOutbox(await getDb());
-    });
-  }
+  // Email the artist when they are away from the app (one per conversation every ten minutes).
+  if (!unread) await emailChat(db, b.id, "artist", "message", body.data);
   revalidatePath(`/c/${chatToken}`);
 }
 
@@ -136,7 +128,7 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
   if (!balance.open) return { error: t.chat.balance.notYet };
   if (!balance.amountCents) return { error: fill(t.chat.balance.waiting, { artist: b.artist_name }) };
 
-  if (!live.payments && !demoMode) return { error: fill(t.chat.direct.balance, { artist: b.artist_name, amount: "" }) };
+  if (paysDirect(b.stripe_charges_enabled)) return { error: fill(t.chat.direct.balance, { artist: b.artist_name, amount: "" }) };
   if (!live.payments) {
     await recordBalance(db, { appointmentId: balance.appointmentId, provider: "demo", checkoutId: `demo_${randomUUID()}`, amountCents: balance.amountCents, currency: balance.currency });
     revalidatePath(`/c/${chatToken}`);

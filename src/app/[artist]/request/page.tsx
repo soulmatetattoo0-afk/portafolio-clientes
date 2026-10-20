@@ -22,6 +22,11 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   if (!artist) notFound();
   if (!artist.accepting) redirect(`/${artist.slug}#spots`);
   const [{ t, locale }, stops, flashAll, user] = await Promise.all([getDict(), listStops(artist.id, { publicOnly: true }), typeof sp.flash === "string" ? listFlash(artist.id, { publishedOnly: true }) : [], getClientUser()]);
+  // Booking starts with an account (username, email, password): the chat, the emails and the booking stay with the person.
+  if (!user) {
+    const qs = new URLSearchParams(Object.entries(sp).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
+    redirect(`/me/signin?mode=create&for=${encodeURIComponent(artist.display_name)}&next=${encodeURIComponent(`/${artist.slug}/request${qs ? `?${qs}` : ""}`)}`);
+  }
   // A signed-in client starts from the details they last gave a studio, else their account.
   const contact = user ? await getMyContact(user.userId) : null;
   const me = user ? { name: contact?.name ?? user.name, email: user.email, phone: contact?.phone ?? null, instagram: contact?.instagram ?? null } : null;
