@@ -873,23 +873,6 @@
     line-height: 1.1rem;
     text-align: center;
   }
-  /* Caja's receipt: paper with a torn foot; the stamp inks over its corner. */
-  .v2-receipt {
-    position: relative;
-    isolation: isolate;
-    margin: 1.6rem 0 0;
-    padding: 1.1rem 1.25rem 1.6rem;
-    border-radius: 22px 22px 0 0;
-    background: #ece4d4;
-    box-shadow: 0 30px 40px -10px rgb(0 0 0 / 0.8);
-    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
-    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 16px 100%;
-  }
-  .v2-stamp {
-    transform: rotate(-12deg);
-    mix-blend-mode: multiply;
-    opacity: 0.92;
-  }
   /* The session ticket on the artist's day: paper, perforation, the stub. */
   .v2-ticket {
     position: relative;
@@ -945,98 +928,6 @@
     filter: grayscale(1) brightness(0.5);
     mix-blend-mode: normal;
   }
-  /* The Sala creativa: the call sheet, the notebook, the proof, the film strip, the pegboard. */
-  .v2-callsheet {
-    position: relative;
-    border-radius: 22px;
-    padding: 20px;
-    background: #ece4d4 repeating-linear-gradient(#0000 0 31px, rgb(43 36 32 / 0.12) 31px 32px);
-    color: #2b2420;
-    box-shadow: 0 30px 40px -10px rgb(0 0 0 / 0.8);
-  }
-  .v2-tape {
-    position: absolute;
-    top: -11px;
-    left: 50%;
-    width: 84px;
-    height: 22px;
-    translate: -50% 0;
-    rotate: -3deg;
-    background: rgb(239 231 216 / 0.5);
-    backdrop-filter: blur(1px);
-  }
-  @keyframes v2-print {
-    0% { translate: 0 -100%; }
-    35% { translate: 0 -62%; }
-    40% { translate: 0 -62%; }
-    70% { translate: 0 -18%; }
-    74% { translate: 0 -18%; }
-    100% { translate: 0 0; }
-  }
-  .v2-slot {
-    overflow: hidden;
-    padding-top: 6px;
-    border-top: 6px solid #000;
-    box-shadow: inset 0 6px 8px -6px rgb(239 231 216 / 0.35);
-    border-radius: 4px 4px 0 0;
-  }
-  .v2-slot[data-fresh="true"] > .v2-callsheet {
-    animation: v2-print 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-  .v2-notebook {
-    position: relative;
-    padding: 34px 20px 20px 44px;
-    border-radius: 6px 6px 22px 22px;
-    color: #2b2420;
-    background:
-      linear-gradient(90deg, #0000 31px, color-mix(in oklab, var(--accent) 40%, #0000) 31px 32px, #0000 32px),
-      radial-gradient(rgb(43 36 32 / 0.22) 1px, #0000 1.3px) 0 0 / 16px 16px,
-      #ece4d4;
-  }
-  .v2-notebook::before {
-    content: "";
-    position: absolute;
-    inset: 8px 16px auto;
-    height: 12px;
-    background: radial-gradient(circle 5px, #0b0a09 95%, #0000) 0 0 / 22px 12px repeat-x;
-  }
-  .v2-notebook [data-done="true"] {
-    text-decoration: line-through 1.5px;
-    opacity: 0.45;
-  }
-  .v2-proof {
-    --m: rgb(239 231 216 / 0.45);
-    padding: 20px;
-    background:
-      linear-gradient(var(--m) 0 0) 6px 14px / 14px 1px,
-      linear-gradient(var(--m) 0 0) 14px 6px / 1px 14px,
-      linear-gradient(var(--m) 0 0) right 6px top 14px / 14px 1px,
-      linear-gradient(var(--m) 0 0) right 14px top 6px / 1px 14px,
-      linear-gradient(var(--m) 0 0) 6px calc(100% - 14px) / 14px 1px,
-      linear-gradient(var(--m) 0 0) 14px bottom 6px / 1px 14px,
-      linear-gradient(var(--m) 0 0) right 6px bottom 14px / 14px 1px,
-      linear-gradient(var(--m) 0 0) right 14px bottom 6px / 1px 14px;
-    background-repeat: no-repeat;
-  }
-  .v2-film {
-    padding: 20px 12px;
-    background:
-      linear-gradient(90deg, #0000 4px, rgb(239 231 216 / 0.18) 4px 11px, #0000 11px) 0 5px / 16px 9px repeat-x,
-      linear-gradient(90deg, #0000 4px, rgb(239 231 216 / 0.18) 4px 11px, #0000 11px) 0 calc(100% - 5px) / 16px 9px repeat-x,
-      #141210;
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    border-radius: 14px;
-  }
-  .v2-film::-webkit-scrollbar {
-    display: none;
-  }
-  .v2-pegboard {
-    background: radial-gradient(rgb(239 231 216 / 0.12) 1.6px, #0000 2px) 0 0 / 18px 18px;
-  }
   @keyframes v2-rise {
     from {
       translate: 0 24px;
@@ -1086,7 +977,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: max(env(safe-area-inset-top), 0.6rem) 1rem 0.6rem;
-    background: rgb(11 10 9 / 0.9);
+    background: rgb(11 10 9 / 0.97);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }

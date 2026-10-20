@@ -1195,13 +1195,13 @@ export async function setStopCover(stopId: string, uploadToken: string, key: str
 }
 
 /** Caja: an expense the artist writes down, or one they take back. */
-export async function addExpense(input: { label: string; amount: number; day?: string }): Promise<{ error?: string } | void> {
+export async function addExpense(input: { label: string; amount: number; day?: string; category?: string }): Promise<{ error?: string } | void> {
   const member = await requireMember();
   const t = dict(await getLocale());
-  const parsed = z.object({ label: z.string().trim().min(1).max(120), amount: z.coerce.number().positive().max(1_000_000), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).safeParse(input);
+  const parsed = z.object({ label: z.string().trim().min(1).max(120), amount: z.coerce.number().positive().max(1_000_000), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), category: z.enum(["supplies", "rent", "ads", "travel", "other"]).default("other") }).safeParse(input);
   if (!parsed.success) return { error: t.common.error };
   const db = await getDb();
-  await db.query(`insert into expenses (studio_id, artist_id, label, amount_cents, day) values ($1, $2, $3, $4, coalesce($5::date, current_date))`, [member.studioId, member.artistId, parsed.data.label, Math.round(parsed.data.amount * 100), parsed.data.day ?? null]);
+  await db.query(`insert into expenses (studio_id, artist_id, label, amount_cents, day, category) values ($1, $2, $3, $4, coalesce($5::date, current_date), $6)`, [member.studioId, member.artistId, parsed.data.label, Math.round(parsed.data.amount * 100), parsed.data.day ?? null, parsed.data.category]);
   revalidatePath("/studio", "layout");
 }
 
