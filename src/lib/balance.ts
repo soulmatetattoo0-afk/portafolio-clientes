@@ -17,6 +17,8 @@ export interface Balance {
   appointmentId: string;
   startsAt: string;
   endsAt: string;
+  /** The studio's clock where the session happens. */
+  timezone: string;
   /** What is left to pay; null until the artist sets it on a ranged estimate. */
   amountCents: number | null;
   currency: string;
@@ -42,8 +44,9 @@ export async function loadBalance(db: Db, briefId: string): Promise<Balance | nu
     currency: string;
     paid: boolean;
     status: string;
+    timezone: string;
   }>(
-    `select ap.id, ap.starts_at, ap.ends_at, ap.balance_cents, ap.status, q.price_min_cents, q.price_max_cents, q.deposit_cents, q.currency,
+    `select ap.id, ap.starts_at, ap.ends_at, ap.balance_cents, ap.status, ap.timezone, q.price_min_cents, q.price_max_cents, q.deposit_cents, q.currency,
             exists (select 1 from payments p where p.appointment_id = ap.id and p.kind = 'balance' and p.status = 'paid') as paid
        from appointments ap join quotes q on q.id = ap.quote_id
       where ap.brief_id = $1 and ap.status in ('confirmed', 'completed')
@@ -58,6 +61,7 @@ export async function loadBalance(db: Db, briefId: string): Promise<Balance | nu
     appointmentId: r.id,
     startsAt: starts.toISOString(),
     endsAt: new Date(r.ends_at).toISOString(),
+    timezone: r.timezone,
     amountCents: amount,
     currency: r.currency,
     depositCents: r.deposit_cents,

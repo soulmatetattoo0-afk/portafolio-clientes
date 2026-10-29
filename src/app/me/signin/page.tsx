@@ -20,8 +20,16 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
   const { t } = await getDict();
   const s = t.me.signin;
   // The /me layout draws the poster root and the bar; this page is the form alone.
+  // The way back to where the client came from (the artist's page), never into the studio.
+  const seg = next.split("?")[0].split("/")[1] ?? "";
+  const back = seg && !["me", "studio", "c", "q", "login"].includes(seg) ? `/${seg}` : null;
   return (
-    <div className="mx-auto grid w-full max-w-md content-start gap-8 pt-4">
+    <div className="mx-auto grid w-full max-w-md content-start gap-8 px-4 pt-[max(env(safe-area-inset-top),1rem)] pb-10">
+        {back && (
+          <Link href={back} className="-mb-4 inline-flex w-fit items-center gap-2 text-[0.9rem] text-bone/70">
+            <span aria-hidden className="text-[1.2rem]">←</span> {t.legal.back}
+          </Link>
+        )}
         <div>
           <h1 className="p-display text-[clamp(2.8rem,13vw,4.2rem)] text-bone">{typeof sp.for === "string" ? s.bookTitle : s.title}</h1>
           <p className="p-quote mt-3 max-w-[34ch] text-[1.35rem] text-bone/85">{typeof sp.for === "string" ? s.bookLead.replace("{artist}", sp.for.slice(0, 60)) : s.lead}</p>

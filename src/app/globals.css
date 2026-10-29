@@ -111,8 +111,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* Nothing pans the page sideways on a phone (the ring's side cards peek past the edge on purpose). */
+    overflow-x: clip;
   }
   body {
+    overflow-x: clip;
     font-family: var(--font-sans);
     font-size: 15px;
     line-height: 1.55;

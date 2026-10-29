@@ -36,13 +36,13 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
   const offered = chat.items.some((i) => i.kind === "offer" && i.offer && (i.offer.status === "sent" || i.offer.status === "viewed") && !i.offer.expired);
   const stage: QuoteStage =
     brief.status === "declined" || brief.status === "archived" ? "closed" : chat.balance?.paid ? "paid" : chat.balance ? "booked" : !answered ? "new" : offered ? "offered" : "open";
-  const bookedOn = chat.balance ? (() => { const s = sessionTime(new Date(chat.balance.startsAt), stops[0]?.timezone ?? "America/New_York", locale); return `${s.day} · ${s.time}`; })() : null;
+  const bookedOn = chat.balance ? (() => { const s = sessionTime(new Date(chat.balance.startsAt), chat.balance.timezone, locale); return `${s.day} · ${s.time}`; })() : null;
   const ct = dict(brief.client_locale);
   // What the confirmation starts from: the artist's usual deposit and hours, the day and city the client asked for.
   const askedDate = brief.timing === "specific" ? (/\d{4}-\d{2}-\d{2}/.exec(brief.preferred_dates ?? "")?.[0] ?? null) : null;
   const defaults = { deposit: artist.default_deposit_cents != null ? artist.default_deposit_cents / 100 : null, hours: artist.default_session_hours ?? null, start: artist.default_start_time ?? null, date: askedDate, stopId: brief.tour_stop_id ?? null, client: brief.client_name.split(" ")[0] };
   // The booked date as the move form starts from it, in the artist's time zone.
-  const tz = stops[0]?.timezone ?? "America/New_York";
+  const tz = chat.balance?.timezone ?? stops[0]?.timezone ?? "America/New_York";
   const booking = chat.balance
     ? (() => {
         const start = new Date(chat.balance.startsAt);

@@ -52,7 +52,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
       <div className="poster flex min-h-dvh flex-col" style={theme}>
         <DemoBanner />
         {header}
-        <main className="mx-auto grid w-full max-w-2xl flex-1 content-start gap-10 px-4 pt-10 pb-20 sm:px-6 sm:pt-16">
+        <main className="mx-auto grid w-full max-w-2xl flex-1 grid-cols-[minmax(0,1fr)] content-start gap-10 px-4 pt-10 pb-20 sm:px-6 sm:pt-16">
           <div>
             <h1 className="t-display">{t.booked.title}</h1>
             <p className="mt-4 font-serif text-[1.4rem] text-vellum/90 italic">{fill(t.booked.lead, { date: dateLong(ap.starts_at, locale, ap.timezone) })}</p>
@@ -105,7 +105,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
     <div className="poster flex min-h-dvh flex-col" style={theme}>
       <DemoBanner />
       {header}
-      <main className="mx-auto grid w-full max-w-5xl flex-1 gap-10 px-4 pt-8 pb-20 sm:px-6 sm:pt-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16">
+      <main className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-[minmax(0,1fr)] gap-10 px-4 pt-8 pb-20 sm:px-6 sm:pt-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16">
         <section className="grid content-start gap-6">
           <div>
             <h1 className="t-title">{fill(q.title, { artist: quote.artist_name })}</h1>
