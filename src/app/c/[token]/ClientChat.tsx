@@ -62,6 +62,7 @@ export function ClientChat({ token, items, names, t, locale, pinned, project, ar
       chatToken={token}
       careLabels={careLabels}
       linkSuffix={linkSuffix}
+      pulse={`/api/chat/pulse?t=${token}`}
       onSend={(text) => sendClientMessage(token, text)}
     />
     </>

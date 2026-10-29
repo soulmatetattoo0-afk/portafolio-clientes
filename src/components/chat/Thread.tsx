@@ -37,7 +37,10 @@ export function Thread({
   project,
   careLabels,
   linkSuffix = "",
+  pulse,
 }: {
+  /** Where to ask, every few seconds while the chat is in view, whether anything new happened. */
+  pulse?: string;
   items: ChatItem[];
   /** Whose screen this is: their own messages sit on the right. */
   side: "client" | "artist";
@@ -87,6 +90,32 @@ export function Thread({
       window.removeEventListener("focus", onShow);
     };
   }, [router]);
+
+  // While the chat is in view, check every few seconds for news from the other side; reload only when there is some.
+  useEffect(() => {
+    if (!pulse) return;
+    let known: string | null = null;
+    let alive = true;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch(pulse, { cache: "no-store" });
+        if (!r.ok) return;
+        const { v } = (await r.json()) as { v: string };
+        if (!alive) return;
+        if (known !== null && v !== known) router.refresh();
+        known = v;
+      } catch {
+        /* offline for a moment: the next tick tries again */
+      }
+    };
+    void check();
+    const id = setInterval(check, 6000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [pulse, router]);
 
   // Each new message brings the bottom into view (not the first render: the page opens at the top).
   const seen = useRef(count);

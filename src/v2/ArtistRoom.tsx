@@ -44,7 +44,7 @@ export function ArtistRoom({ briefId, items, names, t, careLabels, toast, waitin
           {note}
         </div>
       )}
-      <Thread items={items} side="artist" names={names} t={t} locale={locale} pinned={pinned} project={project} afterPinned={afterPinned} careLabels={careLabels} onSend={(text) => sendArtistMessage(briefId, text)} />
+      <Thread items={items} side="artist" names={names} t={t} locale={locale} pinned={pinned} project={project} afterPinned={afterPinned} careLabels={careLabels} pulse={`/api/chat/pulse?b=${briefId}`} onSend={(text) => sendArtistMessage(briefId, text)} />
     </>
   );
 }
