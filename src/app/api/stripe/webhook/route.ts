@@ -4,7 +4,7 @@ import { recordBalance } from "@/lib/balance";
 import { confirmBooking } from "@/lib/booking";
 import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
-import { verifyWebhook } from "@/lib/payments";
+import { verifyWebhook, fromStripe } from "@/lib/payments";
 
 /**
  * Stripe Connect webhook (subscribe the endpoint to events "on connected accounts"):
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
               provider: "stripe",
               checkoutId: s.id,
               paymentIntentId: pi,
-              amountCents: s.amount_total ?? 0,
+              amountCents: fromStripe(s.amount_total, s.currency),
               currency: s.currency ?? "usd",
               feeCents: pending?.application_fee_cents ?? 0,
             });
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
           provider: "stripe",
           checkoutId: s.id,
           paymentIntentId: pi,
-          amountCents: s.amount_total ?? 0,
+          amountCents: fromStripe(s.amount_total, s.currency),
           currency: s.currency ?? "usd",
           feeCents: pending?.application_fee_cents ?? 0,
         });

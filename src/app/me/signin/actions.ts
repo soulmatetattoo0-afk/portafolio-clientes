@@ -33,12 +33,34 @@ export interface AccountState {
 const Username = z.string().trim().toLowerCase().regex(/^[a-z0-9._]{3,24}$/);
 const Password = z.string().min(8).max(200);
 
-/** Create an account: a username, an email and a password. */
+/** A free username from the email: "Soulmate.Tattoo0@gmail.com" → "soulmate.tattoo0", with a number if taken. */
+async function usernameFromEmail(email: string) {
+  const base = (email.split("@")[0] ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._]/g, "")
+    .slice(0, 20)
+    .padEnd(3, "0");
+  const db = await getDb();
+  for (let n = 0; n < 50; n++) {
+    const candidate = n === 0 ? base : `${base.slice(0, 20)}${n + 1}`;
+    if (!(await db.one(`select 1 from client_users where lower(username) = $1`, [candidate]))) return candidate;
+  }
+  return `${base.slice(0, 16)}${Date.now() % 100000}`;
+}
+
+/**
+ * Create an account. Clients pick a username (it is the name the artist sees);
+ * artists only give an email and a password, their name comes next, in
+ * "¿Cómo te conocen?", and the username is made from the email.
+ */
 export async function signUpClient(_prev: AccountState, form: FormData): Promise<AccountState> {
   const locale = await getLocale();
   const t = dict(locale).me.account;
-  const username = Username.safeParse(form.get("username"));
   const email = z.string().trim().toLowerCase().email().safeParse(form.get("email"));
+  const typed = form.get("username");
+  const username = Username.safeParse(typed === null && email.success ? await usernameFromEmail(email.data) : typed);
   const password = Password.safeParse(form.get("password"));
   const next = safeNext(form.get("next"));
   if (!username.success) return { error: t.usernameInvalid, sent: null };

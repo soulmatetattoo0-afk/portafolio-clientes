@@ -9,7 +9,7 @@ import { LangToggle } from "@/components/LangToggle";
 import { Mannequin, type MannequinHandle } from "@/components/Mannequin";
 import { fill, type Dict, type Locale } from "@/i18n";
 import { PaperCalendar } from "@/components/front/PaperCalendar";
-import { BUDGETS, STYLE_BY_SLUG, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
+import { budgetsFor, STYLE_BY_SLUG, STYLES, colorLabel, styleLabel } from "@/lib/catalog";
 import { dateRange, money, prettyDates } from "@/lib/format";
 import { BODY_HEIGHT_CM, GROUP_LABELS, MIN_DESIGN_CM, PAIN_COLORS, PAIN_LABELS, PAIN_LEVELS, PLACEMENTS, PLACEMENT_BY_SLUG, maxSizeFor, painFor, type BodyType, type Pain, type PlacementGroup } from "@/mannequin/catalog";
 import type { DesignPlacement } from "@/mannequin/engine";
@@ -277,8 +277,8 @@ export function BriefWizard({ t, locale, artist, styleImages, stops, storage, ta
 
   const budgets = useMemo(() => {
     const min = artist.minPriceCents ?? 0;
-    return BUDGETS.filter(([, max]) => max === null || max > min);
-  }, [artist.minPriceCents]);
+    return budgetsFor(artist.currency).filter(([, max]) => max === null || max > min);
+  }, [artist.minPriceCents, artist.currency]);
 
   /* ------------------------------------------------------------ navigation */
 

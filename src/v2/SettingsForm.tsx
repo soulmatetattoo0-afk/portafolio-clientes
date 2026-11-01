@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import { preparePortfolioUploads, quickArtist, setPortrait } from "@/app/studio/_legacy/actions";
 import { uploadFiles, type Storage } from "@/components/edit/upload";
-import type { Dict, Locale } from "@/i18n";
+import { fill, type Dict, type Locale } from "@/i18n";
 import { STYLES } from "@/lib/catalog";
 import type { Artist } from "@/lib/queries";
 
@@ -113,11 +113,11 @@ export function SettingsForm({ artist, storage, t, locale, only }: { artist: Art
         >
           <div className="grid grid-cols-2 gap-3">
             <label className="v2-field">
-              <span>{s.from}</span>
+              <span>{fill(s.from, { currency: artist.currency.toUpperCase() })}</span>
               <input type="number" inputMode="decimal" className="v2-input" min={0} value={v.min_price} onChange={(e) => set("min_price", e.target.value)} />
             </label>
             <label className="v2-field">
-              <span>{s.deposit}</span>
+              <span>{fill(s.deposit, { currency: artist.currency.toUpperCase() })}</span>
               <input type="number" inputMode="decimal" className="v2-input" min={0} value={v.default_deposit} onChange={(e) => set("default_deposit", e.target.value)} />
             </label>
           </div>

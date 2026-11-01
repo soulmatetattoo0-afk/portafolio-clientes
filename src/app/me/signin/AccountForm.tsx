@@ -33,8 +33,8 @@ const toUsername = (s: string) =>
     .replace(/[^a-z0-9._]/g, "")
     .slice(0, 24);
 
-/** The account: create one (username, email, password) or sign in with it. */
-export function AccountForm({ next, labels, initial = "create" }: { next: string; labels: AccountLabels; initial?: "create" | "enter" }) {
+/** The account: create one (username, email, password; artists skip the username) or sign in with it. */
+export function AccountForm({ next, labels, initial = "create", askUsername = true }: { next: string; labels: AccountLabels; initial?: "create" | "enter"; askUsername?: boolean }) {
   const [mode, setMode] = useState<"create" | "enter">(initial);
   const [up, signUp, upPending] = useActionState<AccountState, FormData>(signUpClient, EMPTY);
   const [inn, signIn, inPending] = useActionState<AccountState, FormData>(signInClient, EMPTY);
@@ -61,6 +61,7 @@ export function AccountForm({ next, labels, initial = "create" }: { next: string
       {mode === "create" ? (
         <form onSubmit={submitUp} className="grid gap-4">
           <input type="hidden" name="next" value={next} />
+          {askUsername && (
           <Field id="acc-username" label={labels.username} hint={labels.usernameHint}>
             <input
               id="acc-username"
@@ -78,6 +79,7 @@ export function AccountForm({ next, labels, initial = "create" }: { next: string
               }}
             />
           </Field>
+          )}
           <Field id="acc-email" label={labels.email}>
             <input id="acc-email" name="email" type="email" inputMode="email" autoComplete="email" required className="input" />
           </Field>

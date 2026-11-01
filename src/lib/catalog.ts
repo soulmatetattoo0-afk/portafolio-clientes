@@ -47,6 +47,21 @@ export const BUDGETS: [number, number | null][] = [
   [400000, null],
 ];
 
+/** Budget brackets in the artist's currency (amounts ×100, like every price in the app). */
+const BUDGETS_BY_CURRENCY: Record<string, [number, number | null][]> = {
+  clp: [
+    [15_000_000, 40_000_000],
+    [40_000_000, 80_000_000],
+    [80_000_000, 150_000_000],
+    [150_000_000, 300_000_000],
+    [300_000_000, null],
+  ],
+};
+
+export function budgetsFor(currency: string | null | undefined): [number, number | null][] {
+  return BUDGETS_BY_CURRENCY[(currency ?? "usd").toLowerCase()] ?? BUDGETS;
+}
+
 export const TIMEZONES = [
   "America/New_York",
   "America/Chicago",

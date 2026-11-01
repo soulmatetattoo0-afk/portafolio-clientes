@@ -51,6 +51,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <AccountForm
             next="/studio"
             initial={sp.mode === "create" ? "create" : "enter"}
+            askUsername={false}
             labels={{
               create: t.me.account.create,
               enter: t.me.account.enter,

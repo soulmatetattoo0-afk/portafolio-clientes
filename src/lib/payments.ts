@@ -3,6 +3,9 @@ import Stripe from "stripe";
 import { env, live } from "./env";
 
 let client: Stripe | null = null;
+
+/** Currencies Stripe charges in whole units, without cents. */
+const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);
 export function stripe(): Stripe {
   if (!env.stripeSecretKey) throw new Error("Stripe is not configured");
   client ??= new Stripe(env.stripeSecretKey, { appInfo: { name: "Vanta" } });
@@ -57,6 +60,9 @@ export interface DepositCheckout {
 
 /** A Checkout Session charged directly on the artist's account; the artist is the merchant and VANTA keeps its fee. */
 export async function createDepositCheckout(d: DepositCheckout) {
+  // Stripe counts zero-decimal currencies (CLP, JPY…) in whole units; the app keeps every amount ×100.
+  const zero = ZERO_DECIMAL.has(d.currency.toLowerCase());
+  const units = (cents: number) => (zero ? Math.round(cents / 100) : cents);
   const fee = Math.floor((d.amountCents * (d.feeBps ?? env.platformFeeBps)) / 10_000);
   const metadata = { quote_id: d.quoteId, slot_id: d.slotId ?? "", studio_id: d.studioId, kind: d.kind ?? "deposit", appointment_id: d.appointmentId ?? "" };
   const session = await stripe().checkout.sessions.create(
@@ -69,13 +75,13 @@ export async function createDepositCheckout(d: DepositCheckout) {
           quantity: 1,
           price_data: {
             currency: d.currency,
-            unit_amount: d.amountCents,
+            unit_amount: units(d.amountCents),
             product_data: { name: d.description },
           },
         },
       ],
       payment_intent_data: {
-        ...(fee > 0 ? { application_fee_amount: fee } : {}),
+        ...(fee > 0 ? { application_fee_amount: units(fee) } : {}),
         metadata,
       },
       metadata,
@@ -86,6 +92,12 @@ export async function createDepositCheckout(d: DepositCheckout) {
     { stripeAccount: d.accountId },
   );
   return { id: session.id, url: session.url!, fee };
+}
+
+/** An amount as Stripe reports it, back in the app's ×100 units. */
+export function fromStripe(amount: number | null | undefined, currency: string | null | undefined) {
+  const n = amount ?? 0;
+  return ZERO_DECIMAL.has((currency ?? "").toLowerCase()) ? n * 100 : n;
 }
 
 export function verifyWebhook(rawBody: string, signature: string | null) {

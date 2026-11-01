@@ -245,7 +245,7 @@ export function CajaBook({ month, bars, moves, forecast, exportHref, currency, t
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="v2-field">
-                  <span>{c.amount}</span>
+                  <span>{fill(c.amount, { currency: currency.toUpperCase() })}</span>
                   <input className="v2-input" type="number" inputMode="decimal" min={1} step="0.01" required value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
                 </label>
                 <label className="v2-field">

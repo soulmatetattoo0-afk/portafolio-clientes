@@ -249,7 +249,7 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
           </select>
         </label>
         <label className="v2-field">
-          <span>{c.price}</span>
+          <span>{fill(c.price, { currency: currency.toUpperCase() })}</span>
           <input type="number" inputMode="decimal" className="v2-input" min={1} value={v.price} onChange={set("price")} required />
         </label>
         <label className="v2-field">
@@ -257,7 +257,7 @@ export function ConfirmForm({ stops, defaults, currency, pending, t, locale, onC
           <input type="number" inputMode="numeric" className="v2-input" min={1} max={40} step={1} value={v.sessions} onChange={set("sessions")} required />
         </label>
         <label className="v2-field">
-          <span>{c.deposit}</span>
+          <span>{fill(c.deposit, { currency: currency.toUpperCase() })}</span>
           <input type="number" inputMode="decimal" className="v2-input" min={0} value={v.deposit} onChange={set("deposit")} required />
         </label>
       </div>
