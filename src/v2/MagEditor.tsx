@@ -21,7 +21,7 @@ const SHAPES: Record<Shape, number> = { square: 1, portrait: 3 / 4, landscape: 4
  * under the sheet: edit or delete the text (with its face, size, colour and
  * tilt), replace or delete the picture, change its frame or move the photo
  * inside it. Drag anything to move it. Add text, add a picture, add a page
- * (ten at most), delete a page. Save when done.
+ * (sixteen at most), move it earlier or later, delete it. Save when done.
  */
 export function MagEditor({ artist, initial, initialUrls, photos, storage, t, locale, back }: { artist: Artist; initial: MagDoc; initialUrls: Record<string, string>; photos: { key: string; url: string }[]; storage: Storage; t: Dict; locale: Locale; back: string }) {
   const m = t.v2.mag;
@@ -147,6 +147,15 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
     setTarget(null);
     setSelected(null);
   };
+  /** Swap the page with its neighbour; the editor follows it. */
+  const movePage = (i: number, by: -1 | 1) => {
+    const j = i + by;
+    if (j < 0 || j >= doc.pages.length) return;
+    const pages = [...doc.pages];
+    [pages[i], pages[j]] = [pages[j], pages[i]];
+    commit({ ...doc, pages });
+    setTarget(j);
+  };
   const shapeOf = (b: MagBox): Shape => {
     const r = b.w / (b.h / 1.5);
     return (Object.keys(SHAPES) as Shape[]).reduce((best, k) => (Math.abs(SHAPES[k] - r) < Math.abs(SHAPES[best] - r) ? k : best), "square" as Shape);
@@ -262,6 +271,10 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                         <span>{m.width}</span>
                         <input type="range" min={10} max={92} step={1} value={box.w} onChange={(e) => patch(box.id, { w: Number(e.target.value) })} className="accent-[var(--accent)]" />
                       </label>
+                      <label className="v2-field">
+                        <span>{m.height}</span>
+                        <input type="range" min={3} max={92} step={0.5} value={box.h} onChange={(e) => patch(box.id, { h: Number(e.target.value) })} className="accent-[var(--accent)]" />
+                      </label>
                       <div className="v2-field">
                         <span>{m.align}</span>
                         <div className="flex gap-1">
@@ -311,10 +324,16 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                         </button>
                       ))}
                     </div>
-                    <label className="v2-field">
-                      <span>{m.width}</span>
-                      <input type="range" min={10} max={92} step={1} value={box.w} onChange={(e) => patch(box.id, { w: Number(e.target.value), h: (Number(e.target.value) / SHAPES[shapeOf(box)]) * 1.5 })} className="accent-[var(--accent)]" />
-                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="v2-field">
+                        <span>{m.width}</span>
+                        <input type="range" min={10} max={92} step={1} value={box.w} onChange={(e) => patch(box.id, { w: Number(e.target.value), h: (box.h * Number(e.target.value)) / box.w })} className="accent-[var(--accent)]" />
+                      </label>
+                      <label className="v2-field">
+                        <span>{m.height}</span>
+                        <input type="range" min={5} max={92} step={0.5} value={box.h} onChange={(e) => patch(box.id, { h: Number(e.target.value) })} className="accent-[var(--accent)]" />
+                      </label>
+                    </div>
                   </div>
                 )}
                 {panel === "photo" && (
@@ -392,6 +411,16 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                     + {m.addImage}
                     <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" className="sr-only" onChange={async (e) => { const r = await upload(e.target.files); if (r) { setUrls((u) => ({ ...u, [r.key]: r.url })); addImage(r.key); } e.target.value = ""; }} />
                   </label>
+                  {!isCover && (
+                    <>
+                      <button type="button" className="v2-btn h-10 text-[0.8rem]" data-tone="ghost" disabled={target === 0} onClick={() => movePage(target, -1)}>
+                        {m.movePrev}
+                      </button>
+                      <button type="button" className="v2-btn h-10 text-[0.8rem]" data-tone="ghost" disabled={target === doc.pages.length - 1} onClick={() => movePage(target, 1)}>
+                        {m.moveNext}
+                      </button>
+                    </>
+                  )}
                   {!isCover && (
                     <button type="button" className="v2-btn h-10 text-[0.8rem]" data-tone="danger" onClick={() => deletePage(target)}>
                       {m.deletePage}
