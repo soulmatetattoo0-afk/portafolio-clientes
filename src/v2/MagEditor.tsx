@@ -77,7 +77,11 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
     setSelected(b.id);
     setPanel(null);
     drag.current = { id: b.id, x: ev.clientX, y: ev.clientY, start: b, moved: false };
-    (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
+    } catch {
+      // A pointer the browser no longer tracks: the drag still works without capture.
+    }
   };
   const onMove = (ev: React.PointerEvent) => {
     const d = drag.current;
@@ -231,7 +235,7 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
           </div>
 
           {/* What the chosen thing can do */}
-          <div className="v2-sheet mt-3 grid gap-3 p-3">
+          <div className="v2-sheet mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 *:min-w-0 p-3">
             {box?.kind === "text" && (
               <>
                 <div className="flex flex-wrap gap-2">
@@ -246,7 +250,7 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                   </button>
                 </div>
                 {panel === "text" && (
-                  <div className="grid gap-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 *:min-w-0">
                     <textarea className="v2-input" value={box.text ?? ""} placeholder={m.writeHere} maxLength={4000} onChange={(e) => patch(box.id, { text: e.target.value })} style={{ minHeight: "4.5rem" }} />
                     <div>
                       <p className="p-stamp mb-1.5 text-bone/60">{m.font}</p>
@@ -316,7 +320,7 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                   </button>
                 </div>
                 {panel === "frame" && (
-                  <div className="grid gap-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 *:min-w-0">
                     <div className="flex flex-wrap gap-2">
                       {(Object.keys(SHAPES) as Shape[]).map((s) => (
                         <button key={s} type="button" aria-pressed={shapeOf(box) === s} onClick={() => setShape(box, s)} className="rounded-full border border-bone/20 px-3 py-1.5 text-[0.8rem] aria-pressed:bg-bone aria-pressed:text-ink">
@@ -337,7 +341,7 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
                   </div>
                 )}
                 {panel === "photo" && (
-                  <div className="grid gap-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 *:min-w-0">
                     <label className="v2-field">
                       <span>{m.zoom}</span>
                       <input type="range" min={1} max={3} step={0.05} value={box.zoom ?? 1} onChange={(e) => patch(box.id, { zoom: Number(e.target.value) })} className="accent-[var(--accent)]" />
@@ -366,7 +370,7 @@ export function MagEditor({ artist, initial, initialUrls, photos, storage, t, lo
               </>
             )}
             {!box && (
-              <div className="grid gap-3">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 *:min-w-0">
                 {isCover && (
                   <>
                     <div className="flex flex-wrap gap-2">
