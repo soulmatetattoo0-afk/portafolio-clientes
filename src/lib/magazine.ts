@@ -15,7 +15,7 @@ export const PAGE_RATIO = 2 / 3;
 export const SAFE = 4;
 /** On the cover the masthead and the title line are ours; boxes live below them. */
 export const COVER_TOP = 24;
-export const MAX_PAGES = 10;
+export const MAX_PAGES = 16;
 export const MAX_BOXES = 24;
 
 export const FONTS = ["poster", "roman", "serif", "italic", "gothic", "script", "sans", "anton", "bebas", "oswald", "playfair", "abril", "marker", "typewriter", "fraktur", "neon", "retro", "hand", "dancing", "mono"] as const;

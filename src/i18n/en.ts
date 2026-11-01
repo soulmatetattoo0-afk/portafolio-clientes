@@ -1984,7 +1984,7 @@ const en = {
       addPage: "Add page",
       deletePage: "Delete page",
       deletePageConfirm: "Delete this page and everything on it?",
-      maxPages: "The magazine holds at most 10 pages.",
+      maxPages: "The magazine holds at most 16 pages.",
       save: "Save magazine",
       saving: "Saving…",
       saved: "Magazine saved",

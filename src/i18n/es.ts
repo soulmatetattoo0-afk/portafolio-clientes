@@ -1986,7 +1986,7 @@ const es: Dict = {
       addPage: "Añadir página",
       deletePage: "Eliminar página",
       deletePageConfirm: "¿Eliminar esta página y lo que tiene?",
-      maxPages: "La revista tiene un máximo de 10 páginas.",
+      maxPages: "La revista tiene un máximo de 16 páginas.",
       save: "Guardar revista",
       saving: "Guardando…",
       saved: "Revista guardada",
