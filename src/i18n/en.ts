@@ -1371,6 +1371,7 @@ const en = {
     },
     signin: {
       bookTitle: "Create your account",
+      artistHint: "You are signed in with your artist account. To try booking as a client, open it in a private window and create an account with another email.",
       bookLead: "So {artist} receives your quote under your name, create your account. Your quote stays saved and we email you every time they write.",
       title: "Your space on VANTA",
       lead: "One place for your requests, chats, sessions and the artists you follow.",

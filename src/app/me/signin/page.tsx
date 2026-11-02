@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getDict } from "@/i18n/server";
+import { getMember } from "@/lib/auth";
 import { getClientUser, safeNext } from "@/lib/client";
 import { live } from "@/lib/env";
 
@@ -34,6 +35,8 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
           <h1 className="p-display text-[clamp(2.8rem,13vw,4.2rem)] text-bone">{typeof sp.for === "string" ? s.bookTitle : s.title}</h1>
           <p className="p-quote mt-3 max-w-[34ch] text-[1.35rem] text-bone/85">{typeof sp.for === "string" ? s.bookLead.replace("{artist}", sp.for.slice(0, 60)) : s.lead}</p>
         </div>
+        {/* An artist trying their own booking: they need a client account of their own to see it as a client does. */}
+        {(await getMember().catch(() => null)) && <p className="rounded-[14px] border border-bone/20 px-4 py-3 text-[0.92rem] text-bone/80">{s.artistHint}</p>}
         {sp.error === "link" && (
           <p role="alert" className="rounded-[14px] border border-ember/50 px-4 py-3 text-[0.92rem] text-ember">
             {s.invalid}

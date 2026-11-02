@@ -51,7 +51,7 @@ export function Front({
         </span>
         <span className="h-px flex-1 bg-bone/40" aria-hidden />
         {!owner && (
-          <ChatBubble chats={chats} artist={artist.display_name} requestHref={`${base}/request?ref=chat`} signInHref={`/me/signin?mode=enter&next=${encodeURIComponent(base)}`} t={t.artist.chats} locale={locale} />
+          <ChatBubble chats={chats} artist={artist.display_name} requestHref={`/${artist.slug}/request?ref=chat`} signInHref={`/me/signin?mode=enter&next=${encodeURIComponent(base)}`} t={t.artist.chats} locale={locale} />
         )}
         <LangToggle locale={locale} label={t.common.language} title={t.common.languageLabel} />
       </div>
@@ -87,7 +87,7 @@ export function Front({
         <Door href={`${base}/fechas`} n={3} title={f.dates} caption={f.datesSub} image={null} icon="calendar">
           <Sheet month={month} />
         </Door>
-        <Link href={artist.accepting ? `${base}/request?ref=screen` : `${base}/fechas`} className={`ed-tile ed-book col-span-2 ${artist.accepting ? "" : "ed-book-closed"} text-left`}>
+        <Link href={artist.accepting ? `/${artist.slug}/request?ref=screen` : `${base}/fechas`} className={`ed-tile ed-book col-span-2 ${artist.accepting ? "" : "ed-book-closed"} text-left`}>
           {images.book && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={images.book} alt="" aria-hidden className="ed-book-art absolute inset-y-0 right-0 h-full w-[62%] object-cover" />

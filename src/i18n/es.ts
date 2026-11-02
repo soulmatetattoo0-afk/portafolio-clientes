@@ -1373,6 +1373,7 @@ const es: Dict = {
     },
     signin: {
       bookTitle: "Crea tu cuenta",
+      artistHint: "Estás con tu cuenta de artista. Para probar la reserva como un cliente, ábrela en una ventana privada y crea una cuenta con otro correo.",
       bookLead: "Para que {artist} reciba tu cotización a tu nombre, crea tu cuenta. Así tu cotización queda guardada y te avisamos a tu correo cada vez que te escriba.",
       title: "Tu espacio en VANTA",
       lead: "Un solo lugar para tus solicitudes, chats, sesiones y los artistas que sigues.",
