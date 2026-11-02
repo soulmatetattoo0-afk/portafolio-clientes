@@ -1971,6 +1971,11 @@ const en = {
       empty: "No work published yet.",
       more: "More work",
       swipe: "Slide with your thumb to turn the styles.",
+      door: "Obras door picture",
+      doorHint: "This is how it looks on your page. The left side carries the title: pick a wide photo with what matters on the right.",
+      doorUpload: "Upload a photo",
+      doorPick: "Pick from my work",
+      doorReset: "Use my first piece",
       openStyle: "Tap to open",
     },
     mag: {

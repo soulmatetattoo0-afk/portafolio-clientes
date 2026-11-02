@@ -46,7 +46,7 @@ export async function FrontPage({ artist, owner, base }: { artist: Artist; owner
   const pieces = portfolio.filter((p) => p.url);
   const cover = magazine.doc.cover;
   const poster = cover.mode === "poster" && cover.poster ? (magazine.urls[cover.poster] ?? null) : null;
-  const images = { work: pieces[0]?.url ?? null, magazine: poster ?? artist.portrait_url ?? pieces[1]?.url ?? null, book: pieces[2]?.url ?? pieces[0]?.url ?? null };
+  const images = { work: artist.work_cover_url ?? pieces[0]?.url ?? null, magazine: poster ?? artist.portrait_url ?? pieces[1]?.url ?? null, book: pieces[2]?.url ?? pieces[0]?.url ?? null };
   // This month at the home studio: free days solid.
   const home = stops.find((s) => s.is_home);
   const busy = new Set(home ? (taken[home.id] ?? []) : []);

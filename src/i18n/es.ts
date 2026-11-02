@@ -1973,6 +1973,11 @@ const es: Dict = {
       empty: "Aún no hay obra publicada.",
       more: "Más obra",
       swipe: "Desliza con el pulgar para girar los estilos.",
+      door: "Imagen de la puerta Obras",
+      doorHint: "Así se ve en tu página. El lado izquierdo lleva el título: elige una foto ancha con lo importante a la derecha.",
+      doorUpload: "Subir una foto",
+      doorPick: "Elegir de mis obras",
+      doorReset: "Usar mi primera obra",
       openStyle: "Toca para ver",
     },
     mag: {

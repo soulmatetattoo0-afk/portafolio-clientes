@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 
-import { addPiecesToSection, addSection, deletePortfolioItem, deleteSection, preparePortfolioUploads, quickPiece, replacePiece, setFraming } from "@/app/studio/_legacy/actions";
+import { addPiecesToSection, addSection, deletePortfolioItem, deleteSection, preparePortfolioUploads, quickPiece, replacePiece, setFraming, setWorkCover, setWorkCoverUpload } from "@/app/studio/_legacy/actions";
 import { uploadFiles, type Storage } from "@/components/edit/upload";
 import { fill, type Dict, type Locale } from "@/i18n";
 import { STYLES, styleLabel } from "@/lib/catalog";
@@ -17,7 +17,7 @@ import { Framed, groupPieces } from "./Work";
  * shows large in its 4:5 window with three things to do under it: replace
  * it, frame it (drag to move, slide to zoom) or delete it.
  */
-export function WorkEditor({ pieces, sections, storage, t, locale, back }: { pieces: PortfolioItem[]; sections: PortfolioSection[]; storage: Storage; t: Dict; locale: Locale; back: string }) {
+export function WorkEditor({ pieces, sections, cover, storage, t, locale, back }: { pieces: PortfolioItem[]; sections: PortfolioSection[]; cover: string | null; storage: Storage; t: Dict; locale: Locale; back: string }) {
   const w = t.v2.work;
   const router = useRouter();
   const [sectionId, setSectionId] = useState<string | null>(null);
@@ -97,7 +97,8 @@ export function WorkEditor({ pieces, sections, storage, t, locale, back }: { pie
         </div>
       ) : (
         <div className="px-3 pt-3">
-          <p className="px-1 pb-3 text-[1.05rem] text-bone/85">{w.which}</p>
+          <DoorCover cover={cover ?? pieces[0]?.url ?? null} chosen={Boolean(cover)} pieces={pieces} t={t} pending={pending} run={run} storage={storage} />
+          <p className="px-1 pt-5 pb-3 text-[1.05rem] text-bone/85">{w.which}</p>
           <ul className="grid gap-2">
             {list.map((s) => (
               <li key={s.id}>
@@ -316,5 +317,66 @@ function PieceEditor({ piece, sections, storage, t, pending, error, run, onDelet
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The picture behind the Obras door on the artist's page, previewed as the
+ * door itself: the dark side carries the word, so the picture's focus belongs
+ * on the right. A wide photo of their own, one of their pieces, or the first
+ * piece of the work.
+ */
+function DoorCover({ cover, chosen, pieces, t, pending, run, storage }: { cover: string | null; chosen: boolean; pieces: PortfolioItem[]; t: Dict; pending: boolean; run: (fn: () => Promise<unknown>, then?: () => void) => void; storage: Storage }) {
+  const w = t.v2.work;
+  const [picking, setPicking] = useState(false);
+  return (
+    <section className="v2-sheet grid gap-3 p-3">
+      <p className="p-stamp px-1 text-bone/60">{w.door}</p>
+      <div className="relative aspect-[366/298] w-full overflow-hidden rounded-[18px] bg-ink">
+        {cover && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        )}
+        <span aria-hidden className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgb(10 10 10 / 0.82) 0%, rgb(10 10 10 / 0.45) 45%, rgb(10 10 10 / 0.05) 80%), linear-gradient(0deg, rgb(10 10 10 / 0.5), transparent 40%)" }} />
+        <span aria-hidden className="p-display absolute top-6 left-4 text-[3.2rem] uppercase leading-none text-bone">{t.v2.front.work}</span>
+      </div>
+      <p className="px-1 text-[0.82rem] leading-snug text-bone/60">{w.doorHint}</p>
+      <div className="flex flex-wrap gap-2">
+        <label className={`v2-btn h-10 cursor-pointer text-[0.8rem] ${pending ? "pointer-events-none opacity-60" : ""}`} data-tone="accent">
+          {w.doorUpload}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            disabled={pending}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) run(async () => {
+                const up = await uploadFiles(preparePortfolioUploads, [file], storage);
+                if (up) await setWorkCoverUpload(up.token, up.keys[0]);
+              });
+            }}
+          />
+        </label>
+        <button type="button" className="v2-btn h-10 text-[0.8rem]" data-tone={picking ? "accent" : "ghost"} onClick={() => setPicking((v) => !v)}>
+          {w.doorPick}
+        </button>
+        {chosen && (
+          <button type="button" className="v2-btn h-10 text-[0.8rem]" data-tone="ghost" disabled={pending} onClick={() => run(() => setWorkCover(null))}>
+            {w.doorReset}
+          </button>
+        )}
+      </div>
+      {picking && (
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+          {pieces.map((p) => (
+            <button key={p.id} type="button" disabled={pending} onClick={() => run(() => setWorkCover(p.id), () => setPicking(false))} className="h-20 w-16 shrink-0 overflow-hidden rounded-[10px]">
+              <Framed item={p} className="h-full w-full" />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

@@ -1272,6 +1272,33 @@ export async function setCalendarArt(uploadToken: string, key: string) {
   revalidatePath("/", "layout");
 }
 
+/** The picture behind the Obras door: a wide photo the artist uploads. */
+export async function setWorkCoverUpload(uploadToken: string, key: string) {
+  const member = await requireMember();
+  const draftId = readDraftToken(uploadToken);
+  if (!draftId || !(await inspectUpload(draftId, key))) return;
+  const { moveDraftToPublic } = await import("@/lib/storage-move");
+  await putWorkCover(member, await moveDraftToPublic(key, `door/${member.artistId}`));
+}
+
+/** The picture behind the Obras door: one of the artist's own pieces, or none (the first piece of the work). */
+export async function setWorkCover(pieceId: string | null) {
+  const member = await requireMember();
+  if (!pieceId) return putWorkCover(member, null);
+  const db = await getDb();
+  const piece = await db.one<{ image_path: string }>(`select image_path from portfolio_items where id = $1 and artist_id = $2 and image_path is not null`, [pieceId, member.artistId]);
+  if (piece) await putWorkCover(member, piece.image_path);
+}
+
+async function putWorkCover(member: Member, key: string | null) {
+  const db = await getDb();
+  const old = await db.one<{ work_cover_path: string | null }>(`select work_cover_path from artists where id = $1 and studio_id = $2`, [member.artistId, member.studioId]);
+  await db.query(`update artists set work_cover_path = $3 where id = $1 and studio_id = $2`, [member.artistId, member.studioId, key]);
+  // Only a picture uploaded for the door goes away with it; a piece of the work stays in the work.
+  if (old?.work_cover_path && old.work_cover_path !== key && old.work_cover_path.startsWith("door/")) await removeFile("public", old.work_cover_path).catch(() => undefined);
+  revalidatePath("/", "layout");
+}
+
 /** The cover of one city's calendar: a photo of the city, a piece, the artist's face. */
 export async function setStopCover(stopId: string, uploadToken: string, key: string) {
   const member = await requireMember();

@@ -53,6 +53,8 @@ export interface Artist {
   launched_at: Date | string | null;
   /** The illustration across the top of the paper calendar, when the artist set one. */
   calendar_art_url: string | null;
+  /** The picture behind the Obras door, when the artist chose one. */
+  work_cover_url: string | null;
   precare: string | null;
   postcare: string | null;
 }
@@ -127,17 +129,18 @@ const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bi
   a.min_price_cents, a.currency, a.deposit_policy, a.default_deposit_cents, a.default_session_hours::float as default_session_hours, a.default_start_time,
   a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready,
   a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path,
-  a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed, a.layout, a.launched_at, a.calendar_art_path, a.precare, a.postcare`;
+  a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed, a.layout, a.launched_at, a.calendar_art_path, a.work_cover_path, a.precare, a.postcare`;
 
-type ArtistRow = Omit<Artist, "portrait_url" | "calendar_art_url"> & { portrait_path: string | null; calendar_art_path: string | null };
+type ArtistRow = Omit<Artist, "portrait_url" | "calendar_art_url" | "work_cover_url"> & { portrait_path: string | null; calendar_art_path: string | null; work_cover_path: string | null };
 
 async function withPortrait(row: ArtistRow | null): Promise<Artist | null> {
   if (!row) return null;
-  const { portrait_path, calendar_art_path, ...a } = row;
+  const { portrait_path, calendar_art_path, work_cover_path, ...a } = row;
   return {
     ...a,
     portrait_url: portrait_path ? await fileUrl("public", portrait_path) : null,
     calendar_art_url: calendar_art_path ? await fileUrl("public", calendar_art_path) : null,
+    work_cover_url: work_cover_path ? await fileUrl("public", work_cover_path) : null,
   };
 }
 
