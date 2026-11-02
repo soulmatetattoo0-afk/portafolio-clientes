@@ -22,7 +22,9 @@ export async function POST(request: Request) {
   const type = body.type ?? url.searchParams.get("type") ?? url.searchParams.get("topic") ?? "";
   const id = String(body.data?.id ?? url.searchParams.get("data.id") ?? url.searchParams.get("id") ?? "");
   if (!id) return Response.json({ received: true });
-  if (!verifyNotification(request.headers, url.searchParams.get("data.id") ?? id)) return new Response("Invalid signature", { status: 401 });
+  // A bad signature is noted, not refused: Mercado Pago may not sign notifications sent to a preference's own URL, and
+  // nothing here is taken from the notification anyway (each payment or subscription is re-read from the API).
+  if (!verifyNotification(request.headers, url.searchParams.get("data.id") ?? id)) console.warn("mp webhook: signature did not match", type, id);
 
   const db = await getDb();
   try {
