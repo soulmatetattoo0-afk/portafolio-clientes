@@ -640,6 +640,50 @@ export async function refreshStripeStatus() {
   await db.query(`update artists set stripe_charges_enabled = $2 where id = $1`, [member.artistId, ready]);
 }
 
+/** Unlink the artist's Mercado Pago: their clients pay them directly again until they link it once more. */
+export async function unlinkMercadoPago() {
+  const member = await requireMember();
+  const { unlinkArtist } = await import("@/lib/mercadopago");
+  await unlinkArtist(await getDb(), member.artistId);
+  revalidatePath("/studio", "layout");
+}
+
+/** VANTA Pro from Chile: a monthly Mercado Pago subscription the artist approves on Mercado Pago. */
+export async function startProSubscription() {
+  const member = await requireMember();
+  if (!live.mp || !env.mpAccessToken) redirect("/studio/sala/pro?pro=off");
+  const { createSubscription } = await import("@/lib/mercadopago");
+  const db = await getDb();
+  const sub = await createSubscription({ studioId: member.studioId, email: member.email, backUrl: `${env.appUrl}/studio/sala/pro?pro=back` });
+  await db.query(`update studios set mp_preapproval_id = $2 where id = $1`, [member.studioId, sub.id]);
+  redirect(sub.init_point!);
+}
+
+/** Back from Mercado Pago, or a tap on "Ya pagué": ask Mercado Pago how the subscription stands. */
+export async function refreshProSubscription() {
+  const member = await requireMember();
+  if (!live.mp || !env.mpAccessToken) return;
+  const db = await getDb();
+  const row = await db.one<{ mp_preapproval_id: string | null }>(`select mp_preapproval_id from studios where id = $1`, [member.studioId]);
+  if (!row?.mp_preapproval_id) return;
+  const { getSubscription } = await import("@/lib/mercadopago");
+  const sub = await getSubscription(row.mp_preapproval_id);
+  if (sub.status === "authorized") await db.query(`update studios set plan = 'full', subscription_status = 'active' where id = $1 and plan <> 'founding'`, [member.studioId]);
+}
+
+/** Stop VANTA Pro at Mercado Pago; the studio goes back to the free plan. */
+export async function cancelProSubscription() {
+  const member = await requireMember();
+  const db = await getDb();
+  const row = await db.one<{ mp_preapproval_id: string | null }>(`select mp_preapproval_id from studios where id = $1`, [member.studioId]);
+  if (row?.mp_preapproval_id && live.mp && env.mpAccessToken) {
+    const { cancelSubscription } = await import("@/lib/mercadopago");
+    await cancelSubscription(row.mp_preapproval_id).catch((e) => console.error("mp cancel subscription failed", e));
+  }
+  await db.query(`update studios set subscription_status = 'canceled', plan = case when plan = 'founding' then plan else 'basic' end where id = $1`, [member.studioId]);
+  revalidatePath("/studio", "layout");
+}
+
 export async function calendarFeedUrl() {
   const member = await requireMember();
   const { sign } = await import("@/lib/util");
@@ -1007,6 +1051,12 @@ export async function cancelBooking(briefId: string, refund: boolean): Promise<{
     [briefId, member.studioId],
   );
   if (!ap) return { error: dict(await getLocale()).agenda.invalid };
+  // A deposit paid with Mercado Pago goes back to the client's card on its own; if that fails, nothing is cancelled.
+  if (refund) {
+    const { refundDeposit } = await import("@/lib/refunds");
+    const r = await refundDeposit(db, { studioId: member.studioId, artistId: member.artistId, appointmentId: ap.id, quoteId: ap.quote_id });
+    if (r === "failed") return { error: dict(await getLocale()).chat.refundFailed };
+  }
   await tellClient(member, ap.id, ({ date, locale }) => {
     const l = dict(locale);
     const back = refund && ap.deposit_cents ? ` ${fill(l.chat.refundNote, { amount: money(ap.deposit_cents, ap.currency ?? "usd", locale) })}` : "";

@@ -73,7 +73,7 @@ export async function loadBalance(db: Db, briefId: string): Promise<Balance | nu
 
 interface RecordArgs {
   appointmentId: string;
-  provider: "stripe" | "demo" | "manual";
+  provider: "stripe" | "demo" | "manual" | "mercadopago";
   checkoutId: string;
   paymentIntentId?: string | null;
   amountCents: number;

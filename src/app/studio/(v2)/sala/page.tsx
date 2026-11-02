@@ -85,7 +85,11 @@ export default async function RoomPage() {
     [r.tile.prices, "/studio/sala/precios", <path key="p" d="M3 10l7-7h7v7l-7 7zM13.5 6.5h.01" />, Boolean(artist.default_deposit_cents)],
     [r.tile.styles, "/studio/sala/estilos", <path key="s" d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z" />, artist.styles.length > 0],
     [r.tile.care, "/studio/sala/cuidados", <path key="c" d="M10 17s-6-3.6-6-8a3.5 3.5 0 0 1 6-2.4A3.5 3.5 0 0 1 16 9c0 4.4-6 8-6 8z" />, Boolean(artist.precare && artist.postcare)],
-    [r.tile.stripe, "/studio/sala/stripe", <path key="t" d="M3 6h14v9H3zM3 9h14" />, artist.stripe_charges_enabled],
+    // Chile takes payments with Mercado Pago; elsewhere, Stripe.
+    artist.currency === "clp"
+      ? [r.tile.payments, "/studio/sala/cobros", <path key="t" d="M3 6h14v9H3zM3 9h14" />, artist.mp_ready]
+      : [r.tile.stripe, "/studio/sala/stripe", <path key="t" d="M3 6h14v9H3zM3 9h14" />, artist.stripe_charges_enabled],
+    [r.tile.pro, "/studio/sala/pro", <path key="v" d="M10 3l2.2 4.6 5 .6-3.7 3.4 1 5L10 14.2 5.5 16.6l1-5L2.8 8.2l5-.6z" />, member.plan !== "basic"],
     [r.tile.push, "/studio/sala/avisos", <path key="n" d="M6 14V9a4 4 0 0 1 8 0v5l1.5 1.5h-11zM8.5 17h3" />, true],
     [r.tile.magazine, "/studio/revista", <path key="m" d="M5 3h10v14H5zM8 7h4M8 10h4" />, true],
   ];

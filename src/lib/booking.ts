@@ -16,7 +16,7 @@ export class SlotTakenError extends Error {
 interface ConfirmArgs {
   quoteId: string;
   slotId: string;
-  provider: "stripe" | "demo" | "manual";
+  provider: "stripe" | "demo" | "manual" | "mercadopago";
   checkoutId: string;
   paymentIntentId?: string | null;
   amountCents: number;

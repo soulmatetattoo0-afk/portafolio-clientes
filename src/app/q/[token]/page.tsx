@@ -7,8 +7,9 @@ import { fill } from "@/i18n";
 import { getDict } from "@/i18n/server";
 import { colorLabel, styleLabel } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
-import { live, paysDirect } from "@/lib/env";
+import { cardProvider, live, paysDirect } from "@/lib/env";
 import { cmLabel, dateLong, money, moneyRange, placeLine, requestTime, sessionTime } from "@/lib/format";
+import { serviceFee } from "@/lib/mercadopago";
 import { placementLabel } from "@/lib/messages";
 import { getQuoteByToken } from "@/lib/queries";
 
@@ -31,6 +32,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
     await db.query(`update quotes set status = 'viewed' where id = $1 and status = 'sent'`, [quote.id]);
   }
   const now = requestTime();
+  const mp = cardProvider(quote.stripe_charges_enabled, quote.mp_ready) === "mercadopago";
   const expired = quote.status !== "paid" && new Date(quote.expires_at).getTime() < now;
   const placement = placementLabel(quote.placement, locale);
   // The offer lives inside the artist's app: their colour, and the arrow back to the chat it came from.
@@ -155,6 +157,16 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
               {quote.slots.every((s) => s.status === "booked" || s.status === "released") ? (
                 <p className="rounded-[var(--radius-md)] border border-line p-5 text-ash">{fill(q.noDates, { artist: quote.artist_name })}</p>
               ) : (
+                <>
+                {mp && (
+                  // Paid in the app (Chile): what the deposit is, what the service adds, and when it comes back.
+                  <div className="grid gap-1.5 rounded-[var(--radius-md)] border border-line p-4 text-[0.9rem]">
+                    <p className="flex justify-between gap-3"><span className="text-ash">{q.mpDeposit}</span><span>{money(quote.deposit_cents, quote.currency, locale)}</span></p>
+                    <p className="flex justify-between gap-3"><span className="text-ash">{q.mpFee}</span><span>{money(serviceFee(quote.deposit_cents), quote.currency, locale)}</span></p>
+                    <p className="flex justify-between gap-3 border-t border-line pt-1.5 font-semibold"><span>{q.mpTotal}</span><span>{money(quote.deposit_cents + serviceFee(quote.deposit_cents), quote.currency, locale)}</span></p>
+                    <p className="pt-1 text-[0.82rem] leading-snug text-ash">{q.mpPolicy}</p>
+                  </div>
+                )}
                 <PayForm
                   from={sp.from === "studio" ? "studio" : undefined}
                   token={token}
@@ -171,13 +183,16 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                     chooseDate: q.chooseDate,
                     chooseDateHint: q.chooseDateHint,
                     agree: q.agree,
-                    pay: fill(paysDirect(quote.stripe_charges_enabled) ? q.payDirect : live.payments ? q.pay : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
+                    pay: mp
+                      ? fill(q.payMp, { amount: money(quote.deposit_cents + serviceFee(quote.deposit_cents), quote.currency, locale) })
+                      : fill(paysDirect(quote.stripe_charges_enabled, quote.mp_ready) ? q.payDirect : live.payments ? q.pay : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
                     redirecting: q.redirecting,
                     dateRequired: q.dateRequired,
                     agreeRequired: q.agreeRequired,
                     taken: q.slotTaken,
                   }}
                 />
+                </>
               )}
               <p className="text-[0.85rem] text-ash-dim">
                 {fill(q.validUntil, { date: dateLong(quote.expires_at, locale) })} {fill(q.secure, { artist: quote.artist_name })}

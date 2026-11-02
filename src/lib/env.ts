@@ -25,6 +25,23 @@ export const env = {
   /** VANTA's share of every payment made in the app (deposit and balance), in basis points: Basic, then Full. */
   platformFeeBps: Number(read("PLATFORM_FEE_BPS") ?? "500"),
   platformFeeFullBps: Number(read("PLATFORM_FEE_FULL_BPS") ?? "300"),
+  /** Mercado Pago (Chile): VANTA's application, which artists link their own accounts to. */
+  mpClientId: read("MP_CLIENT_ID"),
+  /** Mercado Pago's API; a local stand-in can take its place in tests. */
+  mpApiBase: read("MP_API_BASE") ?? "https://api.mercadopago.com",
+  mpClientSecret: read("MP_CLIENT_SECRET"),
+  /** VANTA's own account token: the artists' Pro subscriptions are charged to it. */
+  mpAccessToken: read("MP_ACCESS_TOKEN"),
+  /** The secret Mercado Pago signs its notifications with (Your integrations → Webhooks). */
+  mpWebhookSecret: read("MP_WEBHOOK_SECRET"),
+  /** What Mercado Pago keeps of a payment, VAT included, in basis points: VANTA absorbs it out of the service fee. */
+  mpFeeBps: Number(read("MP_FEE_BPS") ?? "380"),
+  /** The client's service fee on a deposit paid in the app, in basis points, with a floor and an optional ceiling (×100 units; 0 = none). */
+  serviceFeeBps: Number(read("SERVICE_FEE_BPS") ?? "800"),
+  serviceFeeMinCents: Number(read("SERVICE_FEE_MIN_CENTS") ?? "199000"),
+  serviceFeeMaxCents: Number(read("SERVICE_FEE_MAX_CENTS") ?? "0"),
+  /** VANTA Pro in Chile, pesos a month. */
+  proPriceClp: Number(read("PRO_PRICE_CLP") ?? "9990"),
   resendApiKey: read("RESEND_API_KEY"),
   /** Until VANTA has its own domain: mail goes out through a Gmail account with an app password. */
   smtpUser: read("SMTP_USER"),
@@ -52,6 +69,7 @@ export const live = {
   auth: Boolean(env.supabaseUrl && env.supabaseAnonKey),
   storage: Boolean(env.supabaseUrl && env.supabaseServiceKey),
   payments: Boolean(env.stripeSecretKey),
+  mp: Boolean(env.mpClientId && env.mpClientSecret),
   email: Boolean(env.resendApiKey || (env.smtpUser && env.smtpPass)),
 };
 
@@ -74,6 +92,12 @@ export const SOVA_EMAIL = "tattoo.by.sova@gmail.com";
  */
 export const demoMode = !live.db || read("VANTA_DEMO") === "1";
 /** A real deployment without Stripe yet: the client pays the artist directly and the artist confirms it in the app. */
-export const manualPayments = !demoMode && !live.payments;
-/** For one artist: direct payments until their own Stripe account can take cards (and always while VANTA has no Stripe). */
-export const paysDirect = (chargesEnabled: boolean) => !demoMode && (!live.payments || !chargesEnabled);
+export const manualPayments = !demoMode && !live.payments && !live.mp;
+/**
+ * For one artist: direct payments until their own account can take payments in
+ * the app, Stripe (with VANTA's Stripe live) or Mercado Pago (with VANTA's
+ * Mercado Pago application live).
+ */
+export const paysDirect = (stripeReady: boolean, mpReady = false) => !demoMode && !(live.payments && stripeReady) && !(live.mp && mpReady);
+/** Which provider takes this artist's payments in the app: Mercado Pago first (Chile), then Stripe. */
+export const cardProvider = (stripeReady: boolean, mpReady: boolean): "mercadopago" | "stripe" | null => (live.mp && mpReady ? "mercadopago" : live.payments && stripeReady ? "stripe" : null);

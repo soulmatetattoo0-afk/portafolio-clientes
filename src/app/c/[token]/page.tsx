@@ -15,10 +15,10 @@ import { ArtistTabs, ClientTabs } from "@/v2/Shell";
 import { BarAction, BarSummary, type BarTone } from "@/v2/ProjectBar";
 import { fill } from "@/i18n";
 import { styleLabel } from "@/lib/catalog";
-import { money, sessionTime } from "@/lib/format";
+import { money, requestTime, sessionTime } from "@/lib/format";
 import { placementLabel } from "@/lib/messages";
 
-import { payBalance } from "./actions";
+import { cancelMyBooking, payBalance } from "./actions";
 import { ClientChat } from "./ClientChat";
 
 export async function generateMetadata({ params }: PageProps<"/c/[token]">): Promise<Metadata> {
@@ -45,7 +45,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
   const c = t.chat;
   const accent = thread.artist.accent ?? "#d8552f";
   // Where the project stands, seen from the client's side, and their next step.
-  const direct = paysDirect(thread.artist.charges);
+  const direct = paysDirect(thread.artist.charges, thread.artist.mp);
   const suffix = fromStudio ? "?from=studio" : "";
   const answered = thread.items.some((i) => i.actor === "artist");
   const offers = thread.items.filter((i) => i.kind === "offer" && i.offer).map((i) => i.offer!);
@@ -54,6 +54,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
   const requested = open && thread.items.some((i) => i.request);
   const when = bookedOffer?.starts_at && bookedOffer.timezone ? sessionTime(new Date(bookedOffer.starts_at), bookedOffer.timezone, locale) : null;
   const b = thread.balance;
+  const nowMs = requestTime();
   const rest = b?.amountCents != null ? money(b.amountCents, b.currency, locale) : "";
   const bar: { status: string; tone: BarTone; action?: React.ComponentProps<typeof BarAction> } =
     b?.paid
@@ -61,7 +62,20 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
       : b
         ? b.open && b.amountCents != null && !direct
           ? { status: fill(c.bar.booked, { date: when ? `${when.day} · ${when.time}` : "" }), tone: "green", action: { label: fill(c.bar.payRest, { amount: rest }), action: payBalance.bind(null, token) } }
-          : { status: b.requested && direct ? fill(c.bar.payDirect, { amount: rest, artist: thread.artist.name }) : fill(c.bar.booked, { date: when ? `${when.day} · ${when.time}` : "" }), tone: b.requested ? "amber" : "green" }
+          : {
+              status: b.requested && direct ? fill(c.bar.payDirect, { amount: rest, artist: thread.artist.name }) : fill(c.bar.booked, { date: when ? `${when.day} · ${when.time}` : "" }),
+              tone: b.requested ? "amber" : "green",
+              // Before the session, the client can cancel: seven days ahead the deposit comes back, later it stays with the artist.
+              action:
+                me && !fromStudio && !b.open && bookedOffer?.starts_at && new Date(bookedOffer.starts_at).getTime() > nowMs
+                  ? {
+                      label: c.cancel.button,
+                      tone: "ghost",
+                      action: cancelMyBooking.bind(null, token),
+                      confirm: new Date(bookedOffer.starts_at).getTime() - nowMs >= 7 * 86_400_000 ? c.cancel.confirmRefund : c.cancel.confirmLate,
+                    }
+                  : undefined,
+            }
         : requested
           ? { status: fill(c.bar.requested, { artist: thread.artist.name, amount: open ? money(open.deposit_cents, open.currency, locale) : "" }), tone: "amber" }
           : open
@@ -113,7 +127,7 @@ export default async function ChatPage({ params, searchParams }: PageProps<"/c/[
           balance={thread.balance}
           careLabels={{ download: t.care.download, from: t.care.from }}
           linkSuffix={fromStudio ? "?from=studio" : ""}
-          direct={paysDirect(thread.artist.charges)}
+          direct={direct}
         />
       </main>
       {fromStudio ? (

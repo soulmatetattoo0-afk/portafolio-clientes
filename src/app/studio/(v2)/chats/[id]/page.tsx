@@ -53,7 +53,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
       })()
     : null;
   // VANTA's word on where the project stands, and the next step as one red key.
-  const direct = paysDirect(artist.stripe_charges_enabled);
+  const direct = paysDirect(artist.stripe_charges_enabled, artist.mp_ready);
   const request = stage === "offered" ? [...chat.items].reverse().find((i) => i.request) : undefined;
   const owed = chat.balance?.amountCents != null ? money(chat.balance.amountCents, chat.balance.currency, locale) : "";
   const bar: { status: string; tone: BarTone; action?: React.ComponentProps<typeof BarAction> } =
@@ -95,7 +95,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
             bookedOn={bookedOn}
             chatToken={chat.chat_token}
             demo={demoMode}
-            direct={paysDirect(artist.stripe_charges_enabled)}
+            direct={paysDirect(artist.stripe_charges_enabled, artist.mp_ready)}
             stops={stops.map((s) => ({ id: s.id, label: s.is_home ? [s.studio_name, s.city].filter(Boolean).join(", ") : `${s.city}${s.starts_on ? ` · ${s.starts_on}` : ""}` }))}
             defaults={defaults}
             t={t}
@@ -129,7 +129,7 @@ export default async function ChatPage({ params }: PageProps<"/studio/chats/[id]
               booking={booking}
               currency={brief.currency}
               template={fill(ct.templates.accept, { name: brief.client_name.split(" ")[0] })}
-              direct={paysDirect(artist.stripe_charges_enabled)}
+              direct={paysDirect(artist.stripe_charges_enabled, artist.mp_ready)}
               t={t}
               locale={locale}
             />

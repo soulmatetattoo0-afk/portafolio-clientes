@@ -28,6 +28,8 @@ export interface Artist {
   default_start_time: string | null;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
+  /** The artist linked their Mercado Pago account (Chile). */
+  mp_ready: boolean;
   /** Poster cover: the giant word behind the photo, a short quote, the year they started. */
   cover_word: string | null;
   cover_quote: string | null;
@@ -123,7 +125,7 @@ export async function listSections(artistId: string): Promise<PortfolioSection[]
 
 const ARTIST_COLS = `a.id, a.studio_id, a.slug, a.display_name, a.headline, a.bio, a.instagram, a.home_city, a.styles, a.accepting,
   a.min_price_cents, a.currency, a.deposit_policy, a.default_deposit_cents, a.default_session_hours::float as default_session_hours, a.default_start_time,
-  a.stripe_account_id, a.stripe_charges_enabled,
+  a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready,
   a.cover_word, a.cover_quote, a.since_year, a.accent, a.cover_poster, a.portrait_path,
   a.trade, a.booking_mode, a.country, a.city_slug, a.lat, a.lng, a.listed, a.layout, a.launched_at, a.calendar_art_path, a.precare, a.postcare`;
 
@@ -483,6 +485,7 @@ export interface QuoteView {
   chat_token: string;
   stripe_account_id: string | null;
   stripe_charges_enabled: boolean;
+  mp_ready: boolean;
   plan: string;
   slots: QuoteSlot[];
   appointment: { starts_at: Date; timezone: string; city: string | null; studio_name: string | null; address: string | null } | null;
@@ -497,7 +500,7 @@ export async function getQuoteByToken(token: string): Promise<QuoteView | null> 
             q.deposit_cents, q.currency, q.message, q.policy, q.expires_at, q.brief_id,
             b.placement, b.full_coverage, b.size_w_cm::float as size_w_cm, b.size_h_cm::float as size_h_cm, b.style, b.color_mode,
             c.name as client_name, c.email as client_email, c.locale as client_locale,
-            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.accent as artist_accent, b.chat_token, a.stripe_account_id, a.stripe_charges_enabled, st.plan
+            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.accent as artist_accent, b.chat_token, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, st.plan
        from quotes q join briefs b on b.id = q.brief_id join clients c on c.id = b.client_id join artists a on a.id = q.artist_id join studios st on st.id = q.studio_id
       where q.token = $1`,
     [token],

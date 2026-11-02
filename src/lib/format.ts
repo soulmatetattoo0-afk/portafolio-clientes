@@ -4,7 +4,8 @@ const tag = (locale: Locale) => (locale === "es" ? "es-US" : "en-US");
 
 export function money(cents: number | null | undefined, currency = "usd", locale: Locale = "en") {
   if (cents == null) return "";
-  return new Intl.NumberFormat(tag(locale), {
+  // Chilean pesos read as Chileans write them in Spanish: "$50.000".
+  return new Intl.NumberFormat(locale === "es" && currency.toLowerCase() === "clp" ? "es-CL" : tag(locale), {
     style: "currency",
     currency: currency.toUpperCase(),
     maximumFractionDigits: cents % 100 === 0 ? 0 : 2,

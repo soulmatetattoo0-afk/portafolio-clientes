@@ -38,12 +38,13 @@ export function BarSummary({ title, status, tone, placement, body }: { title: st
  * a link (book, pay), a step that opens its form under the letter (accept,
  * evaluate), or a one-tap action asked twice (collect, payment received).
  */
-export function BarAction({ label, href, event, action, confirm }: { label: string; href?: string; event?: "accept" | "confirm"; action?: () => Promise<{ error?: string; url?: string } | void>; confirm?: string }) {
+export function BarAction({ label, href, event, action, confirm, tone = "accent" }: { label: string; href?: string; event?: "accept" | "confirm"; action?: () => Promise<{ error?: string; url?: string; refunded?: boolean } | void>; confirm?: string; tone?: "accent" | "ghost" }) {
   const router = useRouter();
   const [armed, setArmed] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const cls = "flex h-10 max-w-[48%] shrink-0 items-center rounded-full bg-accent px-3.5 text-[0.78rem] leading-tight font-semibold text-bone shadow-[0_8px_18px_-10px_rgb(0_0_0/0.9)] active:scale-95 disabled:opacity-60";
+  // The red key is the next step; a quiet one (cancelling) is an outline.
+  const cls = `flex h-10 max-w-[48%] shrink-0 items-center rounded-full px-3.5 text-[0.78rem] leading-tight font-semibold text-bone active:scale-95 disabled:opacity-60 ${tone === "ghost" ? "border border-bone/30" : "bg-accent shadow-[0_8px_18px_-10px_rgb(0_0_0/0.9)]"}`;
   if (href)
     return (
       <a href={href} className={cls}>

@@ -10,8 +10,9 @@ import { dict, fill } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import { loadBalance, recordBalance } from "@/lib/balance";
 import { getDb } from "@/lib/db";
-import { env, live, paysDirect } from "@/lib/env";
+import { cardProvider, env, live, paysDirect } from "@/lib/env";
 import { emailChat } from "@/lib/chat-email";
+import { artistToken, checkoutIdOf, createPreference, type Ref } from "@/lib/mercadopago";
 import { createDepositCheckout } from "@/lib/payments";
 import { feeBpsFor } from "@/lib/plan";
 import { notifyEach } from "@/lib/push";
@@ -116,8 +117,8 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
   if (!/^[A-Za-z0-9_-]{24,80}$/.test(chatToken)) return { error: t.common.error };
   if (!(await allow(`balance:${chatToken}`, 10, 3600))) return { error: t.common.error };
   const db = await getDb();
-  const b = await db.one<{ id: string; studio_id: string; artist_name: string; client_email: string | null; stripe_account_id: string | null; stripe_charges_enabled: boolean; plan: string | null }>(
-    `select b.id, b.studio_id, a.display_name as artist_name, c.email as client_email, a.stripe_account_id, a.stripe_charges_enabled, s.plan
+  const b = await db.one<{ id: string; studio_id: string; artist_id: string; artist_name: string; client_email: string | null; stripe_account_id: string | null; stripe_charges_enabled: boolean; mp_ready: boolean; plan: string | null }>(
+    `select b.id, b.studio_id, a.id as artist_id, a.display_name as artist_name, c.email as client_email, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, s.plan
        from briefs b join artists a on a.id = b.artist_id join clients c on c.id = b.client_id join studios s on s.id = b.studio_id
       where b.chat_token = $1`,
     [chatToken],
@@ -128,7 +129,37 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
   if (!balance.open) return { error: t.chat.balance.notYet };
   if (!balance.amountCents) return { error: fill(t.chat.balance.waiting, { artist: b.artist_name }) };
 
-  if (paysDirect(b.stripe_charges_enabled)) return { error: fill(t.chat.direct.balance, { artist: b.artist_name, amount: "" }) };
+  if (paysDirect(b.stripe_charges_enabled, b.mp_ready)) return { error: fill(t.chat.direct.balance, { artist: b.artist_name, amount: "" }) };
+  if (cardProvider(b.stripe_charges_enabled, b.mp_ready) === "mercadopago") {
+    // The rest of the tattoo carries no VANTA fee: only Mercado Pago's, as with any card payment.
+    const mpToken = await artistToken(db, b.artist_id);
+    if (!mpToken) return { error: fill(t.quote.paymentsOff, { artist: b.artist_name }) };
+    const ap = await db.one<{ quote_id: string }>(`select quote_id from appointments where id = $1`, [balance.appointmentId]);
+    const ref: Ref = { kind: "balance", appointmentId: balance.appointmentId, key: randomUUID() };
+    await db.query(
+      `insert into payments (studio_id, quote_id, appointment_id, provider, checkout_id, amount_cents, application_fee_cents, currency, status, kind)
+       values ($1, $2, $3, 'mercadopago', $4, $5, 0, $6, 'pending', 'balance')`,
+      [b.studio_id, ap!.quote_id, balance.appointmentId, checkoutIdOf(ref), balance.amountCents, balance.currency],
+    );
+    try {
+      const pref = await createPreference({
+        token: mpToken,
+        artistId: b.artist_id,
+        title: fill(t.chat.balance.item, { artist: b.artist_name }),
+        totalCents: balance.amountCents,
+        marketplaceFee: 0,
+        payerEmail: b.client_email ?? "",
+        ref,
+        successUrl: `${env.appUrl}/c/${chatToken}?balance=success`,
+        failureUrl: `${env.appUrl}/c/${chatToken}`,
+      });
+      return { url: pref.url };
+    } catch (e) {
+      console.error("mp balance preference failed", e);
+      await db.query(`update payments set status = 'failed' where checkout_id = $1`, [checkoutIdOf(ref)]);
+      return { error: t.common.error };
+    }
+  }
   if (!live.payments) {
     await recordBalance(db, { appointmentId: balance.appointmentId, provider: "demo", checkoutId: `demo_${randomUUID()}`, amountCents: balance.amountCents, currency: balance.currency });
     revalidatePath(`/c/${chatToken}`);
@@ -157,4 +188,46 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
     [b.studio_id, q!.quote_id, balance.appointmentId, checkout.id, balance.amountCents, checkout.fee, balance.currency],
   );
   return { url: checkout.url };
+}
+
+/** Days before the session a client can still cancel and have the deposit back. */
+const CANCEL_DAYS = 7;
+
+/**
+ * The client cancels their booked session from the chat. Seven days or more
+ * before it, the deposit goes back (on its own when paid with Mercado Pago;
+ * the artist returns a direct payment); closer than that, the deposit stays
+ * with the artist. Both hear it in the chat.
+ */
+export async function cancelMyBooking(chatToken: string): Promise<{ error?: string; refunded?: boolean } | void> {
+  const locale = await getLocale();
+  const t = dict(locale);
+  if (!/^[A-Za-z0-9_-]{24,80}$/.test(chatToken)) return { error: t.common.error };
+  if (!(await allow(`cancel:${chatToken}`, 5, 3600))) return { error: t.common.error };
+  const db = await getDb();
+  const ap = await db.one<{ id: string; studio_id: string; artist_id: string; quote_id: string | null; brief_id: string; client: string; days: number }>(
+    `select ap.id, ap.studio_id, ap.artist_id, ap.quote_id, ap.brief_id, c.name as client, extract(epoch from ap.starts_at - now()) / 86400 as days
+       from appointments ap join briefs b on b.id = ap.brief_id join clients c on c.id = ap.client_id
+      where b.chat_token = $1 and ap.status = 'confirmed' and ap.starts_at > now()
+      order by ap.starts_at limit 1`,
+    [chatToken],
+  );
+  if (!ap) return { error: t.chat.cancel.none };
+  const inTime = ap.days >= CANCEL_DAYS;
+  let refunded = false;
+  if (inTime) {
+    const { refundDeposit } = await import("@/lib/refunds");
+    const r = await refundDeposit(db, { studioId: ap.studio_id, artistId: ap.artist_id, appointmentId: ap.id, quoteId: ap.quote_id });
+    if (r === "failed") return { error: t.chat.refundFailed };
+    refunded = r !== "none";
+  }
+  await db.query(`update appointments set status = 'cancelled' where id = $1`, [ap.id]);
+  await db.query(`update outbox set sent_at = now(), last_error = 'cancelled' where sent_at is null and dedupe_key like $1`, [`reminder%:${ap.id}`]);
+  const body = inTime ? (refunded ? t.chat.cancel.byClientRefund : t.chat.cancel.byClient) : t.chat.cancel.byClientLate;
+  await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body) values ($1, $2, 'message', 'client', $3)`, [ap.studio_id, ap.brief_id, body]);
+  const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [ap.studio_id]);
+  after(() => notifyEach(members, (l) => ({ title: fill(dict(l).chat.cancel.pushTitle, { name: ap.client }), body, url: `/studio/chats/${ap.brief_id}`, tag: `chat:${ap.brief_id}` })));
+  after(() => emailChat(db, ap.brief_id, "artist", "message", body).catch(() => undefined));
+  revalidatePath(`/c/${chatToken}`);
+  return { refunded };
 }

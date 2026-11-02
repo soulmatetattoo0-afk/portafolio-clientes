@@ -10,10 +10,11 @@ import { getLocale } from "@/i18n/server";
 import { confirmBooking } from "@/lib/booking";
 import { getDb } from "@/lib/db";
 import { flushOutbox } from "@/lib/email";
-import { env, live, paysDirect } from "@/lib/env";
+import { cardProvider, env, live, paysDirect } from "@/lib/env";
 import { money } from "@/lib/format";
 import { emailChat } from "@/lib/chat-email";
 import { notifyEach } from "@/lib/push";
+import { artistToken, checkoutIdOf, createPreference, marketplaceFee, serviceFee, type Ref } from "@/lib/mercadopago";
 import { createDepositCheckout } from "@/lib/payments";
 import { feeBpsFor } from "@/lib/plan";
 import { placementLabel } from "@/lib/messages";
@@ -40,7 +41,7 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   const db = await getDb();
   // Hold the date while the client pays: 30 minutes on a card, a week when the artist confirms a direct payment.
   // Card payments only once the artist's own Stripe can take them; until then the client pays them directly.
-  const direct = paysDirect(quote.stripe_charges_enabled);
+  const direct = paysDirect(quote.stripe_charges_enabled, quote.mp_ready);
   const held = await db.one(
     `update quote_slots set status = 'held', hold_expires_at = now() + ${direct ? "interval '7 days'" : "interval '31 minutes'"}
       where id = $1 and quote_id = $2 and (status = 'offered' or (status = 'held' and hold_expires_at < now()))
@@ -63,6 +64,42 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
       await emailChat(db, b.id, "artist", "bookRequest", body);
     }
     redirect(`/c/${quote.chat_token}${back}`);
+  }
+
+  if (cardProvider(quote.stripe_charges_enabled, quote.mp_ready) === "mercadopago") {
+    // Chile: the client pays the deposit plus VANTA's service fee on Mercado Pago; the artist receives the deposit whole.
+    const mpToken = await artistToken(db, quote.artist_id);
+    if (!mpToken) return { error: fill(q.paymentsOff, { artist: quote.artist_name }) };
+    const fee = serviceFee(quote.deposit_cents);
+    const total = quote.deposit_cents + fee;
+    const cut = marketplaceFee(total, fee);
+    const ref: Ref = { kind: "deposit", quoteId: quote.id, slotId, key: randomUUID() };
+    await db.query(
+      `insert into payments (studio_id, quote_id, provider, checkout_id, amount_cents, application_fee_cents, service_fee_cents, currency, status)
+       values ($1, $2, 'mercadopago', $3, $4, $5, $6, $7, 'pending')`,
+      [quote.studio_id, quote.id, checkoutIdOf(ref), quote.deposit_cents, cut * 100, fee, quote.currency],
+    );
+    let pref: { url: string };
+    try {
+      pref = await createPreference({
+        token: mpToken,
+        artistId: quote.artist_id,
+        title: `${quote.artist_name}: ${placementLabel(quote.placement, locale)}`,
+        totalCents: total,
+        marketplaceFee: cut,
+        payerEmail: quote.client_email,
+        ref,
+        successUrl: `${env.appUrl}/q/${token}?checkout=success`,
+        failureUrl: `${env.appUrl}/q/${token}?checkout=cancelled`,
+      });
+    } catch (e) {
+      // Mercado Pago did not take it: free the date again and say so.
+      console.error("mp preference failed", e);
+      await db.query(`update payments set status = 'failed' where checkout_id = $1`, [checkoutIdOf(ref)]);
+      await db.query(`update quote_slots set status = 'offered', hold_expires_at = null where id = $1 and status = 'held'`, [slotId]);
+      return { error: t.common.error };
+    }
+    redirect(pref.url);
   }
 
   if (!live.payments) {
