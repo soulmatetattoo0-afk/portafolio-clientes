@@ -68,6 +68,8 @@ export async function enqueueEmail(
   email: Email,
   opts: { studioId?: string | null; template: string; sendAfter?: Date; dedupeKey?: string },
 ) {
+  // Guests have no mailbox (lib/guest.ts): nothing goes out to them.
+  if (email.to.toLowerCase().endsWith(".invalid")) return;
   const { html, text } = renderEmail(email);
   await db.query(
     `insert into outbox (studio_id, to_email, reply_to, subject, html, text_body, template, send_after, dedupe_key)

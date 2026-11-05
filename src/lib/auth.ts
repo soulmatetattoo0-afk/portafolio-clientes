@@ -5,6 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 
 import { getDb } from "./db";
 import { DEMO_CLIENT_EMAIL, DEMO_CLIENT_USER_ID, DEMO_EMAIL, DEMO_USER_ID, env, live } from "./env";
+import { GUEST_COOKIE, guestEmail, readGuest } from "./guest";
 import { sign, verify } from "./util";
 
 export interface Session {
@@ -14,6 +15,8 @@ export interface Session {
   verified?: boolean;
   /** Local mode: nobody signed in; this is the stand-in demo client. The artists' door still opens. */
   implicit?: boolean;
+  /** A guest: no account made, their device carries one (lib/guest.ts). */
+  guest?: boolean;
 }
 
 export interface Member extends Session {
@@ -52,7 +55,10 @@ async function readSession(): Promise<Session | null> {
   if (live.auth) {
     const supabase = await supabaseServer();
     const { data } = await supabase.auth.getUser();
-    return data.user ? { userId: data.user.id, email: data.user.email ?? "", verified: Boolean(data.user.email_confirmed_at) } : null;
+    if (data.user) return { userId: data.user.id, email: data.user.email ?? "", verified: Boolean(data.user.email_confirmed_at) };
+    // No account: a guest whose device carries one.
+    const guest = readGuest((await cookies()).get(GUEST_COOKIE)?.value);
+    return guest ? { userId: guest, email: guestEmail(guest), verified: false, guest: true } : null;
   }
   const store = await cookies();
   const raw = store.get(DEV_COOKIE)?.value;
@@ -80,6 +86,7 @@ export async function setDevSession(userId: string, email: string) {
 }
 
 export async function signOut() {
+  (await cookies()).delete(GUEST_COOKIE);
   if (live.auth) {
     const supabase = await supabaseServer();
     await supabase.auth.signOut();

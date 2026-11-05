@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getDict } from "@/i18n/server";
-import { getMember } from "@/lib/auth";
+import { getMember, getSession } from "@/lib/auth";
 import { getClientUser, safeNext } from "@/lib/client";
 import { live } from "@/lib/env";
 
@@ -18,6 +18,9 @@ export default async function ClientSignInPage({ searchParams }: PageProps<"/me/
   const sp = await searchParams;
   const next = safeNext(sp.next);
   if (await getClientUser()) redirect(next);
+  // Nobody signed in, sent here because they need an account (to book, to chat): they go on as a guest, no form.
+  // Asking to sign in to an account of their own ("Entrar") still shows the form.
+  if (live.auth && sp.mode !== "enter" && sp.real !== "1" && !(await getSession())) redirect(`/api/guest?next=${encodeURIComponent(next)}`);
   const { t } = await getDict();
   const s = t.me.signin;
   // The /me layout draws the poster root and the bar; this page is the form alone.

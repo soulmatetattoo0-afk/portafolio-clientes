@@ -97,6 +97,8 @@ Vercel despliega solo cada push a `main` (proyecto `portafolio-clientes`).
 
 49. Imagen de la puerta Obras (2 nov 2026). Antes era la primera obra, recortada al centro y tapada por el título. Ahora el artista la elige en el editor de Obras (`artists.work_cover_path`): sube una foto ancha (va a `door/<artista>`) o elige una de sus obras; sin elección, la primera obra. La vista previa muestra la puerta real con su degradado y el título a la izquierda, para que el foco quede a la derecha. Soulmate usa `demo/soulmate/door-tigris.webp`, la cara del tigre compuesta a la derecha.
 
+50. Invitados (5 nov 2026). Quien no tiene cuenta reserva, chatea y sigue artistas igual: cuando necesita una cuenta (Reservar, Seguir, Mis artistas), `/me/signin` lo manda a `/api/guest`, que crea una cuenta de invitado (`client_users` con correo `invitado-xxxx@invitado.vanta.invalid`, nombre "Invitado XXXX") y la guarda en una cookie firmada `vanta_guest` del teléfono; nadie más ve sus chats. A `.invalid` no sale correo. "Entrar" (`mode=enter`) o `real=1` siguen mostrando el formulario. En Perfil el invitado ve "Crear mi cuenta" / "Ya tengo cuenta"; al crearla o entrar, `adoptGuest` le pasa sus clientes, seguidos, guardados, visitas y avisos, y borra el invitado. La página de Soulmate quedó lanzada (`launched_at`, `listed`) el 2 nov.
+
 ## Qué está construido
 
 - **Perfil del artista** (`/[artist]`): portada, deck, revista del artista, muro, flash, reservar, guest spots con mapa de papel.

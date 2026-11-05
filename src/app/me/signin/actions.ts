@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -9,6 +10,7 @@ import { getLocale } from "@/i18n/server";
 import { getSession, setDevSession, supabaseServer } from "@/lib/auth";
 import { ensureClientUser, safeNext } from "@/lib/client";
 import { getDb } from "@/lib/db";
+import { adoptGuest, GUEST_COOKIE } from "@/lib/guest";
 import { checkPassword, hashPassword } from "@/lib/password";
 import { DEMO_CLIENT_EMAIL, DEMO_CLIENT_USER_ID, env, live } from "@/lib/env";
 import { allow } from "@/lib/ratelimit";
@@ -23,6 +25,14 @@ export async function enterDemoClient(form: FormData) {
   await setDevSession(DEMO_CLIENT_USER_ID, DEMO_CLIENT_EMAIL);
   await ensureClientUser(DEMO_CLIENT_USER_ID, DEMO_CLIENT_EMAIL, await getLocale());
   redirect(next);
+}
+
+/** A guest who now has a real account brings their requests, chats and saved artists with them. */
+async function adoptCurrentGuest(userId: string) {
+  const s = await getSession();
+  if (!s?.guest) return;
+  await adoptGuest(await getDb(), s.userId, userId);
+  (await cookies()).delete(GUEST_COOKIE);
 }
 
 export interface AccountState {
@@ -77,6 +87,7 @@ export async function signUpClient(_prev: AccountState, form: FormData): Promise
     if (error || !data.user) return { error: t.failed, sent: null };
     await ensureClientUser(data.user.id, email.data, locale);
     await db.query(`update client_users set username = $2, name = coalesce(name, $2) where user_id = $1`, [data.user.id, username.data]);
+    await adoptCurrentGuest(data.user.id);
     // With email confirmation on, Supabase returns no session until the link is opened.
     if (!data.session) return { error: null, sent: fill(t.confirm, { email: email.data }) };
     redirect(next);
@@ -108,6 +119,7 @@ export async function signInClient(_prev: AccountState, form: FormData): Promise
     const { data, error } = await supabase.auth.signInWithPassword({ email: row?.email ?? who, password });
     if (error || !data.user) return { error: t.wrong, sent: null };
     await ensureClientUser(data.user.id, data.user.email ?? row?.email ?? who, await getLocale());
+    await adoptCurrentGuest(data.user.id);
     redirect(next);
   }
   if (!row || !(await checkPassword(password, row.password_hash))) return { error: t.wrong, sent: null };
