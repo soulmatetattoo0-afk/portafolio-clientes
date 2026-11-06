@@ -44,7 +44,8 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree, type MeshBVH } from "three-mesh-bvh";
 
 import { BODY_HEIGHT_CM, MIN_DESIGN_CM, PAIN_COLORS, PLACEMENT_BY_SLUG, ZONES, ZONE_BY_ID, ZONE_BY_SLUG, maxSizeFor, painFor, patchZoneIds, type BodyType } from "./catalog";
-import { poseFor, viewFor, type PoseSpec } from "./poses";
+import { poseFor, shotFor } from "./poses";
+import { solvePose, type Pose, type RigRest } from "./solve";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree;
@@ -115,6 +116,8 @@ uniform vec3 uDesignColor;
 uniform float uDesignMask[${MAX_ZONES}];
 uniform vec3 uAccent;
 uniform float uPainMap;
+uniform float uSpot;
+uniform vec4 uPing;
 uniform sampler2D uInkFront;
 uniform sampler2D uInkBack;
 uniform vec4 uInkBox;
@@ -318,11 +321,27 @@ export class MannequinEngine {
   private boneOrder: Bone[] = [];
   private restLocal = new Map<Bone, Quaternion>();
   private restWorld = new Map<Bone, Quaternion>();
-  /** Each bone's anatomical frame at rest: Y up along the bone, Z the figure's front, so X is the hinge. */
-  private boneFrame = new Map<Bone, Quaternion>();
+  /** What the pose solver knows of the figure at rest: its joints, the inside of each forearm, the soles. */
+  private rig: RigRest | null = null;
   private poseTarget = new Map<Bone, Quaternion>();
-  private poseAnim: { from: Map<Bone, Quaternion>; start: number; dur: number } | null = null;
+  /** Where each bone points in the figure's space once the pose is reached, for laying the breath on top. */
+  private poseWorld = new Map<Bone, Quaternion>();
+  /** How far the pelvis rides above its rest height so the feet stand on the floor, and where it rests. */
+  private liftTarget = 0;
+  private pelvis: Bone | null = null;
+  private pelvisRest = new Vector3();
+  private poseAnim: { from: Map<Bone, Quaternion>; fromLift: number; start: number } | null = null;
   private poseKey = "";
+  /** The breath and the slow sway laid over whatever pose the figure holds: bone, its axis in the bone's own space, degrees, and which rhythm. */
+  private idle: { bone: Bone; axis: Vector3; deg: number; wave: "breath" | "sway" }[] = [];
+  private idleOn = true;
+  private idleSkip = false;
+  /** How far the rest of the figure has stepped back behind the chosen area (0 to 1), and where it is heading. */
+  private spot = 0;
+  private spotTarget = 0;
+  private lastFrame = 0;
+  /** The ripple that runs out from the middle of an area when it is chosen. */
+  private ping = { center: new Vector3(), start: -1e9 };
   /** The skin as it is posed right now, for picking; the drawn mesh keeps the bind pose and lets the GPU move it. */
   private posedGeom: BufferGeometry | null = null;
   private pickMesh: Mesh | null = null;
@@ -354,7 +373,7 @@ export class MannequinEngine {
   private downAt: { x: number; y: number; t: number } | null = null;
   private frameId = 0;
   private dirty = true;
-  private flight: { from: [Vector3, Vector3]; to: [Vector3, Vector3]; start: number; dur: number } | null = null;
+  private flight: { from: [Vector3, Vector3]; to: [Vector3, Vector3]; start: number; dur: number; swing: number } | null = null;
   private intro: { start: number } | null = null;
   private visible = true;
   private disposed = false;
@@ -412,6 +431,8 @@ export class MannequinEngine {
       shader.uniforms.uDesignMask = { value: this.designMask };
       shader.uniforms.uAccent = { value: srgb(this.accent) };
       shader.uniforms.uPainMap = { value: this.painMap ? 1 : 0 };
+      shader.uniforms.uSpot = { value: this.spot };
+      shader.uniforms.uPing = { value: new Vector4(0, 0, 0, -1) };
       shader.uniforms.uInkFront = { value: this.ink.front ?? this.inkBlank };
       shader.uniforms.uInkBack = { value: this.ink.back ?? this.inkBlank };
       shader.uniforms.uInkBox = { value: this.ink.box };
@@ -460,8 +481,11 @@ export class MannequinEngine {
   float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
   // Cobalt under the glaze: the ink takes the light like the porcelain around it.
   // The chosen area shows no painting: it reads clean, the selection over everything.
+  // With an area chosen, the rest of the figure steps back: a shade darker, its painting faint.
+  float others = uSpot * (1.0 - sel) * (1.0 - area) * (1.0 - hover);
   float inked = ink(vObj, normalize(vNrm)) * (1.0 - sel) * (1.0 - area);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.10, 0.22, 0.52) * (0.55 + lum * 0.55), inked * 0.95);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.10, 0.22, 0.52) * (0.55 + lum * 0.55), inked * (0.95 - 0.7 * others));
+  gl_FragColor.rgb *= 1.0 - 0.3 * others;
   // The pain colour is laid on like paint: it keeps the wax's shading.
   vec3 paint = zc * (0.5 + lum * 0.62);
   // Under a design the area takes no tint of its own: the patch is the one shape on the skin.
@@ -475,8 +499,10 @@ export class MannequinEngine {
     // the grid and the scan take the area's pain colour
     vec3 laser = min(zc * 1.35 + 0.08, vec3(1.0));
     float grid = smoothstep(0.82, 1.0, sin(vObj.x * 520.0)) * 0.5 + smoothstep(0.82, 1.0, sin(vObj.y * 520.0)) * 0.5;
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, 0.42);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, laser, clamp(grid * 0.75 + lines + band * 0.55 + rim * 0.9, 0.0, 1.0));
+    // Chosen just now: a ripple runs out from the middle of the area to its border.
+    float ripple = uPing.w >= 0.0 ? exp(-pow((distance(vObj, uPing.xyz) - uPing.w * 0.6) / 0.022, 2.0)) * (1.0 - smoothstep(0.55, 1.0, uPing.w)) : 0.0;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, paint, 0.46);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, laser, clamp(grid * 0.75 + lines + band * 0.55 + rim + ripple, 0.0, 1.0));
   }
   gl_FragColor.rgb *= 1.0 - dim * 0.38 * wash;
   // The design footprint: a feathered ink patch projected onto the skin,
@@ -643,30 +669,94 @@ export class MannequinEngine {
 
   /** Highlight a placement (atomic zone or composite) and fly the camera to it. */
   selectPlacement(slug: string | null, fly = true) {
+    const changed = slug !== this.placement;
     this.placement = slug;
     this.refreshZoneState();
-    // The figure turns to show the area (an arm comes forward, bends, turns its palm), then the camera closes in.
-    this.setPose(slug ? poseFor(slug) : null, !this.opts.reducedMotion);
+    // The figure moves to show the area the way a person would, and the camera comes round to it.
+    this.setPose(poseFor(slug), !this.opts.reducedMotion);
     if (slug && fly) this.focusPlacement(slug);
     if (!slug) this.frameAll(true);
+    if (slug && changed) {
+      const middle = this.placementAnchor(slug, "bind");
+      if (middle) this.ping = { center: middle.center.divideScalar(this.root.scale.x), start: performance.now() };
+    }
   }
 
   focusPlacement(slug: string, animate = true) {
     const target = this.placementAnchor(slug);
     if (!target) return;
-    const { center, radius } = target;
-    // Fit the zone's bounding sphere inside the narrower of the two FOVs with
-    // room around it, and never so close that the area loses its context.
     const vfov = (this.camera.fov * Math.PI) / 180;
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const half = Math.tan(Math.min(vfov, hfov) / 2);
-    const dist = Math.max(0.45 / half, (radius / half) * 1.45);
-    const hint = viewFor(slug);
-    const dir = hint ? new Vector3(...hint).normalize() : this.clearestView(target, dist);
-    const eye = center.clone().add(dir.multiplyScalar(dist));
-    eye.y += radius * 0.25;
+    // Each pose has its shot: the side the area was turned to. Without one, look from wherever most of it shows.
+    const shot = shotFor(slug);
+    let dir: Vector3;
+    if (shot) {
+      const az = (shot.az * Math.PI) / 180;
+      const el = (shot.el * Math.PI) / 180;
+      dir = new Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+    } else dir = this.clearestView(target, Math.max(0.45 / half, (target.radius / half) * 1.45));
+    // Measure the area as the camera will see it (across and up the picture), centre the frame on it and
+    // stand back until it takes its share of the frame, never so close that the body around it is lost.
+    const right = new Vector3().crossVectors(new Vector3(0, 1, 0), dir).normalize();
+    const up = new Vector3().crossVectors(dir, right).normalize();
+    const span = this.areaSpan(slug, right, up);
+    const center = target.center.clone();
+    let dist = Math.max(0.45 / half, (target.radius / half) * 1.45);
+    if (span) {
+      center.addScaledVector(right, span.midR - center.dot(right)).addScaledVector(up, span.midU - center.dot(up));
+      const fill = shot?.fill ?? 0.5;
+      dist = Math.max((shot?.min ?? 0.44) / half, span.halfU / (Math.tan(vfov / 2) * fill), span.halfR / (Math.tan(hfov / 2) * fill));
+    }
+    const eye = center.clone().addScaledVector(dir, dist);
     if (animate) this.flyTo(eye, center);
     else this.jumpTo(eye, center);
+  }
+
+  /** How far a placement reaches along two directions (the camera's right and up), on the skin as posed, in metres. */
+  private areaSpan(slug: string, right: Vector3, up: Vector3) {
+    const geom = this.skinGeometry();
+    const placement = PLACEMENT_BY_SLUG.get(slug);
+    if (!geom || !placement) return null;
+    const ids = new Set(placement.zones.map((z) => ZONE_BY_SLUG.get(z)?.id ?? -1));
+    const zone = geom.getAttribute("_zone");
+    const pos = geom.getAttribute("position");
+    const s = this.root.scale.x;
+    let minR = Infinity, maxR = -Infinity, minU = Infinity, maxU = -Infinity;
+    for (let i = 0; i < zone.count; i++) {
+      if (!ids.has(Math.round(zone.getX(i)))) continue;
+      const x = pos.getX(i) * s, y = pos.getY(i) * s, z = pos.getZ(i) * s;
+      const r = x * right.x + y * right.y + z * right.z;
+      const u = x * up.x + y * up.y + z * up.z;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
+    }
+    if (minR === Infinity) return null;
+    return { midR: (minR + maxR) / 2, midU: (minU + maxU) / 2, halfR: (maxR - minR) / 2, halfU: (maxU - minU) / 2 };
+  }
+
+  /** Share of the chosen area in plain sight of the camera right now (0 to 1): for checking shots while developing. */
+  visibleShare(): number {
+    const anchor = this.placement ? this.placementAnchor(this.placement) : null;
+    const geom = this.skinGeometry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bvh = (geom as any)?.boundsTree as MeshBVH | undefined;
+    if (!anchor || !bvh || !anchor.samples.length) return 0;
+    this.root.updateMatrixWorld(true);
+    const eye = this.root.worldToLocal(this.camera.position.clone());
+    const ray = new Ray();
+    let seen = 0;
+    for (const p of anchor.samples) {
+      ray.origin.copy(eye);
+      ray.direction.copy(p).sub(eye);
+      const d = ray.direction.length();
+      ray.direction.divideScalar(d);
+      const hit = bvh.raycastFirst(ray, 2 /* DoubleSide */);
+      if (hit && Math.abs(hit.distance - d) < 0.012) seen++;
+    }
+    return seen / anchor.samples.length;
   }
 
   /**
@@ -988,7 +1078,7 @@ export class MannequinEngine {
         this.pickMesh.visible = false;
         this.root.add(this.pickMesh);
         this.refreshPosed();
-        if (this.placement) this.setPose(poseFor(this.placement), false);
+        this.setPose(poseFor(this.placement), false);
       } else {
         this.body = new Mesh(geometry, this.material);
         this.root.add(this.body);
@@ -1132,84 +1222,205 @@ export class MannequinEngine {
 
   /* ---------------------------------------------------------------- posing */
 
-  /** Rest orientation of every bone, local and relative to the figure's root, in hierarchy order. */
+  /** Rest orientation of every bone, local and relative to the figure's root, in hierarchy order; and what the pose solver needs of the figure at rest. */
   private captureRest() {
     this.boneOrder = [];
     this.restLocal.clear();
     this.restWorld.clear();
-    this.boneFrame.clear();
     this.poseTarget.clear();
-    const walk = (o: Object3D, parentWorld: Quaternion) => {
+    this.poseWorld.clear();
+    this.pelvis = null;
+    const joints = new Map<string, Vector3>();
+    const walk = (o: Object3D, parentWorld: Quaternion, parentAt: Vector3) => {
       if ((o as Bone).isBone) {
         const b = o as Bone;
         const local = b.quaternion.clone();
         const world = parentWorld.clone().multiply(local);
+        const at = parentAt.clone().add(b.position.clone().applyQuaternion(parentWorld));
         this.boneOrder.push(b);
         this.restLocal.set(b, local);
         this.restWorld.set(b, world);
         this.poseTarget.set(b, local.clone());
-        // The bone runs along its local Y; the smallest turn that hangs the figure's Y down it is its frame.
-        const along = new Vector3(0, 1, 0).applyQuaternion(world).normalize();
-        this.boneFrame.set(b, new Quaternion().setFromUnitVectors(new Vector3(0, -1, 0), along));
-        for (const c of b.children) walk(c, world);
+        this.poseWorld.set(b, world.clone());
+        joints.set(b.name, at);
+        if (b.name === "pelvis") {
+          this.pelvis = b;
+          this.pelvisRest.copy(b.position);
+        }
+        for (const c of b.children) walk(c, world, at);
       }
     };
-    for (const c of this.root.children) walk(c, new Quaternion());
+    for (const c of this.root.children) walk(c, new Quaternion(), new Vector3());
+    this.rig = this.measureRig(joints);
+    this.liftTarget = 0;
+  }
+
+  /** From the skin at rest: which way the inside of each forearm faces, and the heel and toe of each sole. */
+  private measureRig(joints: Map<string, Vector3>): RigRest | null {
+    const need = ["pelvis", "upperarm_L", "forearm_L", "hand_L", "upperarm_R", "forearm_R", "hand_R", "thigh_L", "lowerleg_L", "foot_L", "thigh_R", "lowerleg_R", "foot_R"];
+    if (!this.body || need.some((n) => !joints.has(n))) return null;
+    const geom = this.body.geometry as BufferGeometry;
+    const zone = geom.getAttribute("_zone");
+    const pos = geom.getAttribute("position");
+    const nor = geom.getAttribute("normal");
+    const id = (slug: string) => ZONE_BY_SLUG.get(slug)?.id ?? -1;
+    const volar = { L: new Vector3(), R: new Vector3() };
+    const sole = { L: { heel: new Vector3(0, Infinity, Infinity), toe: new Vector3(0, Infinity, -Infinity) }, R: { heel: new Vector3(0, Infinity, Infinity), toe: new Vector3(0, Infinity, -Infinity) } };
+    const low = { L: Infinity, R: Infinity };
+    for (let i = 0; i < zone.count; i++) {
+      const z = Math.round(zone.getX(i));
+      for (const side of ["L", "R"] as const) {
+        if (z === id(`forearm_inner_${side}`)) volar[side].add(new Vector3(nor.getX(i), nor.getY(i), nor.getZ(i)));
+        if (z === id(`foot_${side}`)) {
+          const x = pos.getX(i), y = pos.getY(i), zz = pos.getZ(i);
+          if (y < low[side]) low[side] = y;
+          if (zz < sole[side].heel.z) sole[side].heel.set(x, 0, zz);
+          if (zz > sole[side].toe.z) sole[side].toe.set(x, 0, zz);
+        }
+      }
+    }
+    for (const side of ["L", "R"] as const) {
+      if (low[side] === Infinity || volar[side].lengthSq() < 1e-9) return null;
+      sole[side].heel.y = sole[side].toe.y = low[side];
+      const along = joints.get(`hand_${side}`)!.clone().sub(joints.get(`forearm_${side}`)!).normalize();
+      volar[side].addScaledVector(along, -volar[side].dot(along)).normalize();
+    }
+    return { pos: joints, volar, sole };
   }
 
   /**
-   * Turn the figure into a pose: each named bone gets rotations about its own
-   * anatomical axes at rest (X the hinge, Y a twist along the bone, Z toward
-   * the front), carried along by its parent's turn. Unnamed bones follow their
-   * parents. The drawn skin tweens there; the skin used for picking jumps ahead.
+   * Move the figure into a pose (see solve.ts for how one is written). The
+   * drawn skin eases there, the trunk leading and the hands and feet
+   * following; the skin used for picking and for aiming the camera takes the
+   * finished pose at once.
    */
-  private setPose(spec: PoseSpec | null, animate: boolean) {
-    if (!this.skeleton) return;
-    const key = JSON.stringify(spec ?? {});
+  private setPose(pose: Pose, animate: boolean) {
+    if (!this.skeleton || !this.rig) return;
+    const key = JSON.stringify(pose);
     if (key === this.poseKey) return;
     this.poseKey = key;
-    const extra = new Map<Bone, Quaternion>();
+    const solved = solvePose(this.rig, pose);
     const world = new Map<Bone, Quaternion>();
+    const extra = new Map<Bone, Quaternion>();
     const from = new Map<Bone, Quaternion>();
     for (const b of this.boneOrder) {
       const parent = (b.parent as Bone)?.isBone ? (b.parent as Bone) : null;
-      const e = parent ? extra.get(parent)!.clone() : new Quaternion();
-      const steps = spec?.[b.name];
-      if (steps) {
-        const q = new Quaternion();
-        const frame = this.boneFrame.get(b)!;
-        for (const [axis, deg] of steps) {
-          const v = (axis === "x" ? new Vector3(1, 0, 0) : axis === "y" ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)).applyQuaternion(frame);
-          q.premultiply(new Quaternion().setFromAxisAngle(v, (deg * Math.PI) / 180));
-        }
-        e.multiply(q);
-      }
+      // A bone the solver has no word for follows its parent.
+      const e = solved.extra.get(b.name) ?? (parent ? extra.get(parent)! : new Quaternion());
       extra.set(b, e);
       const w = e.clone().multiply(this.restWorld.get(b)!);
       world.set(b, w);
       const pw = parent ? world.get(parent)! : new Quaternion();
-      from.set(b, b.quaternion.clone());
+      // Mid-move, start from where the limb is drawn now (without the breath laid on top).
+      from.set(b, this.poseAnim ? b.quaternion.clone() : this.poseTarget.get(b)!.clone());
       this.poseTarget.set(b, pw.clone().invert().multiply(w));
+      this.poseWorld.set(b, w);
     }
+    const fromLift = this.pelvis ? this.pelvis.position.y - this.pelvisRest.y : 0;
+    this.liftTarget = solved.lift;
+    this.layIdle();
     // The picking skin takes the final pose right away, so the camera and taps aim where the limb will be.
     for (const b of this.boneOrder) b.quaternion.copy(this.poseTarget.get(b)!);
+    if (this.pelvis) this.pelvis.position.y = this.pelvisRest.y + this.liftTarget;
     this.refreshPosed();
     if (animate) {
       for (const b of this.boneOrder) b.quaternion.copy(from.get(b)!);
-      this.poseAnim = { from, start: performance.now(), dur: 750 };
+      if (this.pelvis) this.pelvis.position.y = this.pelvisRest.y + fromLift;
+      this.poseAnim = { from, fromLift, start: performance.now() };
     } else this.poseAnim = null;
     this.invalidate();
   }
 
-  /** Move the drawn skeleton one step along its tween; true while still moving. */
+  /**
+   * The breath: the chest lifts and the collarbones ride up a hair, the head
+   * gives back what the chest took, and the whole figure sways slowly, as a
+   * standing person does. Each is a figure-space axis seen from the bone as
+   * the pose leaves it, so the same breath sits right on any pose.
+   */
+  private layIdle() {
+    this.idle = [];
+    const add = (name: string, axis: Vector3, deg: number, wave: "breath" | "sway") => {
+      const bone = this.boneOrder.find((b) => b.name === name);
+      const w = bone && this.poseWorld.get(bone);
+      if (bone && w) this.idle.push({ bone, axis: axis.clone().applyQuaternion(w.clone().invert()).normalize(), deg, wave });
+    };
+    const X = new Vector3(1, 0, 0);
+    const Z = new Vector3(0, 0, 1);
+    add("spine02", X, -0.55, "breath");
+    add("spine01", X, -0.5, "breath");
+    add("head", X, 0.75, "breath");
+    add("clavicle_L", Z, 0.9, "breath");
+    add("clavicle_R", Z, -0.9, "breath");
+    add("upperarm_L", Z, 0.3, "breath");
+    add("upperarm_R", Z, -0.3, "breath");
+    add("spine04", Z, 0.32, "sway");
+    add("neck", Z, -0.26, "sway");
+  }
+
+  /** When each part sets off after the trunk, in milliseconds: a move runs out from the middle of the body to its ends. */
+  private static DELAY: [RegExp, number][] = [
+    [/^hand/, 230],
+    [/^forearm/, 160],
+    [/^upperarm/, 80],
+    [/^(clavicle|shoulder)/, 40],
+    [/^head/, 150],
+    [/^neck/, 90],
+    [/^foot/, 150],
+    [/^lowerleg/, 100],
+    [/^thigh/, 30],
+    [/^spine01/, 45],
+    [/^spine02/, 30],
+    [/^spine03/, 15],
+  ];
+  private static MOVE_MS = 950;
+  private static TAIL_MS = 230;
+
+  /** Move the drawn skeleton one step along its move and lay the breath over it; true while the pose is still changing. */
   private stepPose(now: number): boolean {
     const a = this.poseAnim;
-    if (!a) return false;
-    const t = Math.min(1, (now - a.start) / a.dur);
-    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    for (const b of this.boneOrder) b.quaternion.slerpQuaternions(a.from.get(b)!, this.poseTarget.get(b)!, e);
-    if (t >= 1) this.poseAnim = null;
-    return t < 1;
+    let moving = false;
+    if (a) {
+      const elapsed = now - a.start;
+      const q = new Quaternion();
+      for (const b of this.boneOrder) {
+        const delay = MannequinEngine.DELAY.find(([re]) => re.test(b.name))?.[1] ?? 0;
+        const u = Math.min(1, Math.max(0, (elapsed - delay) / MannequinEngine.MOVE_MS));
+        // Ease away from rest, arrive a breath past the mark and settle back: the ends of the limbs carry a little follow-through.
+        const inOut = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+        const over = 1 + 1.9 * Math.pow(u - 1, 3) + 0.9 * Math.pow(u - 1, 2);
+        const e = delay >= 100 ? inOut + (over - inOut) * u : inOut;
+        b.quaternion.copy(q.slerpQuaternions(a.from.get(b)!, this.poseTarget.get(b)!, e));
+      }
+      const u = Math.min(1, elapsed / MannequinEngine.MOVE_MS);
+      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+      if (this.pelvis) this.pelvis.position.y = this.pelvisRest.y + a.fromLift + (this.liftTarget - a.fromLift) * e;
+      if (elapsed >= MannequinEngine.MOVE_MS + MannequinEngine.TAIL_MS) this.poseAnim = null;
+      moving = true;
+    }
+    if (this.breathing()) {
+      const t = (now - this.startTime) / 1000;
+      const breath = Math.sin((t * 2 * Math.PI) / 4.4);
+      const sway = Math.sin((t * 2 * Math.PI) / 9.5);
+      const q = new Quaternion();
+      // Start each breathing bone from its pose (or from this frame's step of the move), never from last frame's breath.
+      for (const i of this.idle) {
+        if (!a) i.bone.quaternion.copy(this.poseTarget.get(i.bone)!);
+        i.bone.quaternion.multiply(q.setFromAxisAngle(i.axis, ((i.wave === "breath" ? breath : sway) * i.deg * Math.PI) / 180));
+      }
+    }
+    return moving;
+  }
+
+  /** The figure breathes whenever it is on screen and motion is welcome. */
+  private breathing() {
+    return this.idleOn && !this.opts.reducedMotion && Boolean(this.skeleton) && this.idle.length > 0;
+  }
+
+  /** Hold still (a snapshot, a read-only card) or breathe again. */
+  setIdle(on: boolean) {
+    this.idleOn = on;
+    if (!on) for (const i of this.idle) i.bone.quaternion.copy(this.poseTarget.get(i.bone)!);
+    this.invalidate();
   }
 
   /** Skin the bind geometry on the CPU into the posed copy used for picking and anchors. */
@@ -1353,6 +1564,9 @@ export class MannequinEngine {
     this.boneOrder = [];
     this.poseAnim = null;
     this.poseKey = "";
+    this.rig = null;
+    this.pelvis = null;
+    this.idle = [];
   }
 
   private pinch(g: Gesture) {
@@ -1537,9 +1751,17 @@ export class MannequinEngine {
     // Under a design the area is a soft wash so the patch stays the subject.
     const withDesign = this.mode !== "zone" && Boolean(this.design.point);
     for (const id of selectedIds) this.zoneState[id] = placing || withDesign ? ST_ACTIVE : ST_SELECTED;
+    // While placing, the other zones are dimmed already; otherwise a chosen area puts the rest of the figure in the shade.
+    this.spotTarget = selectedIds.length > 0 && !placing ? 1 : 0;
     this.invalidate();
   }
 
+  /**
+   * Send the camera to a new place. It travels round the figure, not through
+   * it: the point it looks at slides across, and its own position swings
+   * about that point (angle and distance eased together), pulling back a
+   * little mid-way on a long turn, the way a person walks round a statue.
+   */
   private flyTo(eye: Vector3, target: Vector3) {
     if (this.opts.reducedMotion) {
       this.camera.position.copy(eye);
@@ -1548,13 +1770,43 @@ export class MannequinEngine {
       this.dirty = true;
       return;
     }
+    const a = this.camera.position.clone().sub(this.controls.target).normalize();
+    const b = eye.clone().sub(target).normalize();
+    const swing = Math.acos(Math.max(-1, Math.min(1, a.dot(b))));
     this.flight = {
       from: [this.camera.position.clone(), this.controls.target.clone()],
       to: [eye, target],
       start: performance.now(),
-      dur: 850,
+      dur: 900 + 520 * (swing / Math.PI),
+      swing,
     };
     this.loop();
+  }
+
+  /** One step of the camera's flight; false once it has arrived. */
+  private stepFlight(now: number): boolean {
+    const f = this.flight;
+    if (!f) return false;
+    const t = Math.min(1, (now - f.start) / f.dur);
+    // Quintic ease: it leaves and arrives without a jolt.
+    const e = t * t * t * (t * (t * 6 - 15) + 10);
+    const target = this.controls.target.lerpVectors(f.from[1], f.to[1], e);
+    const o0 = f.from[0].clone().sub(f.from[1]);
+    const o1 = f.to[0].clone().sub(f.to[1]);
+    const r0 = o0.length();
+    const r1 = o1.length();
+    const az0 = Math.atan2(o0.x, o0.z);
+    let dAz = Math.atan2(o1.x, o1.z) - az0;
+    if (dAz > Math.PI) dAz -= 2 * Math.PI;
+    if (dAz < -Math.PI) dAz += 2 * Math.PI;
+    const el0 = Math.asin(Math.max(-1, Math.min(1, o0.y / r0)));
+    const el1 = Math.asin(Math.max(-1, Math.min(1, o1.y / r1)));
+    const az = az0 + dAz * e;
+    const el = el0 + (el1 - el0) * e;
+    const r = r0 + (r1 - r0) * e + Math.sin(Math.PI * e) * 0.16 * Math.max(r0, r1) * (f.swing / Math.PI);
+    this.camera.position.set(target.x + r * Math.cos(el) * Math.sin(az), target.y + r * Math.sin(el), target.z + r * Math.cos(el) * Math.cos(az));
+    if (t >= 1) this.flight = null;
+    return true;
   }
 
   private resize() {
@@ -1581,14 +1833,23 @@ export class MannequinEngine {
     this.frameId = requestAnimationFrame(() => {
       const now = performance.now();
       let animating = false;
-      if (this.flight) {
-        const t = Math.min(1, (now - this.flight.start) / this.flight.dur);
-        const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        this.camera.position.lerpVectors(this.flight.from[0], this.flight.to[0], e);
-        this.controls.target.lerpVectors(this.flight.from[1], this.flight.to[1], e);
-        if (t >= 1) this.flight = null;
+      const dt = Math.min(100, now - (this.lastFrame || now));
+      this.lastFrame = now;
+      if (this.stepFlight(now)) {
         animating = true;
         this.dirty = true;
+      }
+      // The rest of the figure steps back behind a chosen area, and comes forward again, over a third of a second.
+      if (Math.abs(this.spot - this.spotTarget) > 0.002) {
+        this.spot += (this.spotTarget - this.spot) * (1 - Math.exp(-dt / 130));
+        if (this.uniforms) this.uniforms.uSpot.value = this.spot;
+        animating = true;
+        this.dirty = true;
+      }
+      if (this.uniforms) {
+        const since = (now - this.ping.start) / 1000;
+        const ping = this.uniforms.uPing.value as Vector4;
+        ping.set(this.ping.center.x, this.ping.center.y, this.ping.center.z, since < 1.05 ? since : -1);
       }
       if (this.intro) {
         // One slow quarter turn when the statue first appears.
@@ -1606,9 +1867,12 @@ export class MannequinEngine {
       const damping = this.controls.update();
       const pulsing = this.zoneState.some((s) => s === ST_SELECTED) || (this.mode === "place" && Boolean(this.design.point));
       if (this.uniforms) this.uniforms.uTime.value = (now - this.startTime) / 1000;
-      if (this.dirty || pulsing) this.render();
+      // Breathing alone is slow enough to draw every other frame.
+      const breathing = this.breathing();
+      this.idleSkip = !this.idleSkip;
+      if (this.dirty || pulsing || (breathing && this.idleSkip)) this.render();
       this.dirty = false;
-      if ((animating || damping || pulsing) && this.visible) this.loop();
+      if ((animating || damping || pulsing || breathing) && this.visible) this.loop();
     });
   };
 
