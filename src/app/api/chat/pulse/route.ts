@@ -1,5 +1,6 @@
 import { getMember, getSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { advanceShowcase } from "@/lib/showcase";
 
 /**
  * A chat's heartbeat: how many things have happened in it and when the last
@@ -14,7 +15,10 @@ export async function GET(request: Request) {
   const brief = url.searchParams.get("b");
   const db = await getDb();
   let row: { n: number; last: string | null } | null = null;
+  let demo: Awaited<ReturnType<typeof advanceShowcase>> = null;
   if (token && /^[a-f0-9]{20,}$/.test(token)) {
+    // A demo conversation moves on here: the artist's stand-in writes whatever line has come due.
+    demo = await advanceShowcase(db, token).catch((e) => (console.error("showcase step failed", e), null));
     row = await db.one(
       `select count(*)::int as n, max(e.created_at)::text as last from brief_events e join briefs b on b.id = e.brief_id where b.chat_token = $1`,
       [token],
@@ -27,5 +31,5 @@ export async function GET(request: Request) {
       [brief, member.studioId],
     );
   } else return new Response(null, { status: 400 });
-  return Response.json({ v: row ? `${row.n}:${row.last ?? ""}` : "" }, { headers: { "cache-control": "no-store" } });
+  return Response.json({ v: row ? `${row.n}:${row.last ?? ""}` : "", typing: demo?.typing ?? false }, { headers: { "cache-control": "no-store" } });
 }

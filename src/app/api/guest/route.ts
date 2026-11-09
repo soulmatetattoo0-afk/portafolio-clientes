@@ -16,14 +16,16 @@ import { allow } from "@/lib/ratelimit";
 export async function GET(request: Request) {
   const next = safeNext(new URL(request.url).searchParams.get("next"));
   const go = () => Response.redirect(new URL(next, request.url), 303);
-  if (!live.auth) return go();
+  // Local mode has no accounts to make; it becomes a guest only when asked (?local=1), to try the visitor's side.
+  const local = !live.auth && new URL(request.url).searchParams.get("local") === "1";
+  if (!live.auth && !local) return go();
   const session = await getSession();
   if (session?.guest) {
     // Their device already carries a guest account: make sure its row is there.
     await ensureGuest(await getDb(), session.userId, await getLocale());
     return go();
   }
-  if (session) return go();
+  if (session && !(local && session.implicit)) return go();
   const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "?";
   if (!(await allow(`guest:${ip}`, 20, 3600))) return Response.redirect(new URL(`/me/signin?real=1&next=${encodeURIComponent(next)}`, request.url), 303);
   const id = randomUUID();

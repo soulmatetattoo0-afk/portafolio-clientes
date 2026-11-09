@@ -370,7 +370,7 @@ export async function listMyChatsWith(userId: string, artistIds: string[]): Prom
   const db = await getDb();
   const rows = await db.query<MyBriefRow & { waiting: boolean }>(
     `select ${MY_BRIEF_COLS}, not exists (select 1 from brief_events e where e.brief_id = b.id and e.actor = 'artist') as waiting
-       ${MY_BRIEF_FROM} where c.user_id = $1 and b.artist_id = any($2::uuid[]) and b.status <> 'archived'
+       ${MY_BRIEF_FROM} where c.user_id = $1 and (b.artist_id = any($2::uuid[]) or a.showcase_of = any($2::uuid[])) and b.status <> 'archived'
       order by coalesce(m.created_at, b.created_at) desc limit 30`,
     [userId, artistIds],
   );
@@ -412,7 +412,7 @@ export async function listMyArtists(userId: string): Promise<MyArtist[]> {
        select artist_id, max(last_at) as last_at, bool_or(saved) as saved, sum(chats)::int as chats, sum(visits)::int as visits from (
          select artist_id, created_at as last_at, true as saved, 0 as chats, 0 as visits from follows where user_id = $1
          union all
-         select b.artist_id, coalesce(b.updated_at, b.created_at), false, 1, 0 from briefs b join clients c on c.id = b.client_id where c.user_id = $1 and b.status <> 'archived'
+         select coalesce(sa.showcase_of, b.artist_id), coalesce(b.updated_at, b.created_at), false, 1, 0 from briefs b join clients c on c.id = b.client_id join artists sa on sa.id = b.artist_id where c.user_id = $1 and b.status <> 'archived'
          union all
          select artist_id, last_at, false, 0, visits from artist_visits where user_id = $1
        ) x group by artist_id

@@ -32,7 +32,8 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
     await db.query(`update quotes set status = 'viewed' where id = $1 and status = 'sent'`, [quote.id]);
   }
   const now = requestTime();
-  const mp = cardProvider(quote.stripe_charges_enabled, quote.mp_ready) === "mercadopago";
+  // A demo shows the deposit as it is paid in the app in Chile: the deposit, VANTA's service, the total; nothing is charged.
+  const mp = quote.showcase || cardProvider(quote.stripe_charges_enabled, quote.mp_ready) === "mercadopago";
   const expired = quote.status !== "paid" && new Date(quote.expires_at).getTime() < now;
   const placement = placementLabel(quote.placement, locale);
   // The offer lives inside the artist's app: their colour, and the arrow back to the chat it came from.
@@ -165,6 +166,7 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                     <p className="flex justify-between gap-3"><span className="text-ash">{q.mpFee}</span><span>{money(serviceFee(quote.deposit_cents), quote.currency, locale)}</span></p>
                     <p className="flex justify-between gap-3 border-t border-line pt-1.5 font-semibold"><span>{q.mpTotal}</span><span>{money(quote.deposit_cents + serviceFee(quote.deposit_cents), quote.currency, locale)}</span></p>
                     <p className="pt-1 text-[0.82rem] leading-snug text-ash">{q.mpPolicy}</p>
+                    {quote.showcase && <p className="mt-1 rounded-[10px] border border-[#e8c46b]/40 bg-[#e8c46b]/10 px-3 py-2 text-[0.85rem] text-[#f2d27a]">{t.showcase.payNote}</p>}
                   </div>
                 )}
                 <PayForm
@@ -183,7 +185,9 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/q/
                     chooseDate: q.chooseDate,
                     chooseDateHint: q.chooseDateHint,
                     agree: q.agree,
-                    pay: mp
+                    pay: quote.showcase
+                      ? fill(t.showcase.pay, { amount: money(quote.deposit_cents + serviceFee(quote.deposit_cents), quote.currency, locale) })
+                      : mp
                       ? fill(q.payMp, { amount: money(quote.deposit_cents + serviceFee(quote.deposit_cents), quote.currency, locale) })
                       : fill(paysDirect(quote.stripe_charges_enabled, quote.mp_ready) ? q.payDirect : live.payments ? q.pay : q.payDemo, { amount: money(quote.deposit_cents, quote.currency, locale) }),
                     redirecting: q.redirecting,

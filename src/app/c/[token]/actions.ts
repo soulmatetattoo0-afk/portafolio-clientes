@@ -117,8 +117,8 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
   if (!/^[A-Za-z0-9_-]{24,80}$/.test(chatToken)) return { error: t.common.error };
   if (!(await allow(`balance:${chatToken}`, 10, 3600))) return { error: t.common.error };
   const db = await getDb();
-  const b = await db.one<{ id: string; studio_id: string; artist_id: string; artist_name: string; client_email: string | null; stripe_account_id: string | null; stripe_charges_enabled: boolean; mp_ready: boolean; plan: string | null }>(
-    `select b.id, b.studio_id, a.id as artist_id, a.display_name as artist_name, c.email as client_email, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, s.plan
+  const b = await db.one<{ id: string; studio_id: string; artist_id: string; artist_name: string; client_email: string | null; stripe_account_id: string | null; stripe_charges_enabled: boolean; mp_ready: boolean; plan: string | null; showcase: boolean }>(
+    `select b.id, b.studio_id, a.id as artist_id, a.display_name as artist_name, c.email as client_email, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, s.plan, (a.showcase_of is not null) as showcase
        from briefs b join artists a on a.id = b.artist_id join clients c on c.id = b.client_id join studios s on s.id = b.studio_id
       where b.chat_token = $1`,
     [chatToken],
@@ -129,6 +129,12 @@ export async function payBalance(chatToken: string): Promise<{ url: string } | {
   if (!balance.open) return { error: t.chat.balance.notYet };
   if (!balance.amountCents) return { error: fill(t.chat.balance.waiting, { artist: b.artist_name }) };
 
+  // The demo: the rest is paid at once, nothing is charged.
+  if (b.showcase) {
+    await recordBalance(db, { appointmentId: balance.appointmentId, provider: "demo", checkoutId: `demo_${randomUUID()}`, amountCents: balance.amountCents, currency: balance.currency });
+    revalidatePath(`/c/${chatToken}`);
+    return { url: `/c/${chatToken}` };
+  }
   if (paysDirect(b.stripe_charges_enabled, b.mp_ready)) return { error: fill(t.chat.direct.balance, { artist: b.artist_name, amount: "" }) };
   if (cardProvider(b.stripe_charges_enabled, b.mp_ready) === "mercadopago") {
     // The rest of the tattoo carries no VANTA fee: only Mercado Pago's, as with any card payment.
@@ -215,19 +221,31 @@ export async function cancelMyBooking(chatToken: string): Promise<{ error?: stri
   if (!ap) return { error: t.chat.cancel.none };
   const inTime = ap.days >= CANCEL_DAYS;
   let refunded = false;
+  let byCard = false;
   if (inTime) {
     const { refundDeposit } = await import("@/lib/refunds");
     const r = await refundDeposit(db, { studioId: ap.studio_id, artistId: ap.artist_id, appointmentId: ap.id, quoteId: ap.quote_id });
     if (r === "failed") return { error: t.chat.refundFailed };
     refunded = r !== "none";
+    // Only Mercado Pago gives it back on its own; a direct payment the artist returns by hand.
+    byCard = r === "mercadopago";
   }
   await db.query(`update appointments set status = 'cancelled' where id = $1`, [ap.id]);
   await db.query(`update outbox set sent_at = now(), last_error = 'cancelled' where sent_at is null and dedupe_key like $1`, [`reminder%:${ap.id}`]);
-  const body = inTime ? (refunded ? t.chat.cancel.byClientRefund : t.chat.cancel.byClient) : t.chat.cancel.byClientLate;
+  const body = inTime ? (byCard ? t.chat.cancel.byClientRefund : t.chat.cancel.byClient) : t.chat.cancel.byClientLate;
   await db.query(`insert into brief_events (studio_id, brief_id, kind, actor, body) values ($1, $2, 'message', 'client', $3)`, [ap.studio_id, ap.brief_id, body]);
   const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [ap.studio_id]);
   after(() => notifyEach(members, (l) => ({ title: fill(dict(l).chat.cancel.pushTitle, { name: ap.client }), body, url: `/studio/chats/${ap.brief_id}`, tag: `chat:${ap.brief_id}` })));
   after(() => emailChat(db, ap.brief_id, "artist", "message", body).catch(() => undefined));
   revalidatePath(`/c/${chatToken}`);
   return { refunded };
+}
+
+/** The demo: skip to the tattoo day, so the session is done and the artist asks for the rest. */
+export async function skipDemoSession(chatToken: string): Promise<{ error?: string } | void> {
+  const t = dict(await getLocale());
+  if (!/^[A-Za-z0-9_-]{24,80}$/.test(chatToken)) return { error: t.common.error };
+  const { skipToSession } = await import("@/lib/showcase");
+  if (!(await skipToSession(await getDb(), chatToken))) return { error: t.common.error };
+  revalidatePath(`/c/${chatToken}`);
 }

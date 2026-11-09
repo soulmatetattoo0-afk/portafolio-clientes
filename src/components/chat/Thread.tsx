@@ -38,9 +38,17 @@ export function Thread({
   careLabels,
   linkSuffix = "",
   pulse,
+  pulseMs = 6000,
+  typing: typingAtFirst = false,
+  typingLabel,
 }: {
   /** Where to ask, every few seconds while the chat is in view, whether anything new happened. */
   pulse?: string;
+  /** How often to ask (a demo asks more often, so its lines arrive as if typed). */
+  pulseMs?: number;
+  /** The other side is typing (the demo's artist): three dots under the last message. */
+  typing?: boolean;
+  typingLabel?: string;
   items: ChatItem[];
   /** Whose screen this is: their own messages sit on the right. */
   side: "client" | "artist";
@@ -72,6 +80,14 @@ export function Thread({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const end = useRef<HTMLDivElement>(null);
+  // The dots: what the page said at load, then whatever the heartbeat says, until new messages come in.
+  const [typing, setTyping] = useState(typingAtFirst);
+  const typingKey = `${typingAtFirst}:${items.length}`;
+  const [typingFor, setTypingFor] = useState(typingKey);
+  if (typingFor !== typingKey) {
+    setTypingFor(typingKey);
+    setTyping(typingAtFirst);
+  }
   // What this side just wrote, shown at once; dropped once the server's copy is in the list.
   const [sent, setSent] = useState<{ id: string; body: string; at: string }[]>([]);
   const mine = side === "client" ? "client" : "artist";
@@ -101,8 +117,9 @@ export function Thread({
       try {
         const r = await fetch(pulse, { cache: "no-store" });
         if (!r.ok) return;
-        const { v } = (await r.json()) as { v: string };
+        const { v, typing: dots } = (await r.json()) as { v: string; typing?: boolean };
         if (!alive) return;
+        setTyping(Boolean(dots));
         if (known !== null && v !== known) router.refresh();
         known = v;
       } catch {
@@ -110,12 +127,12 @@ export function Thread({
       }
     };
     void check();
-    const id = setInterval(check, 6000);
+    const id = setInterval(check, pulseMs);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [pulse, router]);
+  }, [pulse, pulseMs, router]);
 
   // Each new message brings the bottom into view (not the first render: the page opens at the top).
   const seen = useRef(count);
@@ -227,6 +244,21 @@ export function Thread({
           if (m.kind === "offer" && m.offer) return [divider, <Offer key={m.id} item={m} side={side} t={t} locale={locale} artist={names.artist} chatToken={chatToken} project={project} linkSuffix={linkSuffix} />];
           if (!m.body) return divider;
           if (m.care && careLabels) return [divider, <CareLetter key={m.id} stage={m.care} body={m.body} artist={names.artist} labels={careLabels} mine={side === "artist"} />];
+          if (m.image)
+            // A piece of the artist's work sent in the chat: the print, the words under it.
+            return [
+              divider,
+              <li key={m.id} className={`mt-2 flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                {!mine && <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#3a332e] text-[0.72rem] font-semibold text-bone" aria-hidden>{other[0]}</span>}
+                <figure className="flex max-w-[80%] flex-col overflow-hidden rounded-[20px] border border-bone/[0.07] bg-[#2b2622] shadow-[0_8px_18px_-12px_rgb(0_0_0/0.9)]">
+                  <a href={m.image} target="_blank" rel="noreferrer" className="block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.image} alt="" loading="lazy" className="aspect-[4/5] w-[min(64vw,260px)] object-cover" />
+                  </a>
+                  <figcaption className="px-4 py-2.5 text-[0.98rem] leading-snug whitespace-pre-line text-bone">{m.body}</figcaption>
+                </figure>
+              </li>,
+            ];
           const sameAsPrev = !newDay && isText(prev) && prev!.actor === m.actor;
           const last = !(isText(next) && next!.actor === m.actor && dayOf(next!.at) === dayOf(m.at));
           return [
@@ -256,6 +288,17 @@ export function Thread({
             </div>
           </li>
         ))}
+        {typing && typingLabel && (
+          <li className="mt-2 flex items-end gap-2" aria-live="polite">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#3a332e] text-[0.72rem] font-semibold text-bone" aria-hidden>{other[0]}</span>
+            <span className="flex items-center gap-1 rounded-[20px] rounded-bl-[6px] border border-bone/[0.07] bg-[#2b2622] px-4 py-3.5">
+              <span className="sr-only">{typingLabel}</span>
+              {[0, 1, 2].map((i) => (
+                <span key={i} aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-bone/60" style={{ animationDelay: `${i * 180}ms` }} />
+              ))}
+            </span>
+          </li>
+        )}
       </ol>
       <div ref={end} />
       {locked ? null : waiting ? (

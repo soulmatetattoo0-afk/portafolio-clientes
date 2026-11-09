@@ -11,6 +11,8 @@ import { getDb } from "@/lib/db";
 import { enqueueEmail, flushOutbox } from "@/lib/email";
 import { briefReceivedToClient, newBriefToArtist } from "@/lib/messages";
 import { notifyEach } from "@/lib/push";
+import { isGuestEmail } from "@/lib/guest";
+import { standIn, standStop } from "@/lib/showcase";
 import { allow } from "@/lib/ratelimit";
 import { MAX_IMAGE_BYTES } from "@/lib/storage";
 import { createUploadTargets, inspectUpload, MAX_REFERENCES, readDraftToken, type UploadTarget } from "@/lib/uploads";
@@ -62,8 +64,9 @@ const Brief = z
     flashId: z.string().uuid().nullable().default(null),
     timing: z.enum(["asap", "flexible", "specific"]),
     dates: z.string().trim().max(500),
-    budgetMin: z.number().int().min(0).max(10_000_000),
-    budgetMax: z.number().int().min(0).max(10_000_000).nullable(),
+    // ×100 in every currency: Chilean pesos reach the millions (the column is a 32-bit integer).
+    budgetMin: z.number().int().min(0).max(2_000_000_000),
+    budgetMax: z.number().int().min(0).max(2_000_000_000).nullable(),
     // Filled from the account on the server; whatever the browser sends here is ignored.
     name: z.string().trim().max(120),
     email: z.string().trim().max(200),
@@ -97,8 +100,8 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   b.name = me.name?.trim() || me.email.split("@")[0];
   const db = await getDb();
 
-  const artist = await db.one<{ id: string; studio_id: string; display_name: string; accepting: boolean; currency: string; owner_email: string | null; owner_locale: "en" | "es" | null }>(
-    `select a.id, a.studio_id, a.display_name, a.accepting, a.currency,
+  const artist = await db.one<{ id: string; studio_id: string; display_name: string; accepting: boolean; currency: string; showcase: boolean; owner_email: string | null; owner_locale: "en" | "es" | null }>(
+    `select a.id, a.studio_id, a.display_name, a.accepting, a.currency, a.showcase,
             (select m.email from members m where m.studio_id = a.studio_id order by (m.role = 'owner') desc limit 1) as owner_email,
             (select m.locale from members m where m.studio_id = a.studio_id order by (m.role = 'owner') desc limit 1) as owner_locale
        from artists a where a.slug = $1`,
@@ -113,6 +116,18 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
   }
   // A flash design only counts when it belongs to this artist and is still on offer.
   const flashId = b.flashId ? ((await db.one(`select id from flash_designs where id = $1 and artist_id = $2 and published`, [b.flashId, artist.id])) ? b.flashId : null) : null;
+
+  // A visitor without an account booking with an artist who shows VANTA in a demo: the request goes to the
+  // artist's stand-in, which answers on its own (src/lib/showcase.ts). The real artist never hears of it.
+  let to = artist;
+  let stopId = b.stopId ?? null;
+  if (artist.showcase && isGuestEmail(me.email)) {
+    const stand = await standIn(db, artist.id);
+    if (stand) {
+      to = { ...artist, id: stand.id, studio_id: stand.studio_id, owner_email: null, owner_locale: null };
+      stopId = await standStop(db, stand.id, stopId);
+    }
+  }
 
   // Only accept files uploaded under this brief's own signed draft.
   const draftId = b.uploadToken ? readDraftToken(b.uploadToken) : null;
@@ -142,7 +157,7 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
          locale = excluded.locale,
          user_id = coalesce(clients.user_id, excluded.user_id)
        returning id`,
-      [artist.studio_id, b.name, b.email, b.phone || null, b.instagram || null, locale, userId],
+      [to.studio_id, b.name, b.email, b.phone || null, b.instagram || null, locale, userId],
     );
     let ref = briefRef();
     for (let i = 0; i < 4; i++) {
@@ -157,20 +172,20 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        returning id, chat_token`,
       [
-        artist.studio_id, artist.id, client!.id, ref, b.style, b.color, b.placement, full, b.body, b.height,
+        to.studio_id, to.id, client!.id, ref, b.style, b.color, b.placement, full, b.body, b.height,
         full ? null : b.widthCm, full ? null : b.heightCm,
         JSON.stringify(full || !b.point ? {} : { point: b.point, normal: b.normal, rotation_deg: b.rotationDeg }),
         b.description, b.avoid || null, b.coverup, b.firstTattoo,
-        b.budgetMin, b.budgetMax, artist.currency, b.timing, b.timing === "specific" ? b.dates || null : null, b.stopId,
+        b.budgetMin, b.budgetMax, artist.currency, b.timing, b.timing === "specific" ? b.dates || null : null, stopId,
         JSON.stringify(b.attribution), flashId,
       ],
     );
     for (const f of files) {
       await tx.query(`insert into brief_files (studio_id, brief_id, kind, path, mime, bytes) values ($1, $2, $3, $4, $5, $6)`, [
-        artist.studio_id, brief!.id, f.kind, f.key, f.mime, f.bytes,
+        to.studio_id, brief!.id, f.kind, f.key, f.mime, f.bytes,
       ]);
     }
-    await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor) values ($1, $2, 'created', 'client')`, [artist.studio_id, brief!.id]);
+    await tx.query(`insert into brief_events (studio_id, brief_id, kind, actor) values ($1, $2, 'created', 'client')`, [to.studio_id, brief!.id]);
     return { briefId: brief!.id, ref, chat: brief!.chat_token };
   });
 
@@ -187,18 +202,18 @@ export async function submitBrief(input: BriefInput): Promise<SubmitResult> {
     currency: artist.currency,
   };
   await enqueueEmail(db, briefReceivedToClient({ to: b.email, artist: artist.display_name, client: b.name, brief: summary, locale, chatToken: result.chat }), {
-    studioId: artist.studio_id,
+    studioId: to.studio_id,
     template: "brief_received",
     dedupeKey: `brief-received:${result.briefId}`,
   });
-  if (artist.owner_email) {
+  if (to.owner_email) {
     await enqueueEmail(
       db,
-      newBriefToArtist({ to: artist.owner_email, artist: artist.display_name, client: b.name, brief: summary, briefId: result.briefId, locale: artist.owner_locale ?? "en" }),
-      { studioId: artist.studio_id, template: "new_brief", dedupeKey: `new-brief:${result.briefId}` },
+      newBriefToArtist({ to: to.owner_email, artist: artist.display_name, client: b.name, brief: summary, briefId: result.briefId, locale: to.owner_locale ?? "en" }),
+      { studioId: to.studio_id, template: "new_brief", dedupeKey: `new-brief:${result.briefId}` },
     );
   }
-  const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [artist.studio_id]);
+  const members = await db.query<{ user_id: string; locale: "en" | "es" }>(`select user_id, locale from members where studio_id = $1`, [to.studio_id]);
   after(async () => {
     await flushOutbox(await getDb());
     await notifyEach(members, (l) => ({

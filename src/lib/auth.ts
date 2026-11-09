@@ -61,6 +61,9 @@ async function readSession(): Promise<Session | null> {
     return guest ? { userId: guest, email: guestEmail(guest), verified: false, guest: true } : null;
   }
   const store = await cookies();
+  // Local mode can be a guest too (/api/guest?local=1), to try what a visitor without an account sees.
+  const localGuest = readGuest(store.get(GUEST_COOKIE)?.value);
+  if (localGuest) return { userId: localGuest, email: guestEmail(localGuest), verified: false, guest: true };
   const raw = store.get(DEV_COOKIE)?.value;
   // Local mode and previews: a visitor is the demo client (Daniel Reyes) until they sign in as someone else
   // or sign out, so the client's side can be tried without making an account every time.

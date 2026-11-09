@@ -152,7 +152,10 @@ function normStop(r: TourStop): TourStop {
 
 export async function getArtistBySlug(slug: string): Promise<Artist | null> {
   const db = await getDb();
-  return withPortrait(await db.one<ArtistRow>(`select ${ARTIST_COLS} from artists a where a.slug = $1`, [slug.toLowerCase()]));
+  // A demo stand-in's address opens the artist it stands in for.
+  return withPortrait(
+    await db.one<ArtistRow>(`select ${ARTIST_COLS} from artists a where a.id = (select coalesce(showcase_of, id) from artists where slug = $1)`, [slug.toLowerCase()]),
+  );
 }
 
 export async function getArtistById(id: string): Promise<Artist | null> {
@@ -490,6 +493,8 @@ export interface QuoteView {
   stripe_charges_enabled: boolean;
   mp_ready: boolean;
   plan: string;
+  /** Made by an artist's demo stand-in: the deposit is simulated. */
+  showcase: boolean;
   slots: QuoteSlot[];
   appointment: { starts_at: Date; timezone: string; city: string | null; studio_name: string | null; address: string | null } | null;
   paid_cents: number | null;
@@ -503,7 +508,7 @@ export async function getQuoteByToken(token: string): Promise<QuoteView | null> 
             q.deposit_cents, q.currency, q.message, q.policy, q.expires_at, q.brief_id,
             b.placement, b.full_coverage, b.size_w_cm::float as size_w_cm, b.size_h_cm::float as size_h_cm, b.style, b.color_mode,
             c.name as client_name, c.email as client_email, c.locale as client_locale,
-            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, a.accent as artist_accent, b.chat_token, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, st.plan
+            a.id as artist_id, a.display_name as artist_name, a.slug as artist_slug, (a.showcase_of is not null) as showcase, a.accent as artist_accent, b.chat_token, a.stripe_account_id, a.stripe_charges_enabled, (a.mp_access_token is not null) as mp_ready, st.plan
        from quotes q join briefs b on b.id = q.brief_id join clients c on c.id = b.client_id join artists a on a.id = q.artist_id join studios st on st.id = q.studio_id
       where q.token = $1`,
     [token],

@@ -39,6 +39,14 @@ export async function startDeposit(token: string, _prev: PayState, form: FormDat
   if (!quote.slots.some((s) => s.id === slotId)) return { error: q.dateRequired };
 
   const db = await getDb();
+  if (quote.showcase) {
+    // The demo: the deposit is simulated and the booking goes through at once (moved a day if another demo took it).
+    const { freeShowcaseSlot } = await import("@/lib/showcase");
+    await freeShowcaseSlot(db, slotId);
+    await db.query(`update quotes set accepted_at = now() where id = $1`, [quote.id]);
+    await confirmBooking(db, { quoteId: quote.id, slotId, provider: "demo", checkoutId: `demo_${randomUUID()}`, amountCents: quote.deposit_cents, currency: quote.currency });
+    redirect(`/c/${quote.chat_token}${back}`);
+  }
   // Hold the date while the client pays: 30 minutes on a card, a week when the artist confirms a direct payment.
   // Card payments only once the artist's own Stripe can take them; until then the client pays them directly.
   const direct = paysDirect(quote.stripe_charges_enabled, quote.mp_ready);

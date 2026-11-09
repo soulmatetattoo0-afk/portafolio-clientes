@@ -55,6 +55,8 @@ export interface ChatItem {
   care?: "pre" | "post";
   /** The client asked to book (payments made straight to the artist): shown as a notice, not a message. */
   request?: boolean;
+  /** A picture the artist sent with the message (a piece of their work). */
+  image?: string;
 }
 
 /** The request as the client sent it: the card pinned to the top of the conversation. */
@@ -91,6 +93,8 @@ export interface ChatThread {
   chat_token: string;
   /** The rest of the tattoo for the booked session, paid from the chat on the day. */
   balance: Balance | null;
+  /** A showcase conversation: the artist's stand-in answers on its own and every payment is simulated. */
+  demo: boolean;
 }
 
 const KIND: Record<string, ChatItem["kind"] | null> = {
@@ -124,8 +128,11 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
       [b.id],
     ),
     db.query<{ id: string; kind: string; path: string }>(`select id, kind, path from brief_files where brief_id = $1 and kind <> 'placement' order by created_at`, [b.id]),
-    db.one<{ id: string; slug: string; display_name: string; accent: string | null; portrait_path: string | null; studio_id: string; stripe_charges_enabled: boolean; mp_ready: boolean }>(
-      `select id, slug, display_name, accent, portrait_path, studio_id, stripe_charges_enabled, (mp_access_token is not null) as mp_ready from artists where id = $1`,
+    // A stand-in links back to the artist it stands in for.
+    db.one<{ id: string; slug: string; display_name: string; accent: string | null; portrait_path: string | null; studio_id: string; stripe_charges_enabled: boolean; mp_ready: boolean; demo: boolean }>(
+      `select a.id, coalesce(r.slug, a.slug) as slug, a.display_name, a.accent, coalesce(a.portrait_path, r.portrait_path) as portrait_path, a.studio_id, a.stripe_charges_enabled,
+              (a.mp_access_token is not null) as mp_ready, a.showcase_of is not null as demo
+         from artists a left join artists r on r.id = a.showcase_of where a.id = $1`,
       [b.artist_id],
     ),
   ]);
@@ -154,6 +161,7 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
     const item: ChatItem = { id: e.id, actor: e.actor, kind, body: e.body, at: iso(e.created_at) };
     if (kind === "balance" && typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
     if (kind === "message" && (e.data?.care === "pre" || e.data?.care === "post")) item.care = e.data.care;
+    if (kind === "message" && typeof e.data?.image === "string") item.image = await fileUrl("public", e.data.image);
     if (kind === "message" && typeof e.data?.direct === "string") {
       item.request = true;
       if (typeof e.data?.amount_cents === "number") item.amount = { cents: e.data.amount_cents, currency: String(e.data.currency ?? "usd") };
@@ -211,6 +219,7 @@ async function loadThread(db: Db, where: string, param: string): Promise<ChatThr
     },
     chat_token: b.chat_token,
     balance: await loadBalance(db, b.id),
+    demo: Boolean(artist!.demo),
   };
 }
 

@@ -16,14 +16,17 @@ const TEXT: Record<BarTone, string> = { new: "text-bone", info: "text-bone/65", 
  * latest word on it (booking asked, confirmed, paid in full). A tap opens the
  * whole project.
  */
-export function BarSummary({ title, status, tone, placement, body }: { title: string; status: string; tone: BarTone; placement: string; body: "f" | "m" }) {
+export function BarSummary({ title, status, tone, placement, body, tag }: { title: string; status: string; tone: BarTone; placement: string; body: "f" | "m"; tag?: string }) {
   return (
     <span className="flex min-w-0 items-center gap-2.5">
       <span aria-hidden className="grid h-11 w-8 shrink-0 place-items-center rounded-[3px] bg-[#f3ecdf] shadow-[0_6px_12px_-8px_rgb(0_0_0/0.9)]">
         <BodyChart placement={placement} body={body} views={[chartViews(placement)[0] ?? "front"]} className="w-[1.15rem]" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[0.9rem] font-semibold text-bone">{title}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[0.9rem] font-semibold text-bone">{title}</span>
+          {tag && <span className="shrink-0 rounded-full border border-[#e8c46b]/50 px-1.5 py-px text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-[#f2d27a]">📌 {tag}</span>}
+        </span>
         <span className={`mt-0.5 flex items-center gap-1.5 text-[0.72rem] ${TEXT[tone]}`}>
           <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[tone]}`} />
           <span className="truncate">{status}</span>
@@ -44,19 +47,20 @@ export function BarAction({ label, href, event, action, confirm, tone = "accent"
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   // The red key is the next step; a quiet one (cancelling) is an outline.
-  const cls = `flex h-10 max-w-[48%] shrink-0 items-center rounded-full px-3.5 text-[0.78rem] leading-tight font-semibold text-bone active:scale-95 disabled:opacity-60 ${tone === "ghost" ? "border border-bone/30" : "bg-accent shadow-[0_8px_18px_-10px_rgb(0_0_0/0.9)]"}`;
+  const cls = `flex h-10 shrink-0 items-center rounded-full px-3.5 text-[0.78rem] leading-tight font-semibold text-bone active:scale-95 disabled:opacity-60 ${tone === "ghost" ? "border border-bone/30" : "bg-accent shadow-[0_8px_18px_-10px_rgb(0_0_0/0.9)]"}`;
   if (href)
     return (
-      <a href={href} className={cls}>
+      <a href={href} className={`${cls} max-w-[48%]`}>
         <span className="line-clamp-2">{label}</span>
       </a>
     );
   return (
-    <span className="relative shrink-0">
+    // The width cap sits on the wrapper: a percentage on the button itself resolved against a box as wide as it, and cut the label.
+    <span className="relative max-w-[48%] shrink-0">
       <button
         type="button"
         disabled={pending}
-        className={`${cls} ${armed ? "ring-2 ring-[#f2d27a]" : ""}`}
+        className={`${cls} max-w-full ${armed ? "ring-2 ring-[#f2d27a]" : ""}`}
         onClick={() => {
           if (event) {
             window.dispatchEvent(new CustomEvent("vanta:quote", { detail: event }));

@@ -8,16 +8,31 @@ import { Thread } from "@/components/chat/Thread";
 import { fill, type Dict, type Locale } from "@/i18n";
 import type { Balance } from "@/lib/balance";
 import type { ChatItem } from "@/lib/chat";
+import type { ShowcaseStage } from "@/lib/showcase";
 import { money } from "@/lib/format";
 
 import { markClientRead, payBalance, sendClientMessage } from "./actions";
 
-export function ClientChat({ token, items, names, t, locale, pinned, project, artistHref, justSent, balance, careLabels, linkSuffix = "", direct = false }: { direct?: boolean; token: string; items: ChatItem[]; names: { client: string; artist: string }; t: Dict["chat"]; locale: Locale; pinned: React.ReactNode; project?: React.ReactNode; artistHref: string; justSent: boolean; balance: Balance | null; careLabels?: { download: string; from: string }; linkSuffix?: string }) {
+export interface DemoProps {
+  stage: ShowcaseStage;
+  typing: boolean;
+  title: string;
+  intro: string;
+  hint: string;
+  typingLabel: string;
+  skip: string;
+  skipAction: () => Promise<{ error?: string } | void>;
+  again: { label: string; href: string };
+  back: { label: string; href: string };
+}
+
+export function ClientChat({ token, items, names, t, locale, pinned, project, artistHref, justSent, balance, careLabels, linkSuffix = "", direct = false, demo }: { demo?: DemoProps; direct?: boolean; token: string; items: ChatItem[]; names: { client: string; artist: string }; t: Dict["chat"]; locale: Locale; pinned: React.ReactNode; project?: React.ReactNode; artistHref: string; justSent: boolean; balance: Balance | null; careLabels?: { download: string; from: string }; linkSuffix?: string }) {
   // The client writes once the artist has read the request and answered.
   const open = items.some((i) => i.actor === "artist");
   const count = items.length;
   // The house's note arrives as a notification right after sending (the list of quotes shows it too).
-  const [toast, setToast] = useState(justSent);
+  // In the demo the house's note is the demo's own card instead.
+  const [toast, setToast] = useState(justSent && !demo);
   useEffect(() => {
     void markClientRead(token);
   }, [token, count]);
@@ -43,6 +58,7 @@ export function ClientChat({ token, items, names, t, locale, pinned, project, ar
           </Link>
         </div>
       )}
+      {demo && <DemoIntro demo={demo} />}
       {balance && !balance.paid && balance.requested && direct && (
         <p className="mb-3 rounded-[16px] border border-bone/15 bg-[#27231f] px-4 py-3 text-[0.92rem] leading-snug text-bone/85">
           {fill(t.direct.balanceAmount, { artist: names.artist, amount: balance.amountCents !== null ? money(balance.amountCents, balance.currency, locale) : "" })}
@@ -63,8 +79,13 @@ export function ClientChat({ token, items, names, t, locale, pinned, project, ar
       careLabels={careLabels}
       linkSuffix={linkSuffix}
       pulse={`/api/chat/pulse?t=${token}`}
+      pulseMs={demo ? 2500 : 6000}
+      typing={demo?.typing}
+      typingLabel={demo?.typingLabel}
+      tools={demo ? <DemoHint demo={demo} /> : undefined}
       onSend={(text) => sendClientMessage(token, text)}
     />
+    {demo && !open ? <DemoHint demo={demo} /> : null}
     </>
   );
 }
@@ -102,6 +123,62 @@ function PayBalance({ token, balance, t, artist, locale }: { token: string; bala
         </span>
       </button>
       {error && <p role="alert" className="text-[0.85rem] text-ember">{error}</p>}
+    </div>
+  );
+}
+
+/** The demo's card at the top of the chat: what this is, and that nothing is charged. */
+function DemoIntro({ demo }: { demo: DemoProps }) {
+  return (
+    <div role="note" className="mb-4 rounded-[18px] border border-[#e8c46b]/35 bg-[#e8c46b]/[0.07] px-4 py-3">
+      <p className="flex items-center gap-2 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#f2d27a]">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#f2d27a]" />
+        {demo.title}
+      </p>
+      <p className="mt-1.5 text-[0.88rem] leading-snug text-bone/80">{demo.intro}</p>
+    </div>
+  );
+}
+
+/** Under the composer in the demo: the next step in a line, and the key that skips to the tattoo day. */
+function DemoHint({ demo }: { demo: DemoProps }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="grid gap-2 rounded-[16px] border border-[#e8c46b]/20 bg-[#1b1815]/95 px-3 py-2.5 backdrop-blur">
+      <p className="flex items-start gap-2 text-[0.8rem] leading-snug text-[#f2d27a]/90">
+        <span aria-hidden className="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-[#f2d27a]" />
+        {demo.hint}
+      </p>
+      {demo.stage === "booked" && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              setError(null);
+              const r = await demo.skipAction();
+              if (r?.error) setError(r.error);
+              else router.refresh();
+            })
+          }
+          className="flex h-11 items-center justify-center rounded-full border border-[#e8c46b]/60 bg-[#e8c46b]/10 px-4 text-[0.88rem] font-semibold text-[#f2d27a] active:scale-[0.98] disabled:opacity-60"
+        >
+          {demo.skip} →
+        </button>
+      )}
+      {(demo.stage === "done" || demo.stage === "cancelled") && (
+        <div className="grid grid-cols-2 gap-2">
+          <Link href={demo.again.href} className="flex h-11 items-center justify-center rounded-full bg-accent px-3 text-center text-[0.85rem] font-semibold text-bone">
+            {demo.again.label}
+          </Link>
+          <Link href={demo.back.href} className="flex h-11 items-center justify-center rounded-full border border-bone/25 px-3 text-center text-[0.85rem] font-semibold text-bone">
+            {demo.back.label}
+          </Link>
+        </div>
+      )}
+      {error && <p role="alert" className="text-[0.82rem] text-accent">{error}</p>}
     </div>
   );
 }

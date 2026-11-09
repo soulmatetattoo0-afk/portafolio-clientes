@@ -70,11 +70,11 @@ const Slot = z.object({
 
 const Quote = z
   .object({
-    priceMin: z.coerce.number().positive().max(100000),
-    priceMax: z.union([z.literal(""), z.coerce.number().positive().max(100000)]),
+    priceMin: z.coerce.number().positive().max(20_000_000),
+    priceMax: z.union([z.literal(""), z.coerce.number().positive().max(20_000_000)]),
     sessions: z.coerce.number().int().min(1).max(40),
     hours: z.union([z.literal(""), z.coerce.number().positive().max(14)]),
-    deposit: z.coerce.number().positive().max(100000),
+    deposit: z.coerce.number().positive().max(20_000_000),
     message: z.string().trim().max(3000),
     expiresDays: z.coerce.number().int().refine((n) => [3, 7, 14, 30].includes(n)),
     slots: z.array(Slot).min(1).max(6),
@@ -372,7 +372,7 @@ const FlashPatch = z.object({
   title: z.string().trim().max(80),
   description: z.string().trim().max(500),
   size_label: z.string().trim().max(40),
-  price: z.union([z.literal(""), z.coerce.number().min(0).max(100000)]),
+  price: z.union([z.literal(""), z.coerce.number().min(0).max(20_000_000)]),
   status: z.enum(["available", "reserved", "taken"]),
   repeatable: z.boolean(),
   published: z.boolean(),
@@ -525,7 +525,7 @@ const Profile = z.object({
   listed: z.boolean(),
   styles: z.array(z.string().refine((s) => STYLE_BY_SLUG.has(s))).max(10),
   accepting: z.boolean(),
-  min_price: z.union([z.literal(""), z.coerce.number().min(0).max(100000)]),
+  min_price: z.union([z.literal(""), z.coerce.number().min(0).max(20_000_000)]),
   cover_word: z.string().trim().max(24),
   cover_quote: z.string().trim().max(160),
   since_year: z.union([z.literal(""), z.coerce.number().int().min(1950).max(2100)]),
@@ -600,7 +600,7 @@ export async function saveRules(_prev: FormState, form: FormData): Promise<FormS
   if (!parsed.success) return { ok: false, message: t.common.error, field: String(parsed.error.issues[0]?.path[0] ?? "") };
   const defaults = z
     .object({
-      deposit: z.coerce.number().min(0).max(100000).optional(),
+      deposit: z.coerce.number().min(0).max(20_000_000).optional(),
       hours: z.coerce.number().min(0.5).max(14).optional(),
       start: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")).optional(),
     })
@@ -808,8 +808,8 @@ const Offer = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/),
   hours: z.coerce.number().positive().max(14),
   stopId: z.string().uuid(),
-  price: z.coerce.number().positive().max(100000),
-  deposit: z.coerce.number().min(0).max(100000),
+  price: z.coerce.number().positive().max(20_000_000),
+  deposit: z.coerce.number().min(0).max(20_000_000),
   message: z.string().trim().max(1000),
 });
 
@@ -1087,7 +1087,7 @@ export async function setClosedWeekdays(days: number[]): Promise<{ error?: strin
 export async function setBalance(appointmentId: string, amount: number): Promise<{ error?: string } | void> {
   const member = await requireMember();
   const t = dict(await getLocale());
-  if (!Number.isFinite(amount) || amount < 0 || amount > 100_000) return { error: t.common.error };
+  if (!Number.isFinite(amount) || amount < 0 || amount > 20_000_000) return { error: t.common.error };
   const db = await getDb();
   const paid = await db.one(`select 1 from payments where appointment_id = $1 and kind = 'balance' and status = 'paid'`, [appointmentId]);
   if (paid) return { error: t.chat.balance.done };
@@ -1223,8 +1223,8 @@ const Quick = z.object({
   home_city: z.string().trim().max(80).optional(),
   cover_quote: z.string().trim().max(160).optional(),
   accepting: z.boolean().optional(),
-  default_deposit: z.coerce.number().min(0).max(100000).optional(),
-  min_price: z.coerce.number().min(0).max(100000).optional(),
+  default_deposit: z.coerce.number().min(0).max(20_000_000).optional(),
+  min_price: z.coerce.number().min(0).max(20_000_000).optional(),
   precare: z.string().trim().max(4000).optional(),
   postcare: z.string().trim().max(4000).optional(),
   styles: z.array(z.string().refine((x) => STYLE_BY_SLUG.has(x))).max(10).optional(),
@@ -1472,8 +1472,8 @@ const Confirm = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/),
   hours: z.coerce.number().positive().max(14).default(3),
   stopId: z.string().uuid(),
-  total: z.coerce.number().positive().max(100000),
-  deposit: z.coerce.number().min(0).max(100000),
+  total: z.coerce.number().positive().max(20_000_000),
+  deposit: z.coerce.number().min(0).max(20_000_000),
   message: z.string().trim().max(1000).default(""),
 });
 
