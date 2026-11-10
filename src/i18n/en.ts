@@ -1974,7 +1974,7 @@ const en = {
   },
   v2: {
     tabs: { page: "My page", myArtists: "My artists", chats: "Chats", settings: "Creative room", messages: "Messages", profile: "Profile" },
-    front: { work: "Work", workSub: "The work, style by style.", magazine: "Magazine", magazineSub: "Stories from the artist.", dates: "Dates", datesSub: "See availability.", book: "Book", bookSub: "Request a quote.", open: "Books open", closed: "Books closed", chat: "Chat", chats: "Your chats with {artist}", noChats: "You have no chats with {artist}", noChatsBody: "Send a quote request to unlock the chat.", quote: "Request a quote", follow: "Follow", following: "Following", back: "Back" },
+    front: { work: "Work", workSub: "The work, style by style.", magazine: "Magazine", magazineSub: "Stories from the artist.", dates: "Dates", datesSub: "See availability.", nextFree: "Next open", book: "Book", bookSub: "Request a quote.", open: "Books open", closed: "Books closed", chat: "Chat", chats: "Your chats with {artist}", noChats: "You have no chats with {artist}", noChatsBody: "Send a quote request to unlock the chat.", quote: "Request a quote", follow: "Follow", following: "Following", back: "Back" },
     edit: { work: "Edit my Work section", magazine: "Edit my magazine", dates: "Edit calendar", back: "Back to my page", done: "Done", cancel: "Cancel", save: "Save", saving: "Saving…", saved: "Saved", error: "Couldn't save. Try again." },
     work: {
       title: "Work",

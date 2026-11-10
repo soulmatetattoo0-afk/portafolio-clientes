@@ -1976,7 +1976,7 @@ const es: Dict = {
   },
   v2: {
     tabs: { page: "Mi página", myArtists: "Mis artistas", chats: "Chats", settings: "Sala creativa", messages: "Mensajes", profile: "Perfil" },
-    front: { work: "Obras", workSub: "Su obra, estilo por estilo.", magazine: "Revista", magazineSub: "Historias del artista.", dates: "Fechas", datesSub: "Ver disponibilidad.", book: "Reservar", bookSub: "Solicita una cotización.", open: "Reservas abiertas", closed: "Agenda cerrada", chat: "Chat", chats: "Tus chats con {artist}", noChats: "No tienes chats con {artist}", noChatsBody: "Hazle una cotización para desbloquear el chat.", quote: "Pedir cotización", follow: "Seguir", following: "Siguiendo", back: "Volver" },
+    front: { work: "Obras", workSub: "Su obra, estilo por estilo.", magazine: "Revista", magazineSub: "Historias del artista.", dates: "Fechas", datesSub: "Ver disponibilidad.", nextFree: "Próxima libre", book: "Reservar", bookSub: "Solicita una cotización.", open: "Reservas abiertas", closed: "Agenda cerrada", chat: "Chat", chats: "Tus chats con {artist}", noChats: "No tienes chats con {artist}", noChatsBody: "Hazle una cotización para desbloquear el chat.", quote: "Pedir cotización", follow: "Seguir", following: "Siguiendo", back: "Volver" },
     edit: { work: "Editar mi sección Obras", magazine: "Editar mi revista", dates: "Editar calendario", back: "Volver a mi página", done: "Listo", cancel: "Cancelar", save: "Guardar", saving: "Guardando…", saved: "Guardado", error: "No se pudo guardar. Inténtalo de nuevo." },
     work: {
       title: "Obras",

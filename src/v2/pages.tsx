@@ -10,6 +10,7 @@ import { getArtistBySlug, listPortfolio, listSections, listStops, listTakenDays,
 
 import { Dates, type DaySession, type Place } from "./Dates";
 import { Front } from "./Front";
+import type { Slide } from "./FrontMotion";
 import { Magazine } from "./Magazine";
 import { ArtistTabs, ClientTabs } from "./Shell";
 import { countVisit, getViewer } from "./viewer";
@@ -46,25 +47,53 @@ export async function FrontPage({ artist, owner, base }: { artist: Artist; owner
   const pieces = portfolio.filter((p) => p.url);
   const cover = magazine.doc.cover;
   const poster = cover.mode === "poster" && cover.poster ? (magazine.urls[cover.poster] ?? null) : null;
-  const images = { work: artist.work_cover_url ?? pieces[0]?.url ?? null, magazine: poster ?? artist.portrait_url ?? pieces[1]?.url ?? null, book: pieces[2]?.url ?? pieces[0]?.url ?? null };
-  // This month at the home studio: free days solid.
+  // The reel behind Obras: the cover the artist chose, then their featured pieces, then the rest; five at most.
+  const reel: Slide[] = [];
+  const inReel = new Set<string>();
+  const add = (url: string | null | undefined, fx = 50, fy = 50, zoom = 1) => {
+    if (!url || inReel.has(url) || reel.length >= 5) return;
+    inReel.add(url);
+    reel.push({ url, fx, fy, zoom });
+  };
+  add(artist.work_cover_url);
+  for (const p of [...pieces.filter((p) => p.featured), ...pieces.filter((p) => !p.featured)]) add(p.url, p.focus_x, p.focus_y, p.zoom);
+  // The calendar leaf: the next open day at the home studio; with none in sight (or the book closed), today.
   const home = stops.find((s) => s.is_home);
   const busy = new Set(home ? (taken[home.id] ?? []) : []);
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const first = new Date(Date.UTC(y, m, 1));
-  const n = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const todayN = now.getUTCDate();
-  const month = {
-    label: new Intl.DateTimeFormat(viewer.locale, { month: "long", timeZone: "UTC" }).format(first),
-    offset: (first.getUTCDay() + 6) % 7,
-    days: Array.from({ length: n }, (_, i) => ({ n: i + 1, free: i + 1 >= todayN && !busy.has(isoDay(new Date(Date.UTC(y, m, i + 1)))), today: i + 1 === todayN })),
-  };
+  // Today is the day at the studio, not the server's: late in Santiago it is already tomorrow in UTC.
+  let today = new Date(`${isoDay(new Date())}T00:00:00Z`);
+  try {
+    if (home?.timezone) today = new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: home.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())}T00:00:00Z`);
+  } catch {
+    // An unknown timezone on the stop: the UTC day stands.
+  }
+  let next: Date | null = null;
+  if (artist.accepting && home) {
+    for (let i = 1; i <= 60 && !next; i++) {
+      const d = new Date(today.getTime() + i * 86_400_000);
+      if (!busy.has(isoDay(d))) next = d;
+    }
+  }
+  const part = (d: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(viewer.locale, { ...o, timeZone: "UTC" }).format(d).replace(".", "");
+  const leaf = next
+    ? { band: viewer.t.v2.front.nextFree, day: String(next.getUTCDate()), foot: `${part(next, { weekday: "short" })} · ${part(next, { month: "short" })}` }
+    : { band: part(today, { month: "long" }), day: String(today.getUTCDate()), foot: part(today, { weekday: "long" }) };
   return (
     <>
       {/* No demo banner here: the page is one phone screen, every line counts. */}
-      <Front artist={artist} images={images} month={month} base={base} owner={viewer.owner} chats={viewer.chats} following={viewer.following} t={viewer.t} locale={viewer.locale} />
+      <Front
+        artist={artist}
+        reel={reel}
+        magazine={{ url: poster ?? artist.portrait_url ?? pieces[1]?.url ?? null, poster: Boolean(poster) }}
+        leaf={leaf}
+        base={base}
+        owner={viewer.owner}
+        bar={viewer.owner || Boolean(viewer.client)}
+        chats={viewer.chats}
+        following={viewer.following}
+        t={viewer.t}
+        locale={viewer.locale}
+      />
       <Bars artist={artist} viewer={viewer} />
     </>
   );
